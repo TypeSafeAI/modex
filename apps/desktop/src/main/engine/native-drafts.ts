@@ -1,3 +1,5 @@
+import { executionBinding } from "./execution-binding.js";
+import type { PendingExecutionBinding } from "../../shared/native-drafts.js";
 import type { Attachment, AttachmentDraftOwner } from "../../shared/attachments.js";
 import type { ComposerRecovery, DraftSaveReceipt } from "../../shared/update-recovery.js";
 import type { Thread } from "../../shared/types.js";
@@ -94,7 +96,7 @@ export class NativeDrafts {
     const matches = this.options.store.items(record.target.threadId).filter(item => item.id === record.id);
     const item = matches[0];
     return matches.length === 1 && item?.kind === "user" && item.text === record.rawText && item.at === record.createdAt
-      && equal(item.attachments ?? [], record.files);
+      && equal(item.attachments ?? [], record.files) && (!record.execution || equal(item.execution, record.execution));
   }
   private current(session: string): AttachmentDocument {
     if (!this.document || session !== this.session) throw fail();
@@ -229,15 +231,28 @@ export class NativeDrafts {
     const document = this.current(session);
     this.documents.retire(this.documents.register(document, owner));
   }
+  private execution(thread: Pick<Thread, "backend" | "model" | "localTarget" | "localContextTokens" | "codexAccount">): PendingExecutionBinding {
+    return executionBinding(thread, thread.localTarget === undefined && thread.backend === "codex"
+      ? this.options.runner.backend("codex")?.identity?.() ?? null : null);
+  }
+  private assertExecution(record: PendingSendRecord, thread: Thread): void {
+    // Legacy composer settings may describe the selection before local was
+    // chosen. They cannot prove the original's destination, on any backend.
+    const same = record.execution && equal(record.execution, this.execution(thread));
+    if (!same) throw new Error("Saved message destination changed or is unverified. The original is preserved; use Copy text to new chat, review its model, then send explicitly.");
+  }
   begin(session: string, input: PendingSendInput): { id: string } {
     this.assertEditing();
     const document = this.current(session);
+    const existing = input?.source?.kind === "thread" ? this.options.store.thread(input.source.threadId) : undefined;
+    const destination = existing ?? input?.configuration?.settings;
+    if (!destination) throw fail();
     const pending = this.pending.begin(input, record => {
       if (this.current(session) !== document || !this.ownerExists(record.source)) return false;
       for (const other of this.records()) if (key(other.owner) === key(record.source)
         || other.files.some(file => record.files.some(selected => selected.id === file.id))) return false;
       return record.files.every(file => this.documents.validate(document, record.source, file));
-    });
+    }, this.execution(destination));
     if (!this.documents.refreshRetention()) throw fail();
     return { id: pending.value!.id };
   }
@@ -253,6 +268,7 @@ export class NativeDrafts {
       thread = await this.options.runner.createThreadForPending(record.source.projectId, record.creation, record.configuration);
     } else thread = this.options.store.thread(record.source.threadId);
     if (this.current(session) !== document || !thread) throw fail();
+    this.assertExecution(record, thread);
     const target = { threadId: thread.id, projectId: thread.projectId, createdAt: thread.createdAt };
     if (!this.proveTarget(target)) throw fail();
     this.pending.bind(intentId, () => target);
@@ -302,6 +318,9 @@ export class NativeDrafts {
     const document = this.current(session), record = this.requirePending(intentId);
     if (!this.transferred.has(intentId) || !record.target || record.owner.kind !== "thread"
       || !this.proveTarget(record.target) || record.files.some(file => !this.documents.validate(document, record.owner, file))) throw fail();
+    const thread = this.options.store.thread(record.target.threadId);
+    if (!thread) throw fail();
+    this.assertExecution(record, thread);
     await this.options.runner.sendDurably(record.target.threadId, record.rawText, record.files, {
       id: record.id, at: record.createdAt, committed: () => {
         if (this.current(session) !== document) throw fail();

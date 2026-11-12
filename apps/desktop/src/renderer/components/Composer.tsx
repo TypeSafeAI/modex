@@ -6,7 +6,7 @@ import type { AttachmentActions } from "../composer-attachments";
 import type { Attachment } from "../../shared/attachments";
 import { hasFiles } from "../attachments";
 import { AttachmentChips } from "./Attachments";
-import { ModelMenu } from "./ModelMenu";
+import { ModelMenu, type LocalMenu } from "./ModelMenu";
 import { Icon } from "./ui/Icon";
 import { IconButton } from "./ui/IconButton";
 import { ErrorNotice } from "./ui/ErrorNotice";
@@ -48,6 +48,8 @@ interface Props {
   /** Asks the CLI for its models again after `modelsError`. */
   onRetryModels?: () => void;
   openModelPickerRequest?: number;
+  /** Local models beside the CLI's own (LM-4). A thread with a local target is pinned: no Plan, Auto or backend change. */
+  local?: LocalMenu;
   /** A suggested next message for an idle thread; shown only while the box is empty. */
   suggestion?: FollowUp | null;
   onBackend: (b: BackendId) => void;
@@ -71,7 +73,7 @@ const MAX_INPUT = 180;
  * input and one control row — `+` (plan, auto, backend), the access pill (mode), any active chips,
  * the model picker, and a round send/stop button.
  */
-export function Composer({ text, onText: setText, attachments, attachmentActions, busy, context, backend, mode, approvals = "ask", onApprovals, plan, model, effort, auto, models, modelsError, onRetryModels, openModelPickerRequest, suggestion, onBackend, onMode, onPlan, onModel, onEffort, onAuto, onSend, onStop, inputRef }: Props) {
+export function Composer({ text, onText: setText, attachments, attachmentActions, busy, context, backend, mode, approvals = "ask", onApprovals, plan, model, effort, auto, models, modelsError, onRetryModels, openModelPickerRequest, local, suggestion, onBackend, onMode, onPlan, onModel, onEffort, onAuto, onSend, onStop, inputRef }: Props) {
   const fallbackRef = useRef<HTMLTextAreaElement>(null);
   const ta = inputRef ?? fallbackRef;
   const { copying, sending, warning: attachWarning, onFiles: attach, onPick: pick, onRemove, onDismissWarning } = attachmentActions;
@@ -92,7 +94,8 @@ export function Composer({ text, onText: setText, attachments, attachmentActions
     ta.current?.focus({ preventScroll: true });
   }, [busy]);
 
-  const canSend = Boolean(text.trim() || attachments.length);
+  const unsupportedImages = Boolean(local?.current && attachments.some(file => file.kind === "image"));
+  const canSend = Boolean(text.trim() || attachments.length) && !unsupportedImages;
   const submit = () => {
     if (!canSend || busy || copying || sending) return;
     void onSend(text);
@@ -144,9 +147,11 @@ export function Composer({ text, onText: setText, attachments, attachmentActions
     <div className="composer" data-testid="composer">
       <div className="composer-inner" data-testid="attachment-dropzone">
         <ContextStrip context={context} />
+        {local?.current && <p className="local-inference-host" data-testid="local-inference-host">Runs through Codex at {local.entries.find(e => e.connection.id === local.current!.model.connection.id && e.connection.revision === local.current!.model.connection.revision)?.connection.origin ?? "an unavailable local server"} · connection revision {local.current.model.connection.revision}. A local address does not verify offline operation.</p>}
+        {unsupportedImages && <p role="status" className="local-inference-host" data-testid="local-images-unavailable">Images are not qualified for local models. Remove the image or choose a cloud model before sending; the attachment is still here.</p>}
         <div className={`composer-box${plan ? " plan" : ""}`} data-testid="composer-box">
           {canSuggest && (
-            <button type="button" className="followup" data-testid="followup" data-source={suggestion?.source} aria-label="Use suggested follow-up" title={suggestion?.source === "jev" ? "Suggested by Jev · Tab to use" : "Suggested follow-up · Tab to use"} onClick={fillSuggestion}>
+            <button type="button" className="followup" data-testid="followup" data-source={suggestion?.source} aria-label={`Use suggested follow-up: ${suggestion?.text}`} title={suggestion?.source === "jev" ? "Suggested by Jev · Tab to use" : "Suggested follow-up · Tab to use"} onClick={fillSuggestion}>
               <span className="followup-text" data-testid="followup-text">{suggestion?.text}</span>
               <Kbd>⇥</Kbd>
             </button>
@@ -181,7 +186,7 @@ export function Composer({ text, onText: setText, attachments, attachmentActions
           />
           <AttachmentChips attachments={attachments} onRemove={busy ? undefined : remove} testId="composer-attachments" />
           <div className="composer-bar">
-            <PlusMenu onAttach={() => void pick()} busy={busy} backend={backend} plan={plan} auto={auto} onBackend={onBackend} onPlan={onPlan} onAuto={onAuto} />
+            <PlusMenu onAttach={() => void pick()} busy={busy} pinned={Boolean(local?.current)} backend={backend} plan={plan} auto={auto} onBackend={onBackend} onPlan={onPlan} onAuto={onAuto} />
             <AccessMenu busy={busy} mode={mode} onMode={onMode} approvals={approvals} onApprovals={onApprovals} />
             {/* After the access pill: `+` and the pill keep their 22 px / 40 px insets (e2e/layout.spec.ts). */}
             <IconButton icon="paperclip" label="Attach files" size="md" className="composer-attach-btn" data-testid="composer-attach" tooltipSide="top" disabled={busy} onClick={() => void pick()} />
@@ -201,7 +206,7 @@ export function Composer({ text, onText: setText, attachments, attachmentActions
               </button>
             )}
             <span className="spacer" />
-            <ModelMenu models={models} model={model} effort={effort} error={modelsError} disabled={busy} openRequest={openModelPickerRequest} onModel={onModel} onEffort={onEffort} />
+            <ModelMenu models={models} model={model} effort={effort} error={modelsError} disabled={busy} openRequest={openModelPickerRequest} onModel={onModel} onEffort={onEffort} local={local} />
             {busy ? (
               <IconButton icon="stop" label="Stop" shortcut="⌘." className="send-btn stop" data-testid="stop" tooltipSide="top" onClick={(e) => { stopFocused.current = document.activeElement === e.currentTarget; onStop(); }} />
             ) : (
@@ -245,7 +250,7 @@ function ContextStrip({ context }: { context: ComposerContext }) {
 }
 
 /** `+`: plan mode, Auto routing, and which CLI runs the thread. Everything is disabled while a turn runs. */
-function PlusMenu({ busy, backend, plan, auto, onBackend, onPlan, onAuto, onAttach }: { onAttach: () => void; busy: boolean; backend: BackendId; plan: boolean; auto: boolean; onBackend: (b: BackendId) => void; onPlan: (p: boolean) => void; onAuto: (a: boolean) => void }) {
+function PlusMenu({ busy, pinned, backend, plan, auto, onBackend, onPlan, onAuto, onAttach }: { onAttach: () => void; busy: boolean; pinned: boolean; backend: BackendId; plan: boolean; auto: boolean; onBackend: (b: BackendId) => void; onPlan: (p: boolean) => void; onAuto: (a: boolean) => void }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const pick = (fn: () => void) => () => { fn(); setOpen(false); };
@@ -255,23 +260,24 @@ function PlusMenu({ busy, backend, plan, auto, onBackend, onPlan, onAuto, onAtta
       <Menu open={open} onClose={() => setOpen(false)} anchorRef={trigger} label="Composer options" placement="top-start" testId="composer-plus-menu" className="composer-options">
         <MenuItem disabled={busy} onClick={pick(onAttach)}><Icon name="paperclip" size={16} /><span className="menu-body"><span className="menu-title">Attach files</span></span></MenuItem>
         <MenuSeparator />
-        <MenuItem toggle selected={plan} disabled={busy} data-testid="plan-toggle" onClick={pick(() => onPlan(!plan))}>
+        {pinned && <div className="menu-note" data-testid="local-pinned-note">This thread uses a local model, so Plan, Auto and the backend are fixed. Choose cloud models in the model menu to change them.</div>}
+        <MenuItem toggle selected={plan} disabled={busy || pinned} data-testid="plan-toggle" onClick={pick(() => onPlan(!plan))}>
           <span className="menu-body">
             <span className="menu-title">Plan mode <Kbd>⇧⌘P</Kbd></span>
-            <span className="menu-desc">Investigate read-only and return a plan instead of editing.</span>
+            <span className="menu-desc">{pinned ? "Plan mode is not qualified for local models." : "Investigate read-only and return a plan instead of editing."}</span>
           </span>
         </MenuItem>
-        <MenuItem toggle selected={auto} disabled={busy} data-testid="auto-toggle" onClick={pick(() => onAuto(!auto))}>
+        <MenuItem toggle selected={auto} disabled={busy || pinned} data-testid="auto-toggle" onClick={pick(() => onAuto(!auto))}>
           <span className="menu-body">
             <span className="menu-title">Auto routing</span>
-            <span className="menu-desc">A fast judge picks the model, effort and speed for each turn, within your limits.</span>
+            <span className="menu-desc">{pinned ? "Local threads keep the model you explicitly selected." : "A fast judge picks the model, effort and speed for each turn, within your limits."}</span>
           </span>
         </MenuItem>
         <MenuSeparator />
         <MenuLabel>Backend</MenuLabel>
         <div role="group" aria-label="Backend" data-testid="backend-picker">
           {BACKENDS.map((b) => (
-            <MenuItem key={b.id} checkable selected={backend === b.id} disabled={busy} title={b.hint} onClick={pick(() => onBackend(b.id))}>
+            <MenuItem key={b.id} checkable selected={backend === b.id} disabled={busy || pinned} title={b.hint} onClick={pick(() => onBackend(b.id))}>
               <span className="menu-body"><span className="menu-title">{b.label}</span></span>
             </MenuItem>
           ))}

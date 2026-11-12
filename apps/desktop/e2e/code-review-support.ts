@@ -3,6 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { appDir, resizeWindow, seedHome, tid } from "./support.js";
 import { WORLD_GH, type GhWorld } from "../test/fixtures/code-review-gh-world.js";
+import { closeWithDiagnostics } from "../test/support/electron-close.js";
+import { observeElectronErrors, recordElectronStderr } from "../test/support/electron-errors.js";
 
 export { baseWorld, FIELD_GUIDE, FIELD_GUIDE_73, FIELD_GUIDE_91, LENDING, LENDING_73 } from "../test/fixtures/code-review-gh-world.js";
 
@@ -62,6 +64,8 @@ export async function launchWithGh(initial: GhWorld, options: { showCodeReview?:
   const start = async () => {
     const executablePath = process.env.MODEX_PACKAGED_APP;
     const app = await electron.launch({ executablePath, args: executablePath ? [] : [appDir], cwd: appDir, env: env as Record<string, string> });
+    recordElectronStderr(app.process(), test.info().outputDir);
+    await app.evaluate(observeElectronErrors);
     const page = await app.firstWindow();
     await page.waitForLoadState("domcontentloaded");
     // waitForWindowReady needs MODEX_E2E's paint hooks; without them, wait for a visible window whose sizes agree.
@@ -93,17 +97,17 @@ export async function launchWithGh(initial: GhWorld, options: { showCodeReview?:
       // SIGKILL: no quit handlers run, as when the Mac loses power or Modex crashes mid-send.
       const pid = app.process().pid;
       if (pid) process.kill(pid, "SIGKILL");
-      await app.close().catch(() => {});
+      await closeWithDiagnostics(app, test.info().outputDir).catch(() => {});
       ({ app, page } = await start());
       harness.app = app; harness.page = page;
     },
     restart: async () => {
-      await app.close().catch(() => {});
+      await closeWithDiagnostics(app, test.info().outputDir).catch(() => {});
       ({ app, page } = await start());
       harness.app = app; harness.page = page;
     },
     close: async () => {
-      await app.close().catch(() => {});
+      await closeWithDiagnostics(app, test.info().outputDir).catch(() => {});
       for (const dir of [home, repo]) fs.rmSync(dir, { recursive: true, force: true });
     },
   };

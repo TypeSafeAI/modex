@@ -70,7 +70,7 @@ export class CodexBackend implements Backend {
   constructor(private readonly executable: CliExecutable = process.env.MODEX_CODEX_BIN ?? "codex", private readonly spawnImpl = cliSpawn,
     private readonly configuration?: { args: string[]; env: NodeJS.ProcessEnv; redact: (text: string) => string;
       /** `admit` sees the child's effective configuration and requirements before every thread open, and throws to refuse it (#380). */
-      local?: { model: string; provider: string; admit?: (reads: { config: unknown; requirements: unknown }) => void } }) {}
+      local?: { model: string; provider: string; externalSandbox?: true; admit?: (reads: { config: unknown; requirements: unknown }) => void } }) {}
 
   private ensure(): Promise<void> {
     if (this.ready && this.child && this.child.exitCode === null) return this.ready;
@@ -90,7 +90,11 @@ export class CodexBackend implements Backend {
       this.threadModels.clear();
       const lines = new LineBuffer();
       let stderr = "";
-      child.stderr?.on("data", (d: Buffer) => (stderr = (stderr + d.toString()).slice(-16_384)));
+      child.stderr?.on("data", (d: Buffer) => {
+        const output = stderr + d.toString();
+        // Redact across chunks before the bound can discard a token's beginning.
+        stderr = (this.configuration?.redact(output) ?? output).slice(-16_384);
+      });
       child.stdout?.on("data", (d: Buffer) => { if (this.child === child) lines.push(d, (line) => this.dispatch(line)); });
       child.on("error", (err) => {
         const error = new CodexError(`${bin}: ${err.message}. Is the Codex CLI installed and on PATH?`, { bin, spawnError: err.message, errno: (err as NodeJS.ErrnoException).code, pid: child.pid });
@@ -307,6 +311,9 @@ export class CodexBackend implements Backend {
       return failed(err, { stage: "start app-server" });
     }
     const pol = CodexBackend.policy(opts);
+    // The trusted host already confines this process tree. Preserve native approval policy,
+    // but avoid a second sandbox_apply inside the parent's macOS sandbox.
+    if (this.configuration?.local?.externalSandbox) pol.sandboxPolicy = { type: "externalSandbox", networkAccess: "restricted" };
     // Only these scoped adapter tools are preapproved. Main enforces project/turn permissions.
     const config = { ...(this.configuration?.local ? {} : THREAD_CONFIG), ...(opts.images ? { "mcp_servers.modex_images": { url: opts.images.url, enabled_tools: ["register"], tools: { register: { approval_mode: "approve" } } } } : {}), ...(opts.knowledge ? { "mcp_servers.modex_knowledge": {
       url: opts.knowledge.url, enabled_tools: [...KNOWLEDGE_TOOLS],
@@ -322,7 +329,13 @@ export class CodexBackend implements Backend {
     if (local?.admit) {
       try {
         const reads = await duringSetup(Promise.all([this.request("config/read", { includeLayers: true, cwd: opts.cwd }), this.request("configRequirements/read", {})])
-          .catch((err: unknown) => { throw new CodexError(`Codex did not report its effective configuration (${(err as Error).message}). Local execution needs codex-cli 0.164.0 or later.`, detailOf(err)); }), signal);
+          .catch((err: unknown) => {
+            const detail = detailOf(err), reason = (err as Error).message;
+            const recovery = /failed to synchronize managed preferences/i.test(reason)
+              ? " Start Modex from a signed-in macOS desktop session and retry."
+              : detail.rpcCode === -32601 ? " Local execution needs codex-cli 0.164.0 or later." : "";
+            throw new CodexError(`Codex did not report its effective configuration (${reason}).${recovery}`, detail);
+          }), signal);
         local.admit({ config: reads[0], requirements: reads[1] });
       } catch (err) {
         return failed(err, { stage: "verify configuration" });
@@ -396,6 +409,9 @@ export class CodexBackend implements Backend {
       let stopping = false;
       // Set when Codex reroutes a pinned local model: the turn is interrupted and reported failed, never continued (#380).
       let rerouted: { message: string; from: string; to: string } | null = null;
+      // Some native reconnect paths still retry with provider retry counts set to zero.
+      // Local coding must stop on that notification rather than continue after possible effects.
+      let retryRefused: { message: string; nativeError: Record<string, unknown> } | null = null;
       const child = this.child;
       const detail = (extra: Record<string, unknown>): Record<string, unknown> => ({
         codexThreadId: tid, turnId, userAgent: this.userAgent, pid: child?.pid, ...(retried.length ? { retriedErrors: retried } : {}), ...(lastError ? { errorNotification: lastError } : {}), ...extra,
@@ -480,12 +496,12 @@ export class CodexBackend implements Backend {
           if (item.type === "agentMessage") answered = item.phase === "final_answer" && "answer";
           else if (item.type === "plan") answered = "plan";
         }
-        if (answered && !signal.aborted && !rerouted && msg.method !== "turn/completed") {
+        if (answered && !signal.aborted && !rerouted && !retryRefused && msg.method !== "turn/completed") {
           quiet = setTimeout(() => {
             // Codex can go quiet after its final answer or proposed plan without ending the turn (live in
             // codex-cli 0.163.0, default and plan mode). Nothing else is open, so
             // Modex ends it and says so; the interrupt lets Codex close its side.
-            if (done || signal.aborted || rerouted || commands.size || [...this.openRequests.values()].some((r) => r.thread === tid)) return;
+            if (done || signal.aborted || rerouted || retryRefused || commands.size || [...this.openRequests.values()].some((r) => r.thread === tid)) return;
             sink.notice("warn", `Codex ${answered === "plan" ? "proposed its plan" : "gave its final answer"} but did not report the turn finished. Modex ended the turn after ${Math.round(this.quietAfterFinalMs / 60_000) || 1} minute${this.quietAfterFinalMs > 60_000 ? "s" : ""} without activity.`);
             interrupt();
             finish({ status: "completed", detail: detail({ endedBy: "modex", quietAfterFinalMs: this.quietAfterFinalMs }) });
@@ -565,7 +581,9 @@ export class CodexBackend implements Backend {
               const delta = String(p.delta ?? "");
               sink.output?.(native(p.itemId), delta);
               t.bytes += byteLength(delta);
-              t.output = boundOutput(t.output + delta).text;
+              const output = t.output + delta;
+              // A token may span deltas. Redact it before the preview cuts off its beginning.
+              t.output = boundOutput(this.configuration?.redact(output) ?? output).text;
               sink.observe({ type: "tool.update", native: native(p.itemId), progress: { output: t.output, ...(t.bytes > byteLength(t.output) ? { outputBytes: t.bytes, outputTruncated: true } : {}) } });
             }
             break;
@@ -630,15 +648,23 @@ export class CodexBackend implements Backend {
             const e = p.error as Record<string, unknown> | undefined;
             const message = typeof e?.message === "string" ? e.message : null;
             if (!message) break;
-            if (p.willRetry) retried.push(message);
+            if (p.willRetry === true && this.configuration?.local) {
+              if (!retryRefused) {
+                retryRefused = { message: "The local inference connection failed. Automatic retry is disabled; earlier commands may already have run. Select the local target again before continuing.", nativeError: { ...(e ?? {}), at: new Date().toISOString() } };
+                sink.notice("error", retryRefused.message);
+              }
+              interrupt();
+            } else if (p.willRetry) retried.push(message);
             else lastError = { ...(e ?? {}), at: new Date().toISOString() };
             break;
           }
           case "turn/completed": {
             const turn = p.turn as { status: string; error?: { message?: string } | null };
             if (turn.status === "failed") finish({ status: "failed", error: turn.error?.message ?? (lastError?.message as string | undefined) ?? "turn failed", detail: detail({ turnError: turn.error ?? undefined }) });
-            else if (rerouted) {
-              const failure: TurnResult = { status: "failed", error: rerouted.message, detail: detail({ rerouted: { from: rerouted.from, to: rerouted.to } }) };
+            else if (rerouted || retryRefused) {
+              const failure: TurnResult = rerouted
+                ? { status: "failed", error: rerouted.message, detail: detail({ rerouted: { from: rerouted.from, to: rerouted.to } }) }
+                : { status: "failed", error: retryRefused!.message, detail: detail({ retryRefused: retryRefused!.nativeError }) };
               if (commands.size) {
                 stopping = true;
                 clearTimeout(abortTimer);

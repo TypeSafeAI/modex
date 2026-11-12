@@ -243,6 +243,35 @@ extension CompanionClient {
     }
 }
 
+#if DEBUG
+/// Opt-in paired-test observation only. The message schema cannot carry pairing or request data.
+struct CompanionTrustObservation {
+    enum Phase: String {
+        case callbackEnter = "callback-enter"
+        case chainStart = "chain-start"
+        case chainReturn = "chain-return"
+        case rejectChallenge = "reject-challenge"
+        case rejectChain = "reject-chain"
+        case acceptPin = "accept-pin"
+        case rejectPin = "reject-pin"
+        case completionReturn = "completion-return"
+    }
+    private let identifier = UUID().uuidString
+    private let enabled: Bool
+    private let write: (String) -> Void
+
+    init(arguments: [String] = ProcessInfo.processInfo.arguments, write: @escaping (String) -> Void = { NSLog("%@", $0) }) {
+        enabled = arguments.contains("--modex-trust-diagnostics")
+        self.write = write
+    }
+
+    func record(_ phase: Phase) {
+        guard enabled else { return }
+        write("MODEX_PAIRING_TLS observer=\(identifier) phase=\(phase.rawValue)")
+    }
+}
+#endif
+
 final class CompanionAPI: NSObject, URLSessionDelegate, URLSessionTaskDelegate, CompanionClient {
     /// The item kinds this app draws, sent on every request. A Mac sends a kind not named here as a notice.
     static let itemKinds = "user,assistant,approval,tool,notice,question"
@@ -269,17 +298,44 @@ final class CompanionAPI: NSObject, URLSessionDelegate, URLSessionTaskDelegate, 
 
     func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge,
                     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        #if DEBUG
+        let observation = CompanionTrustObservation()
+        observation.record(.callbackEnter)
+        defer { observation.record(.completionReturn) }
+        #endif
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-              let trust = challenge.protectionSpace.serverTrust,
-              let certificate = (SecTrustCopyCertificateChain(trust) as? [SecCertificate])?.first else {
+              let trust = challenge.protectionSpace.serverTrust else {
+            #if DEBUG
+            observation.record(.rejectChallenge)
+            #endif
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+        #if DEBUG
+        observation.record(.chainStart)
+        #endif
+        let certificate = (SecTrustCopyCertificateChain(trust) as? [SecCertificate])?.first
+        #if DEBUG
+        observation.record(.chainReturn)
+        #endif
+        guard let certificate else {
+            #if DEBUG
+            observation.record(.rejectChain)
+            #endif
             completionHandler(.cancelAuthenticationChallenge, nil)
             return
         }
         let fingerprint = SHA256.hash(data: SecCertificateCopyData(certificate) as Data)
             .map { String(format: "%02x", $0) }.joined()
         if fingerprint == pairing.fingerprint {
+            #if DEBUG
+            observation.record(.acceptPin)
+            #endif
             completionHandler(.useCredential, URLCredential(trust: trust))
         } else {
+            #if DEBUG
+            observation.record(.rejectPin)
+            #endif
             completionHandler(.cancelAuthenticationChallenge, nil)
         }
     }

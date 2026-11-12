@@ -1,0 +1,52 @@
+{
+  "kind": "installed codex CLI against a scripted loopback Responses server that fails after one tool ran; no model, no inference",
+  "cli": "codex",
+  "mode": "overflow-stream",
+  "hops": [
+    {
+      "n": 1,
+      "path": "/v1/responses",
+      "model": "scripted-fixture-model",
+      "hasToolOutput": false,
+      "hasCompactPrompt": false,
+      "bytes": 33763
+    },
+    {
+      "n": 2,
+      "path": "/v1/responses",
+      "model": "scripted-fixture-model",
+      "hasToolOutput": true,
+      "hasCompactPrompt": false,
+      "bytes": 34135
+    }
+  ],
+  "toolRuns": 1,
+  "toolStarts": 1,
+  "outcomes": [
+    "succeeded"
+  ],
+  "notices": [],
+  "result": {
+    "status": "failed",
+    "error": "Codex ran out of room in the model's context window. Start a new thread or clear earlier history before retrying.",
+    "detail": {
+      "codexThreadId": "01a1971d-b00e-7c53-b28f-2451b13f8bd8",
+      "turnId": "01a1971d-b03c-7330-9c4b-d4b73b2baaf5",
+      "userAgent": "modex/0.166.0 (Mac OS 27.2.0; arm64) unknown (modex; 0.0.1)",
+      "pid": 15829,
+      "errorNotification": {
+        "message": "Codex ran out of room in the model's context window. Start a new thread or clear earlier history before retrying.",
+        "codexErrorInfo": "contextWindowExceeded",
+        "additionalDetails": null,
+        "misalignment": null,
+        "at": "2026-11-01T12:37:47.938Z"
+      },
+      "turnError": {
+        "message": "Codex ran out of room in the model's context window. Start a new thread or clear earlier history before retrying.",
+        "codexErrorInfo": "contextWindowExceeded",
+        "additionalDetails": null,
+        "misalignment": null
+      }
+    }
+  }
+}

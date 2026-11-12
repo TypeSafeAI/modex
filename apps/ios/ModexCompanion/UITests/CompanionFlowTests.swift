@@ -341,6 +341,7 @@ final class CompanionFlowTests: XCTestCase {
         let prompts = answerSystemAlertsDuringActions()
         defer { removeUIInterruptionMonitor(prompts) }
         let app = XCUIApplication()
+        app.launchArguments.append("--modex-trust-diagnostics")
         app.launch()
         let pair = app.buttons["pair-button"]
         if !pair.waitForExistence(timeout: UITestBudget.seconds(5)) {

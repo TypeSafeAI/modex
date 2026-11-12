@@ -6,8 +6,9 @@ import type { Backend, TurnOptions, TurnResult, TurnSink } from "../backends/typ
 import type { CliExecutable } from "../cli-path.js";
 import { modelKey, threadTarget, type LocalModelRef, type LocalThreadTarget } from "../../../shared/local-models.js";
 import type { LocalConnectionStore } from "./connections.js";
-import { admitLocalConfiguration, type LocalConfigurationProvenance } from "./run-policy.js";
+import { admitLocalConfiguration, type LocalConfigurationProvenance, type LocalHostSandbox, type ExpectedLocalConfiguration } from "./run-policy.js";
 import { OLLAMA_CLOUD_NAME, type AdvertisedContext } from "./discovery.js";
+import { redactingSink, TOKEN_MASK } from "./redacting-sink.js";
 
 /**
  * Runs a thread's turns on a local model through the Codex CLI (#379), the same `codex app-server`
@@ -54,16 +55,54 @@ function refuseProjectConfiguration(cwd: string): void {
   }
 }
 
+/**
+ * Codex words every HTTP 500 as a cloud service under load ("We're currently experiencing high demand"). From a
+ * loopback server that is not what happened: it is the person's own server failing, often out of memory. Codex's
+ * text stays in the detail; the turn's error says what is known (#380 AC4). Recognized context-limit
+ * failures likewise explain recovery without changing the failed outcome or resending a turn.
+ */
+function truthful(result: TurnResult): TurnResult {
+  if (result.status !== "failed") return result;
+  const detail = result.detail as { turnError?: { codexErrorInfo?: unknown }; errorNotification?: { codexErrorInfo?: unknown } } | undefined;
+  // A turn that completes with no error of its own reports the `error` notification's text instead (backends/codex.ts).
+  const info = detail?.turnError?.codexErrorInfo ?? detail?.errorNotification?.codexErrorInfo;
+  if (info === "internalServerError") {
+    return { ...result, error: "The local server returned an internal error (HTTP 500). Check its log: it may have run out of memory or crashed while loading the model. Modex didn't retry the turn or switch models." };
+  }
+  let contextExceeded = info === "contextWindowExceeded";
+  if (!contextExceeded && result.error && result.error.length <= 8192) {
+    try {
+      const response = JSON.parse(result.error) as { error?: { code?: unknown; type?: unknown; message?: unknown } } | null;
+      const error = response?.error;
+      // Ollama's observed HTTP 400 has a null code. Recognize only its structured
+      // context-limit form, not arbitrary native/tool text mentioning context.
+      contextExceeded = error?.code === "context_length_exceeded" || (error?.type === "invalid_request_error"
+        && typeof error.message === "string"
+        && /^request \(\d+ tokens\) exceeds the available context size \(\d+ tokens\)(?:,.*)?$/.test(error.message));
+    } catch { /* Unstructured failures keep their original diagnostic. */ }
+  }
+  if (!contextExceeded) return result;
+  return { ...result, error: "This request exceeded the local model's context limit. Start a new local conversation with less context. Earlier commands may already have run; review their results before continuing. Modex didn't retry the turn or switch models." };
+}
+
 export class LocalExecution {
   /** The child owning each thread's native conversation, with the key it was started for. */
-  private readonly children = new Map<string, { key: string; backend: CodexBackend; home: string; provenance?: LocalConfigurationProvenance }>();
+  private readonly children = new Map<string, { key: string; backend: CodexBackend; home: string; validateProfile: () => void; provenance?: LocalConfigurationProvenance }>();
   private readonly services = new Map<string, { busy: boolean; waiting: Set<() => void> }>();
   private disposed = false;
+  private readonly hostSandbox?: LocalHostSandbox;
 
   /** `advertisedContext` reads main's record of the runtime's own listing (LocalModelDiscovery); without it, nothing was checked. */
   constructor(private readonly home: string, private readonly connections: LocalConnectionStore,
     private readonly executable: CliExecutable = "codex", private readonly spawnImpl = cliSpawn,
-    private readonly advertisedContext: (model: LocalModelRef) => AdvertisedContext | undefined = () => undefined) {}
+    private readonly advertisedContext: (model: LocalModelRef) => AdvertisedContext | undefined = () => undefined,
+    hostSandbox?: LocalHostSandbox) {
+    // Only the trusted host can provide this. Normal product wiring has no external-boundary option.
+    if (hostSandbox && (hostSandbox.type !== "externalSandbox" || hostSandbox.networkAccess !== "restricted" || !/^sha256:[a-f0-9]{64}$/.test(hostSandbox.boundaryId))) {
+      throw new Error("A host sandbox requires a restricted, identified external boundary.");
+    }
+    this.hostSandbox = hostSandbox ? Object.freeze({ ...hostSandbox }) : undefined;
+  }
 
   /** The thread's target, checked against the live profile: exactly its revision, with its token readable. */
   validate(thread: LocalExecutionThread): LocalThreadTarget {
@@ -125,28 +164,41 @@ export class LocalExecution {
       if (opts.model !== target.model.id || opts.cwd !== thread.cwd || opts.account) throw new Error("The local target changed. Select it again to start a fresh conversation.");
       if (opts.plan || opts.images || opts.pages || opts.knowledge || opts.attachments?.some(file => file.kind === "image")) throw new Error("Plan, images and Modex's note and knowledge tools are not qualified for local models yet.");
       const connection = this.connections.resolve(target.model.connection)!;
+      sink = redactingSink(sink, connection.token);
       // Every loopback alias of a port is the same server; separate servers sharing a port also wait on each other.
       release = await this.acquire(`loopback:${connection.endpoint.port}`, signal);
       this.validate(thread); // The profile may have changed while this turn waited.
       if (this.disposed) throw new Error("Local execution has stopped. Select the local target again after Modex restarts.");
       refuseProjectConfiguration(opts.cwd);
-      const key = JSON.stringify([modelKey(target.model), thread.localContextTokens, path.resolve(opts.cwd)]);
+      const directory = fs.realpathSync(opts.cwd);
+      const key = JSON.stringify([modelKey(target.model), thread.localContextTokens, path.resolve(opts.cwd), directory, this.hostSandbox?.boundaryId ?? null]);
       let owned = this.children.get(thread.id);
       if (opts.resume && (!owned || owned.key !== key)) throw new Error("This conversation's native session is gone: the target changed or Modex restarted. Select the local target again to start a fresh conversation.");
       if (owned && owned.key !== key) { await this.forget(thread.id); owned = undefined; }
       if (!owned) {
         const home = this.childHome();
-        const child: { key: string; backend: CodexBackend; home: string; provenance?: LocalConfigurationProvenance } = { key, home, backend: undefined as unknown as CodexBackend };
+        const privateRoot = fs.realpathSync(home), configRoot = fs.realpathSync(path.join(home, ".codex"));
+        const selectedDirectory = path.resolve(opts.cwd);
+        const privateWorkspace = Object.freeze({ directory, configFile: path.join(configRoot, "config.toml") });
+        const validateProfile = () => {
+          try {
+            if (fs.realpathSync(home) === privateRoot && fs.realpathSync(path.join(home, ".codex")) === configRoot
+              && fs.realpathSync(selectedDirectory) === directory) return;
+          } catch { /* A missing or replaced private directory cannot retain the native session. */ }
+          throw new Error("Local execution refused: the workspace or private native profile changed. Select the local target again to start a fresh conversation.");
+        };
+        const child: { key: string; backend: CodexBackend; home: string; validateProfile: () => void; provenance?: LocalConfigurationProvenance } = { key, home, validateProfile, backend: undefined as unknown as CodexBackend };
         const advertised = this.advertisedContext(target.model);
-        child.backend = this.start(home, connection.endpoint.origin, connection.token, target.model.id, thread.localContextTokens!, provenance => {
-          child.provenance = { ...provenance, context: { configured: thread.localContextTokens!, source: "person", effective: thread.localContextTokens!,
+        child.backend = this.start(home, connection.endpoint.origin, connection.token, target.model.id, thread.localContextTokens!, privateWorkspace, validateProfile, provenance => {
+          child.provenance = { ...provenance, ...(this.hostSandbox ? { hostSandbox: this.hostSandbox } : {}), context: { configured: thread.localContextTokens!, source: "person", effective: thread.localContextTokens!,
             advertised: advertised ? { ...advertised } : "not-checked", loaded: "unknown" } };
         });
         owned = child;
         this.children.set(thread.id, owned);
       }
+      owned.validateProfile();
       // Effort, fast mode and service tiers are cloud-model settings with no local qualification: none is sent.
-      return await owned.backend.runTurn(text, { ...opts, effort: undefined, fast: false }, sink, signal);
+      return truthful(await owned.backend.runTurn(text, { ...opts, effort: undefined, fast: false }, sink, signal));
     } catch (error) {
       return signal.aborted ? { status: "interrupted" } : { status: "failed", error: (error as Error).message };
     } finally { release?.(); }
@@ -167,7 +219,7 @@ export class LocalExecution {
     return this.children.get(threadId)?.provenance;
   }
 
-  private start(home: string, origin: string, token: string | null, model: string, contextTokens: number, admitted: (provenance: LocalConfigurationProvenance) => void): CodexBackend {
+  private start(home: string, origin: string, token: string | null, model: string, contextTokens: number, privateWorkspace: NonNullable<ExpectedLocalConfiguration["privateWorkspace"]>, validateProfile: () => void, admitted: (provenance: LocalConfigurationProvenance) => void): CodexBackend {
     const env: NodeJS.ProcessEnv = {};
     for (const name of INHERITED_ENV) if (process.env[name]) env[name] = process.env[name];
     Object.assign(env, {
@@ -190,10 +242,10 @@ export class LocalExecution {
     ];
     return new CodexBackend(this.executable, this.spawnImpl, {
       args: settings.flatMap(setting => ["-c", setting]), env,
-      redact: text => token ? text.split(token).join("[local token]") : text,
-      local: { model, provider: PROVIDER_ID,
-        // Before each thread open the child's effective configuration must be exactly this, from these flags alone (#380).
-        admit: reads => admitted(admitLocalConfiguration(reads.config as Parameters<typeof admitLocalConfiguration>[0], reads.requirements as Parameters<typeof admitLocalConfiguration>[1], { provider: PROVIDER_ID, origin, contextTokens, tokenEnv: token ? TOKEN_ENV : null })) },
+      redact: text => token ? text.split(token).join(TOKEN_MASK) : text,
+      local: { model, provider: PROVIDER_ID, ...(this.hostSandbox ? { externalSandbox: true } : {}),
+        // Before each thread open, validate these flags plus only the bound private workspace trust mark (#380).
+        admit: reads => { validateProfile(); admitted(admitLocalConfiguration(reads.config as Parameters<typeof admitLocalConfiguration>[0], reads.requirements as Parameters<typeof admitLocalConfiguration>[1], { provider: PROVIDER_ID, origin, contextTokens, tokenEnv: token ? TOKEN_ENV : null, privateWorkspace })); } },
     });
   }
 

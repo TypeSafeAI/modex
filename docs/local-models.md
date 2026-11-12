@@ -1,5 +1,46 @@
 # Local models: LM-1 contract and feasibility
 
+## Local Models v1 workflow candidate
+
+The integration candidate adds Settings → Local models, connection add/edit/remove, cancellation and bounded metadata discovery, exact connection revision/model selection, context choices and a visible inference destination. Saved tokens remain in main; the token field accepts replacements but never reads a saved value. Metadata and manual IDs do not establish coding capability. Checking models never downloads, loads or generates with a model. The first coding message may cause the inference server to load weights and consume memory.
+
+Product execution remains disabled: `main/index.ts` does not construct `LocalExecution`, and selecting a local target refuses before a coding turn. The test-only Electron bootstrap injects a scripted transport in a disposable home; it is not a product flag or real-model evidence. [Candidate evidence and remaining gates](reviews/2026-11-04-local-models-v1-workflow.md).
+
+### Setup and changes
+
+1. Start an already installed Ollama server yourself, then open Settings → Local models. Choose Ollama and enter its numeric loopback address, normally `http://127.0.0.1:11434`.
+2. Enter a name and, only if required by that server, a token. Extra model IDs are optional, exact and one per line. Add server and inspect its metadata. Listed tool support and context are advertised values; coding compatibility remains unverified.
+3. Edit changes the connection revision when its destination, runtime or credential changes. Existing threads retain their selected revision and refuse after it becomes stale. Select the current revision explicitly; Modex never silently rebinds it. An active local turn prevents editing or removing its connection.
+4. The model menu shows each connection's candidates and bounded context choices. Production selection remains unavailable until admission; the separate integration fixture exercises selection and subsequent turns.
+
+For admitted fixtures, returning to cloud requires confirmation naming the exact chosen cloud model and begins a fresh native conversation. Pending originals and Retry retain their original execution binding and cannot follow a changed destination. Copy text to new chat preserves the original and requires a new explicit send. Phone and paired-desktop sends or Retry on a local thread are refused in main.
+
+### Native qualification and rollback
+
+Treat a compatibility receipt as specific to its CLI/runtime, exact model digest, context, host and configuration. When any of those changes, keep the new combination unverified until its approved native checks run again, and retain the older receipt with its named versions. Fixture results do not qualify a new native runtime combination.
+
+With explicit approval and an installed model, run `pnpm --filter @modex/desktop build:main` in the owned worktree, then run `MODEX_LM3_LIVE=1 MODEX_LM3_URL=http://127.0.0.1:11434/v1 MODEX_LM3_MODEL=qwen3-coder:30b MODEX_LM3_CONTEXT=65536 MODEX_LM3_REPORT=<absolute-evidence-directory> node --test --test-force-exit --test-name-pattern='AC1: a person' dist/test/local-codex-native.test.js` from `apps/desktop`. The smoke reads a sentinel, permits only two exact fixture commands through its approval callback, checks actual edited bytes and a separately seeded test's recorded exit result, and verifies both a synthetic personal configuration and the real user's configuration fingerprint. Harness approval is separate from human acceptance.
+
+A managed-preferences synchronization failure stops before a native thread opens. Check the macOS desktop session and its managed configuration, restore the local execution connection, then confirm that configuration reads succeed before retrying qualification. Minimum CLI version advice applies to an unsupported configuration RPC; a session or configuration failure retains its own cause.
+
+If the agent's execution session cannot reach native macOS services, run the fixed foreground qualifier from a normal Terminal in the signed-in desktop. It starts `codex app-server` directly for its configuration check and uses the existing native and Electron harnesses; it does not restart the shared daemon. Commit the candidate first and use a fresh private system-temp evidence directory outside the worktree, then copy completed receipts into durable storage. The native workspace lives beneath that evidence root, so placing it under a home or project with a `.codex` ancestor triggers the existing project-configuration refusal:
+
+```sh
+node apps/desktop/scripts/local-model-qualify.mjs --live \
+  --model qwen3-coder:30b \
+  --digest 06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca \
+  --expect-head "$(git rev-parse HEAD)" \
+  --evidence "$(mktemp -d /private/tmp/modex-lm-v1.XXXXXX)"
+```
+
+The command is opt-in and requires the existing model approval. It refuses dirty tracked source, a changed revision, old receipts, evidence paths inside the worktree and unavailable user lookup, Electron startup or native configuration reads. An optional absolute `--electron-dist` selects an already installed Electron distribution without downloading one. Ordinary stages clear inherited live-model and test-selection overrides. Run canonical checks with the normal development umask `022`; applying `077` to the whole launcher changes archive fixture permissions. Evidence directories remain private (`0700`) and the qualifier's logs and receipts use `0600`. The qualifier records runtime versions, host details, umask and original logs, runs build, typecheck, unit and full E2E commands, checks all four local Electron journeys, then runs the network-denied canary with an owned Ollama server and the explicit expected digest. A failed independent gate remains failed while later evidence is collected; a failed build or changed source stops dependent work. Earlier Playwright artifacts are retained separately from fresh output. `qualification.json` requires executed local journeys and complete native workflow/digest receipts before reporting a pass. Human acceptance, effective loaded context, product admission and delivery remain separate. Interrupting the foreground process stops its owned command group and leaves its receipts for inspection; an interrupted native outcome must be reconciled before another run.
+
+For the network-denied canary, run `node scripts/local-model-offline.mjs qwen3-coder:30b <absolute-evidence-directory>` from `apps/desktop`, using a new empty directory for every attempt. Existing receipts and final symlink destinations are refused before contacting a runtime. It requires existing weights and starts a separate owned Ollama server. The complete canary tree inherits a macOS profile that denies external TCP and permits filesystem writes only in its owned evidence/workspace tree, the macOS user cache and `/dev/null`. A disposable outside write succeeds before applying the profile, then must fail inside it; an external TCP probe must also fail with a permission error before inference. The trusted harness supplies Codex's documented `externalSandbox` policy only after verifying this boundary, avoiding macOS's refusal to nest profiles while retaining native approval policy and managed-configuration admission. The profile hash binds the child's identity and provenance; it is never a renderer or thread option. Ordinary product turns retain their normal Codex sandbox policy.
+
+Both the owned server and Codex descendants inherit the network and filesystem boundary. The server must list the same exact model digest recorded from the person's server before the native task starts and after it ends; missing or changed digests fail the run. Receipts retain both observations and require matching boundary identity and denial checks from the native workflow. These checks do not establish immutable weights throughout execution. Runtime logs and client-effective context remain separate from advertised context. Ollama's temporary home and Codex's private home are removed after their owned processes stop. A failed policy, runtime or native task fails the canary. It does not change the person's running Ollama, download weights or admit product execution.
+
+Removing a connection asks for confirmation, preserves readable history and makes its selected targets unavailable. It does not uninstall weights. Product rollback currently consists of retaining the existing absence of `LocalExecution` in main; no local turn can start through the product. Future admission must retain an independently tested disable path that preserves profiles, history and originals without replay. An address on loopback establishes a configured destination; only a successful network-denied inference run establishes offline behavior for that exact configuration.
+
 Each LM issue's ticked boxes and next action are in [status.md](status.md#open-issue-checklists).
 
 Status: narrow Gate A accepted by Val on 2026-10-24 under #377 / #376 for the producer at main `bb0e1a42ac7bb3e11ccfee05a40d8a02f1dc10c4` and the recorded Codex/Strata combination. No local execution option is enabled by this change. Existing `BackendId`, thread persistence, account policy, native execution, approval handling and companion messages are unchanged.
@@ -62,13 +103,7 @@ Start a second harmless command long enough to Stop after execution begins. Capt
 
 ## LM-3: local execution through Codex
 
-Status: main-only, no UI, not admitted in the product (#379). A thread gets a local target through
-`thread:update` with `localTarget` and `localContextTokens`; LM-4 (#381) will offer that in the interface.
-Nothing in the app sets one today, and a paired desktop's patch never carries one. `main/index.ts` does not
-construct `LocalExecution`: until LM-5 (#380) qualifies Codex's redirect handling and managed-policy
-precedence (AC6), the runner has no execution seam, so it refuses a selection before writing it and ends a
-persisted target's turn with a notice, without starting a child or routing to a cloud backend. The
-description below is of the module and its fixture-proven behaviour once wired.
+Settings → Local models and the model menu expose the integration workflow described above (#381), but local execution remains unadmitted (#379/#380). The interface requests a target through `thread:update` with `localTarget` and `localContextTokens`; a paired desktop cannot set either field. `main/index.ts` does not construct `LocalExecution`, so production refuses selection before persisting it and ends a persisted target's turn with a notice, without starting a child or routing to a cloud backend or account. The description below covers the execution module; scripted Electron fixtures and separately named native qualification receipts do not activate it in the product.
 
 **Admission.** `ThreadRunner.updateThread` accepts a target only after `LocalExecution.validate` resolves
 exactly its connection revision, with the token readable, and the context window is 4,096–262,144 tokens.
@@ -104,18 +139,17 @@ and Codex's sub-agents. Effort, fast mode, service tiers and reasoning summaries
 and the thread's approval and sandbox policy still apply, as do native approvals, questions, Stop and the
 background-terminal cleanup.
 
-**Evidence.** Fixtures prove the admission, isolation and session rules; the installed Codex 0.164.0 ran a
-real shell read through this path against a scripted loopback Responses server, with the sentinel returned
-in the next request, no token in model input and no unqualified tool offered. Both are recorded in the
-[LM-3 review](reviews/2026-10-26-lm3-local-codex.md). A turn against a real local server (AC1) is a human
-gate: `MODEX_LM3_LIVE=1` with `MODEX_LM3_URL` and `MODEX_LM3_MODEL` runs it, and Modex starts, installs and
-downloads nothing. Loopback stays a destination, not verified locality: Codex's HTTP client follows
-redirects, and a server may forward requests. Offline operation, managed-policy precedence, Plan, images,
-other runtimes and resume across restarts are unqualified.
+**Evidence.** Fixtures prove the admission, isolation and session rules. Installed Codex 0.164.0 ran a real shell read against a scripted loopback Responses server, with the sentinel in the next request, no token in model input and no unqualified tool offered; that [LM-3 receipt](reviews/2026-10-26-lm3-local-codex.md) is transport evidence, not model inference. Later candidate receipts establish real Codex 0.167.0/Ollama 0.40.16 read/edit/check, four real-model Electron lifecycle cases, and a separate network-denied canary covering the owned client and inference server. They name exact source revisions, the approved model digest, unchanged personal configuration and observed 65,536 loaded context. See the [integration qualification](reviews/2026-11-11-closeout-qualification.md) and [current evidence map](reviews/2026-11-03-lm7-evidence-map.md); these observations do not admit ordinary product execution or establish other runtime support.
+
+Later native compaction completed but repeated two already completed reads, and dense-input continuation overflowed the verified context limit. The [continuation audit](reviews/2026-11-11-native-private-workspace-trust.md) and [overflow receipt](reviews/2026-11-11-local-context-overflow.md) retain those failures. Action-safe compaction, genuine OOM recovery, managed-policy acceptance, Plan, images, other runtimes and resume across application restarts remain unqualified. Loopback remains a destination, not verified locality: Codex's HTTP client follows redirects and a server may forward requests. Only a separately enforced and observed client-and-server boundary supports a network-denied claim for its recorded run. The opt-in `MODEX_LM3_LIVE=1` probe with `MODEX_LM3_URL` and `MODEX_LM3_MODEL` is distinct from those receipts and starts, installs and downloads nothing itself.
+
+## Cold loads
+
+Opening Settings or refreshing a connection only reads metadata: it never installs a runtime, downloads weights, loads or unloads a model, scans directories or probes other ports. A turn you start yourself is different. Sending it may make the runtime load the selected model first, which can take a while and use a lot of memory. That is the runtime's ordinary behaviour, and Modex doesn't control it.
 
 ## LM-5 slice 1: effective destination and managed policy
 
-Status: on `main` through #423 (`c23e6be`), from #424 (#380); main-only, no UI. Before a local child opens or
+Status: on `main` through #423 (`c23e6be`, which carried #424; #380), no UI, local execution still unadmitted. Before a local child opens or
 resumes a thread, main reads the child's own `config/read` (effective configuration, the layer that set each
 key, and every layer's contents and hash) and `configRequirements/read`, and admits the child only when every
 governed key (destination, model, context, tools, plugins, hooks, instructions) comes from Modex's session flags,
@@ -182,6 +216,29 @@ before any process starts:
 
 A model that isn't marked stays *unverified*, not local: loopback alone doesn't prove where inference runs, and
 an unknown downstream route is still unknown. Evidence: [LM-5 cloud-routed models](reviews/2026-10-30-lm5-cloud-routed-models.md).
+
+## LM-5: failures, compaction and entry points (fixture and wire level)
+
+Status: in review (#380), local execution still unadmitted. Against the installed codex-cli 0.166.0 and a scripted
+loopback Responses server:
+
+Everything below is what that recording server and the turn's result showed. The server sees only its own requests:
+other destinations were not monitored, so none of this establishes that no other request was made.
+
+- **Compaction (AC1).** Native auto-compaction runs inline. The server observed it on `/v1/responses` for the
+  selected model with the connection's token. A failing compaction request has no fixture. The keys that change what it sends or when it runs
+  (`compact_prompt` and the compaction thresholds) are governed: only Modex's session flags may set them.
+- **Failures (AC4).** Overflow, OOM 500, 503, a dropped stream, a killed child and Stop each end failed or
+  interrupted. The server observed no retried request and no other model (`request_max_retries` and
+  `stream_max_retries` must both be 0), and a tool that ran did not run again. A local 500 is reported as the local server's error, not as
+  Codex's cloud "high demand" text.
+- **Capacity (AC3).** Profiles for one host and port share one slot; a stopped wait opens nothing and sends nothing.
+- **Entry points (AC5).** Only this Mac's own window may select, change or clear a local target. A paired desktop,
+  the phone or a caller that names no client cannot.
+
+Evidence: [LM-5 fixtures](reviews/2026-11-01-lm5-fixtures.md).
+
+Recognized local context-limit failures now explain how to continue in a new local conversation with less context, retain the native diagnostic, and warn that earlier commands may already have run. They remain failed and cause no automatic resend or model switch. Installed Codex 0.167.0 fixtures cover typed, HTTP and streamed overflow forms, including Ollama's observed null-code JSON; these do not establish real-model compaction recovery. The retained real dense-input run still overflowed after native compaction. [Current repair, qualification and limits](reviews/2026-11-11-local-context-overflow.md).
 
 ## Accepted boundary and follow-up runtime availability
 

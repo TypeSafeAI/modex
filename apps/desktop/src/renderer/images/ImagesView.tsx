@@ -128,6 +128,8 @@ export function ImagesView({
   const persistDraft = useCallback(() => {
     const value = draftRef.current;
     const revision = JSON.stringify(value);
+    // Loading an acknowledged draft must not create a write that can veto closing.
+    if (!savePending.current && persistedDraft.current === revision) return Promise.resolve();
     savePending.current++;
     const pending = save.current.catch(() => {}).then(async () => {
       await bridge.invoke("images:saveDraft", value);

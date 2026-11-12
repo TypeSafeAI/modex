@@ -1,0 +1,190 @@
+# Local Models v1 workflow candidate
+
+Status: review-ready local candidate. Signed implementation `5348074cdbcfc15f1584e450273311da41366551` passed fresh build, typecheck, unit, local Electron journeys, full desktop/site E2E and ordinary plus network-denied native read/edit/test qualification. Product execution remains disabled. Human acceptance, admission, activation and publication retain their separate gates. Historical failures below are preserved rather than counted as passes.
+
+## Runtime requalification on 2026-11-07
+
+Resuming the goal found installed Codex `0.167.0` and Ollama `0.40.15`, so the earlier `0.166.0` / `0.40.14` native results were retained as historical evidence for that pair. Main, producer heads and open PRs were refreshed and unchanged. All 185 archived artifact hashes matched, the owned candidate remained clean, and ownership was reclaimed before running the current tools. The new runs use `e5a0b0da146c51c867ed1e2df3096b15f6c24847`, whose executable source is identical to the original full-suite implementation `5348074`; the intervening change was documentation only.
+
+| Current-configuration check | Result |
+| --- | --- |
+| Desktop build | Passed |
+| Focused execution, boundary, receipt, configuration and credential suites | 52 passed, zero failed or skipped |
+| Installed Codex against scripted loopback Responses | Four passed: real shell read, observed redirect behavior, local inline compaction and queued cancellation with zero queued requests |
+| Local Electron acceptance journeys | Four passed, zero failures, skips or retries; fresh rendered capture inspected |
+| Ordinary real-model smoke | Passed actual read, exact approved edit and independent check through Codex's ordinary sandbox policy |
+| Network-denied real-model smoke | Passed the same native task with both external TCP and outside writes refused as `EPERM` |
+| Configuration and cleanup | Synthetic bytes/mtime/tree and real personal configuration unchanged; runner and owned servers exited, ports closed and temporary homes removed |
+| Prior full suite | Retained with its original date and runtime versions below; not rerun or relabeled as a full-suite result for the new runtime pair |
+
+The exact approved model remains `qwen3-coder:30b`, digest `06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca`. Both new owned-server runs observed that digest before and after the task. The host remains Apple M5 Max, arm64, 128 GiB, Darwin `27.2.0`, with Node `24.22.0`, pnpm `10.34.5` and the same verified Electron `44.4.5` binary. Configured/client-effective context and the runtime's observed `n_ctx` were all 65,536. Both native runs approved only `echo LM3-APPROVED-EDIT-8c42 > result.txt` and `node check.cjs`, with the original file-byte and independent zero-exit assertions unchanged. The new offline boundary identity is `sha256:283ce6828beafe6ed56b958ac96af6c11fd5f50be86948a0c90fcb8708c48a20`.
+
+Fresh command logs, native wire/ordinary/offline receipts, rendered artifacts, cleanup and `compatibility.json` are retained under `/Users/buns/.codex/task-evidence/modex-lm-v1-2026-11-04/resume-runtime-drift-20261108T051939Z/`. No application change was required. Product execution remains disabled, human acceptance remains unrun, and admission/activation/publication remain separately authorized gates. The documented host-sandbox mode remains supported by the [official app-server reference](https://learn.chatgpt.com/docs/app-server); the actual current CLI and kernel behavior was verified by these runs.
+
+## Full qualification on 2026-11-06
+
+The final qualifier ran from `2026-11-07T00:20:55.618Z` to `2026-11-07T00:51:47.442Z` on implementation `5348074cdbcfc15f1584e450273311da41366551`, tree `4ce635ed79bf0bb0c772c9f68e3e71f1e9609b7f`. All stages passed without changing tracked source. The subsequent receipt update changes documentation only; it does not claim another whole-tree run on that documentation commit.
+
+| Evidence class | Final result |
+| --- | --- |
+| Build and typecheck | Both passed |
+| Root unit command | 2,394 passed, zero failed, 35 opt-in/platform skips; worktrees 147, core 16, desktop compiled 2,184 plus scripts 21, site 10, Store 16 |
+| Four local Electron journeys | Four passed, zero skipped, zero retries; repeated successfully inside full E2E |
+| Complete desktop E2E | 502 passed, zero failed, seven explicit live/external-integration skips |
+| Site E2E | Seven passed, zero failed or skipped |
+| Ordinary native model smoke | Passed real shell read, exact approved edit and independent test; separate normal Codex sandbox policy |
+| Network-denied native model smoke | Passed twice on this implementation, including the final qualifier; external TCP and outside writes denied with `EPERM` |
+| Configuration and runtime cleanup | Synthetic configuration bytes/mtime/tree and real personal configuration unchanged; owned runner/server exited, owned port refused connections, temporary homes removed |
+| Human acceptance | Unrun; harness approvals and screenshot inspection are not person-run task-quality or accessibility acceptance |
+| Product and delivery | Production main still does not construct `LocalExecution`; no push, PR mutation, merge, activation, tag or release |
+
+The native harness accepted only `echo LM3-APPROVED-EDIT-8c42 > result.txt` and `node check.cjs`. It asserted actual result bytes, unchanged fixture and check source, and exactly one independent check recording zero exit. Both ordinary and offline receipts retain the approved model digest observed on their owned server before and after the task. The final offline profile identity is `sha256:49a55537722a8f525a376dc1aee28ee34b96bc76a34fec1d7002db1336038223`; both its outer receipt and native workflow name that boundary and independently record external TCP/outside-write denial. The profile confines the complete Codex/Ollama tree, permits writes only in the owned report/workspace tree, macOS user cache and `/dev/null`, and leaves network access only on loopback. This is evidence for the exact smoke and configuration, not immutable-weight attestation or general task-quality certification.
+
+The original agent process still has an unhealthy native bootstrap context. The successful alternative uses the already running, host-key-pinned loopback SSH service and an existing authorized agent key, without changing SSH configuration, credentials or the shared daemon. A private system-temp evidence root keeps the native workspace outside the person's `.codex` ancestry; placing the first replacement run under `~/.codex` correctly triggered the existing project-configuration refusal before inference. Earlier failed launches, sandbox-composition failures and partial suites remain in the evidence archive.
+
+Durable final receipts are under `/Users/buns/.codex/task-evidence/modex-lm-v1-2026-11-04/ssh-recovery-2026-11-06/`: `final-qualification-5348074-passed/run/qualification.json`, its original command logs and artifacts, `ordinary-native-5348074/`, `offline-external-5348074-passed/`, `compatibility-5348074.json` and `final-qualification-5348074-passed/cleanup.json`. The rendered failure-state capture was inspected at the tested revision. All 13 implementation commits have verified Ed25519 signatures, including changed-message negative controls. The final documentation head, self-contained recovery bundle and restore proof are recorded in the external checkpoint.
+
+## Ownership and source
+
+Base: live GitHub `main` and local `origin/main` at `49ff1e1d214b50adff54799e148669a147f96f7e`. Work is isolated in the newly claimed `lm-v1-workflow` worktree. The primary checkout's unrelated untracked files were preserved. GitHub CLI reads failed to connect; the read-only GitHub connector confirmed main and the three open PRs (#475, #486 and #489).
+
+Committed producer changes were integrated into this branch from `lm5-fixtures-rebased` (`7a38090`) and `lm-ready` (`01101cb`). The admission change from `lm5-admission` (`1276a29`) was inspected and remains unapplied pending its separate decisions and activation gates. Final REST reads reconfirmed main, all three producer heads and open PRs #475, #486 and #489 unchanged. No producer branch, PR or worktree was changed.
+
+Val explicitly authorized integrating snapshots of the separately claimed, dirty `local-model-e2e` and `lmstudio-support` worktrees, leaving their branches and checkouts untouched. Frozen manifests, patches and file hashes are retained outside the worktree at `/Users/buns/.codex/task-evidence/modex-lm-v1-2026-11-04/snapshots/`. Snapshot patch SHA-256 values are `61ee3b39c960d368e3f807cac9cf35fc1c4cc627bf6b78ab801d58afe10a269d` and `7e4aa9eee838a76125662f9fcf287bcdbfd558692f66845b53b0f5f23da9f228`, respectively. The former adds main-owned pending/Retry destination binding and recovery; the latter supplies the starting UI. Integration preserves newer main's Claude account-pool and Code Review changes.
+
+## User-authorized scope and identity
+
+The goal requires exact local connection/model identity, main-owned credentials and isolated native configuration; phone/paired sends are refused and returning to cloud names the destination model in a confirmation. Product execution stays disabled until admission decisions and a real-model smoke pass. Val separately approved downloading `qwen3-coder:30b` (about 19 GB) and local qualification runs. This authorization does not authorize merge, activation or publication.
+
+| Field | Observed value | Meaning |
+| --- | --- | --- |
+| Host | Apple M5 Max, arm64, 128 GiB; macOS 27.2 build 26B123, Darwin 27.2.0 | This host only |
+| Ollama | 0.40.15 in the current native follow-up; 0.40.14 in the original full qualifier | Each result names its own runtime |
+| Codex | 0.167.0 in the current native follow-up; 0.166.0 in the original full qualifier | Both pairs passed effective-configuration reads and native tools in the recovered context |
+| Model | `qwen3-coder:30b`, 30.5B, GGUF Q4_K_M | Download completed after explicit approval |
+| Digest | `06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca` | Exact owned-server observations before and after each successful native task |
+| Listed bytes | 18,556,700,761 | Stored model size; loaded size remains unknown |
+| Context | 65,536 configured/client-effective and observed as `n_ctx` in Ollama's runtime log; 262,144 advertised | These observations remain distinct |
+| Other tooling | Node 24.22.0, pnpm 10.34.5, Electron 44.4.5 | Qualifier records the selected Electron binary and SHA-256 |
+| Support decision | Exact read/edit/test smoke observed passing in ordinary and network-denied configurations | Product admission and broader task quality remain separate |
+
+## Requirement audit
+
+| Requirement | Current evidence | Status / next proof |
+| --- | --- | --- |
+| Refresh source, producers, open PRs and ownership; isolate work | Live connector reads, ownership records, new claimed worktree and frozen manifests | Implemented; refresh before delivery |
+| Reconcile three producer branches without taking them over | Producer patches on this branch; admission inspected and held | Source integrated; other branches unchanged |
+| Settings connection management, metadata, model/context selection | UI source, production store/service tests and rendered metadata/model journeys | Passed at the tested implementation |
+| Revision identity and stale configuration | Main validation, snapshot destination binding, fixture tests and revision-aware renderer state | Unit and rendered journey passed |
+| Saved credentials stay in main; native isolation | Token/global-configuration regressions, streaming redaction, Electron IPC and native receipts | Scripted IPC checks and actual native configuration preservation passed |
+| Paired-client send refusal | Main constructs the caller identity; runner guards send and Retry before transcript mutation | Regression reproduced before fix; focused test passes |
+| Cloud return confirmation and exact selected model | UI confirmation, runner honors named cloud model, original Retry stays bound | Runner and rendered confirmation passed |
+| Live read, approved edit and independent test | Opt-in native smoke with actual bytes, executed tools and independent check | Ordinary and network-denied native runs passed |
+| Electron golden journey with diff, Stop, continuation, restart, stale profile and server failure | Four executed journeys with a temporary-home-only bootstrap and shared scripted app-server | Passed, separately and in full E2E; transport is scripted |
+| Scripted workflow genuinely edits, checks and stops work | Shared native-transport fixture crosses approval, runs Node check, kills its delayed child, continues, fails and refuses a lost handle | Node integration test passes; not Electron or model evidence |
+| Normal CI stays offline and GPU-free | Native tests opt in; Electron bootstrap uses FakeProcess and a loopback metadata fixture | No model download/inference in ordinary CI |
+| Product execution stays disabled | Existing production wiring regression and no `LocalExecution` construction in main | Retained |
+| Network-denied evidence covers client and inference server | Verified inherited host profile, owned loopback Ollama and native Codex tools | Passed with matching model digests and boundary identity; TCP/outside writes denied |
+| Signed review-ready commits and fresh build/test/E2E | Signed implementation `5348074`; final results above | Passed locally; no hosted CI or delivery claim |
+| Reproducible setup, rollback and compatibility receipt | `docs/local-models.md`, opt-in launchers, identity table and durable JSON receipt | Exact smoke recorded; admission and broader compatibility remain separate |
+| Human acceptance | No person-run keyboard, screen-reader or task-quality result | Open; never inferred from fixtures |
+| Merge, activation and publication boundaries | No push, merge, default activation, tag or release performed | Separate authorization retained |
+
+## First failures and validation
+
+The first foundation build passed. Its focused execution, run-policy, global-configuration, token-record and local-runner suites passed 53/53. The new remote-send regression then failed with “Missing expected rejection” before its guard. The integrated runner/draft/recovery run initially found two producer-test integration conflicts: a stale Retry now refuses earlier at destination binding, and an old test omitted the required desktop caller for clearing a target. The revised checks assert the stronger pre-admission refusal and explicit caller. That focused run passed 71 with one platform skip.
+
+The first whole-tree build and typecheck passed. The full unit command passed the worktree suite (147) and core (16), then failed the desktop suite: 2,144 passed, 29 skipped, two failed. Both failures are unchanged Notes watched-read cases, “reads settle” and “reads settle on the last look.” A separate fresh recursive watcher reported `EMFILE: too many open files, watch`. No watcher assertion, timeout, system limit or unrelated process was changed. Later checks must retain this first result and cannot call the root command green.
+
+The shared scripted-workflow integration passed approval, actual file edit and independent test, stopping an actual delayed Node child, explicit continuation, server failure and lost-session refusal. Together with local execution/runner/native-harness checks that focused run reported 37 passed and 12 intentional native skips. A TypeScript readonly-array error in the new shared fixture was corrected before this run; it is preserved in the external build log.
+
+The installed CLI wire check and approved real-model smoke both fail at `config/read`, RPC `-32603`: “failed to read configuration layers: Failed to synchronize managed preferences.” The wire receipt records zero Responses requests and no tools. A private-home configuration-only probe reproduced the same error with and without `USER`/`LOGNAME`; no requirement or managed layer was disabled. A separate OS username query failed with `uv_os_get_passwd` / `ENOENT`; its relationship to Codex's error is unproven. The real model's quality and compatibility remain unknown.
+
+The offline canary proved external TCP denial (`EPERM`), then started a separate owned Ollama on `127.0.0.1:58132`. Its native task failed at the same effective-configuration read. The owned server exited during cleanup; the person's primary Ollama was preserved. This is boundary/startup evidence and a failed coding canary, not offline inference acceptance.
+
+The development Electron executable aborted with `SIGABRT` even for `--version`. Its original signature verification failed; a private copied bundle was ad-hoc signed and passed verification, but still aborted. The targeted Electron command selected four tests and stopped after its first launch failure: one failed, three did not run, no renderer assertion executed. The trace and original logs are outside Playwright's wiped output directory. The underlying launch cause remains unproven; no application assertion or production admission gate was bypassed.
+
+## Historical outstanding work at the first checkpoint
+
+Repair the native/OS configuration and Electron launch prerequisites, then run the real read/edit/test smoke and Electron journeys on the final pinned candidate. Complete the fresh required build, typecheck, unit and full desktop/site E2E gates, retaining original failures and skips. Fix any product defect those runs reveal. Qualify the exact configuration's Stop/recovery/failure and network-denied inference behavior, then obtain the outstanding human/admission results before a separately authorized activation. The goal remains active until its full audit passes.
+
+## Pinned implementation checkpoint
+
+Signed commit `047c3ad1009aae658ec221f2f25ef8bc52484df2` has tree `1c85eaa0a028ae5105483d699bd61c2e56f6bdb4`. The following runs name that implementation revision. The later receipt update changes documentation only and does not claim another whole-tree test pass.
+
+| Check | Result at the implementation checkpoint |
+| --- | --- |
+| `pnpm build` | Passed |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | Failed: worktree 147 passed; core 16 passed; desktop 2,147 passed, 29 skipped, two unchanged Notes watcher failures |
+| Final focused integration run before committing the same code | 98 passed, 13 skipped, zero failed |
+| Remaining native/browser script suites, run separately after the root stop | 21 passed, six skipped; these do not make the root command green |
+| Site and Store unit suites, run separately | 10 passed and 16 passed |
+| Targeted Electron journeys | One launch failure (`SIGABRT`), three did not run; no rendered assertion executed |
+| Site E2E, run separately | Seven failed at Chromium startup (`SIGTRAP`); no site source changed |
+| Approved native model smoke | Failed at effective configuration, before inference; real user's config fingerprint unchanged |
+| Network-denied native canary | External TCP refused with `EPERM`; owned Ollama started, native configuration failed, owned server stopped; offline inference remains unverified |
+
+Standard OpenSSH signing and verification fail this session's OS username lookup with “No user exists for uid 501.” The installed 1Password signer successfully signed the checkpoint using the exact public key found on the producer commit. A separate Node Ed25519 verifier follows the OpenSSH SSHSIG format, verifies namespace `git`, SHA-512 payload and the matching producer key, and rejects a one-byte change to the signed data. Its script and receipt are preserved externally. This establishes the local signature, not GitHub checks or protected delivery.
+
+Evidence home: `/Users/buns/.codex/task-evidence/modex-lm-v1-2026-11-04/`. It contains the frozen source snapshots, original and pinned logs, both Electron failure traces, site browser traces, model/version inventory, signature verifier/receipt, native real-config fingerprint receipt, initial and pinned offline receipts, and an evidence SHA-256 manifest. No push, PR mutation, merge, activation, tag or release occurred. The worktree stays claimed for this active goal.
+
+## Follow-up review: metadata response ordering and receipt preservation
+
+Revalidation after `d99687d` still found native `config/read` failing on managed-preferences synchronization, OS username lookup failing with `ENOENT`, and the private signed Electron copy aborting for `--version`. These are unchanged blockers; no native or rendered gate passed.
+
+Source review found independent renderer defects that could be fixed in this session. A profile-list reply started before an acknowledged create, edit or removal could replace the newer state. A failed Cancel acknowledgement could leave the view permanently checking, and a late successful Cancel acknowledgement could overwrite a newer completed discovery. Five deferred-transport regressions reproduced those cases before repair. The window metadata store now fences list responses by mutation generation and discovery/cancel responses by operation identity, publishes acknowledged profile changes immediately, and exposes uncertain cancellation as a window-operation error while keeping Refresh available. It was separated from React only so the actual state transitions can be exercised without a working Electron launcher; the renderer facade still owns one shared store and invokes the same main channel.
+
+The offline launcher also accepted a populated evidence directory or a final symlink before contacting a runtime. Two negative controls, with network access replaced by a throwing fixture, demonstrated that the original launcher reached metadata lookup before checking either condition. The launcher now refuses both before any runtime request, retaining the earlier receipt and linked target unchanged. Each qualification run needs a new empty evidence directory.
+
+All seven new regressions pass after their observed failures. The expanded focused store/execution/runner/token suites passed 48/48, and the whole build and typecheck passed. These are source and state-machine results, not rendered acceptance or native inference evidence. The next signed checkpoint and its canonical results are recorded separately; earlier pinned results above remain historical.
+
+Signed follow-up implementation checkpoint: `bdd5dd2230687e166f2345818a547672c5c9bf58`. The matching producer key and Ed25519 signature were verified, including a changed-message negative control. Fresh `pnpm build` and `pnpm typecheck` passed on this revision. Fresh `pnpm test` failed only the same two unchanged Notes watcher cases: worktree 147 passed, core 16 passed, desktop 2,154 passed and 29 skipped. Every new regression passed in that whole-tree run. The targeted four Electron journeys again failed at the first process launch (`SIGABRT`); three did not run and no rendered assertion executed. Native and human acceptance remain open, and production execution stays disabled. The subsequent receipt-only commit changes no implementation source.
+
+## Follow-up review: owned-runtime model identity
+
+The offline canary recorded a digest from the person's primary Ollama server but originally checked only the model name on its separate owned server. A primary server using another weights directory could therefore name different weights in the receipt from those actually available to the canary. Five launcher regressions failed before repair: missing or different digests before the task, missing or changed digests after the task, and a successful receipt omitting its digest observations. The launcher now requires the exact approved name and digest receipt, refuses a mismatch before invoking the native task, compares the owned server again afterward, and retains both observed digests. It cannot pass if either observation is missing or changed. This does not establish immutable weights throughout execution or effective loaded context.
+
+The seven launcher checks, including earlier receipt-preservation cases, pass with OS/process boundaries scripted and no real runtime, model or external network access. These are evidence-integrity regressions, not offline inference qualification. Fresh native preflight still fails managed-preferences synchronization and the private signed Electron executable still aborts for `--version`. The resumed session also cannot reach macOS directory services or computer-use services. No admission, native inference or rendered acceptance pass is inferred. The signed source checkpoint and canonical command results are retained in the external evidence checkpoint.
+
+## Native host diagnosis and recovery
+
+The 2026-11-05 repair investigation identified a dead Mach bootstrap port in the execution session: `task_get_special_port(TASK_BOOTSTRAP_PORT)` succeeds but returns `MACH_PORT_DEAD` (`0xffffffff`), and libSystem's bootstrap port is zero. Preferences, Directory Services, WindowServer and Launch Services lookups all return `MACH_SEND_INVALID_DEST` (`268435459`). A normal same-user `launchctl asuser 501 /usr/bin/id -un` recovery fails with “Failed to get user context: 141: Reentrancy avoided.” LLDB records Electron aborting inside HIServices application registration during `NSApplication` initialization, before Modex loads. These observations establish a broken native service connection; how the execution host lost that connection remains unproven.
+
+The installed Codex 0.166.0 daemon manager reports `status: running` and `backend: pid`, and its local help exposes `codex app-server daemon restart`. The next candidate host recovery action is to run that restart from a normal Terminal in the signed-in macOS desktop, then reconnect the existing ChatGPT local computer connection and confirm native configuration reads and Electron startup before rerunning acceptance. Restarting the shared daemon may interrupt other local tasks, so coordinate those tasks first. This recovery has not yet been executed or verified; reopening the app alone does not establish that the PID-managed daemon was replaced. The read-only `apps/desktop/.probes/lm-v1/macos-session-diagnose.py` probe and its receipts are preserved in external task evidence. It records the kernel bootstrap port, service lookup errors, both isolated Codex configuration checks and an Electron crash backtrace, and exits nonzero while prerequisites remain unavailable. It changes no managed configuration and performs no model inference. Restarting the host remains a user action because this session cannot reach its native service manager.
+
+The backend now distinguishes managed-preferences synchronization failures from unsupported configuration RPCs: the former provides desktop-session recovery guidance, and only RPC `-32601` receives the minimum-version advice. Other configuration failures retain their original cause. Two regressions failed before this repair and now pass; the focused execution, admission-policy and global-configuration suites pass 35/35. The failures still retain their RPC details, open no native thread, send no task content and grant no admission. This repairs error guidance; host recovery and the full native/rendered qualification remain incomplete.
+
+## Alternative: foreground qualification in Terminal
+
+Val requested another solution to the host blocker. The fixed `apps/desktop/scripts/local-model-qualify.mjs` runner lets a normal signed-in macOS Terminal execute qualification while the shared daemon remains running. It uses direct stdio app-server configuration checks and the existing test harnesses, with no new inference client, daemon management or product activation. This is an alternative place to execute the checks, not evidence that the broken agent session has recovered.
+
+The runner pins clean tracked source, an expected commit and the approved model digest. It refuses reused evidence and physical paths inside the worktree, clears inherited live-model overrides from ordinary tests, verifies user lookup, installed Electron startup and native configuration before building, and records host/runtime details. Build, typecheck, unit, four local Electron journeys, full E2E and the owned-server offline canary have separate logs and results. Failures remain failures even when independent later stages run. The collector refuses a zero-exit run with skipped local journeys or missing native workflow evidence. Prior Playwright output is moved into a separate receipt directory before the canonical E2E command replaces it.
+
+The initial runner regressions reported four passes and five failures, demonstrating evidence-path, log-preservation, skipped-journey, missing-native-receipt and inherited-environment defects before repair. After repair the nine runner checks and seven existing offline-launcher checks passed 16/16. Additional path-alias and revision-pin controls, final canonical results and the generated revision-pinned Terminal launcher are recorded in the external checkpoint. Scripted collector results do not establish native inference, rendered acceptance or human approval. The actual healthy-Terminal run remains pending, and production local execution remains unadmitted.
+
+## Follow-up review: redaction before output limits
+
+The producer recorded a remaining privacy limit: a bounded tool preview could cut into a credential assembled from two deltas, leaving its suffix visible. Two new regressions reproduce a credential fragment reaching renderer events, one at the 256 KiB tool-preview cut and another at the 16,384-character stderr cut when the child exits. Both use the real runner, local execution and persistence with a scripted CLI; neither needs a model or native desktop services. A fixture compile error in the initial renderer-event assertion was corrected before the failing cases were executed and is preserved separately.
+
+`CodexBackend` now redacts each accumulated tool-output or stderr string before applying its existing limit. The prior chunk still contains a token's incomplete prefix, so combining it with the next chunk permits exact redaction before truncation destroys that context. Saved local tokens are limited to 4,096 printable characters, smaller than either buffer. Streaming sink redaction remains in place for renderer deltas and kept tool logs. Output limits, tool outcomes and the no-token cloud path retain their existing behavior. The tests inspect renderer events, snapshots, items, provenance and files, and require a non-secret output marker to reach the recorded surfaces. The focused token-record, bounded-evidence, local-configuration and local-execution suites passed 36/36. Fresh canonical results are recorded in the external evidence checkpoint; native, rendered and human acceptance remain separate and incomplete.
+
+## Healthy execution context through existing local SSH
+
+On 2026-11-06, the Mac's existing SSH listener provided a healthy process context without restarting the shared daemon. The standard SSH client still failed the original process's account lookup, so a fixed scratch client used the already installed libssh2 1.11.1. It connected only to `127.0.0.1:22`, required the Ed25519 host key from the local server's public-key file, and authenticated only with an already authorized key from the existing local agent. No server settings, authorized keys, private keys, managed preferences or product paths were changed. The remote preflight resolved the real account, confirmed source `433ecc3`, and reported bootstrap port 2059 with successful Preferences, Directory Services, WindowServer and Launch Services lookups. Both isolated native configuration reads and Electron 44.4.5 startup passed. These are restored prerequisites, not model qualification or human acceptance.
+
+The first fixed qualifier ran on signed `433ecc3`. Build and typecheck passed. Desktop unit results were 2,175 passed, 29 skipped and one archive-permission failure; both earlier Notes watcher tests passed. A controlled repeat of that one archive case failed with umask `077` and passed with `022`. The generated launcher had imposed `077` on its test subprocesses. The next launcher uses the normal development mask while keeping the evidence parent private; the qualifier now records the mask. Neither the archive implementation nor its assertion was changed.
+
+The first rendered local journey completed approved file edit, independent check, diff display, Stop, continuation and restart refusal, then failed its server-error assertion. The actual alert correctly displayed the newer HTTP 500 explanation and stated that Modex did not retry or switch models; the assertion still expected an older fixture string. It now requires that visible HTTP 500 alert and its no-retry/no-switch text, retaining file-byte and metadata-route checks, and saves a screenshot. The superseded full E2E stage was deliberately interrupted after the known failures; its partial output is retained and is not a full-suite pass. The qualifier and owned UI processes were confirmed stopped before editing. No model stage had started. The next pinned run must still complete canonical checks, all local journeys, full E2E and the approved network-denied native task. Recovery clients, original failures, traces, process observations and receipts live under external `ssh-recovery-2026-11-06` evidence.
+
+The next signed candidate, `bf7c915`, passed the entire root unit command: worktree 147, core 16, desktop 2,176 compiled and 21 additional script checks, site 10 and Store 16 passed; 35 desktop native checks remained intentionally skipped. Three local Electron journeys passed. The fourth rendered the expected unadmitted-execution refusal, with no thread or local target created, but its exact text locator omitted Electron's IPC wrapper. The locator now targets the visible alert containing the same refusal cause; no-thread, no-target and metadata-only assertions remain. The partial full E2E run was interrupted before any model stage and its receipts retained. All four local journeys will be checked before the next whole qualification run.
+
+At signed `368235b`, all four local Electron journeys passed with no skip or retry. The approved `qwen3-coder:30b` canary then loaded the exact expected digest at 65,536 context and generated through native Codex under external TCP denial (`EPERM`), but no shell tool ran. A separate ordinary native run successfully read the sentinel through the real shell and returned it. Its edit was refused because the model added a backslash to the exact permitted `printf` command. The fixture now requests an equivalent escape-free `echo` command, with the same expected file bytes, two-command allowlist, approval callback and independent check unchanged. Approval is asserted before reading the output file so a denied edit reports its actual cause.
+
+A scripted native wire comparison passed its real shell read normally and failed under the outer network-denial profile. A direct nested-profile probe returned `sandbox_apply: Operation not permitted`. The canary's inherited profile prevents Codex from applying its own command sandbox; this is a sandbox-composition failure and does not qualify offline coding. Both failed native receipts retain matching before/after model digests, exact versions/context and unchanged real configuration. Normal native qualification and a correctly enforced network-denied configuration remain separate work; no result or model response is treated as a substitute for an executed tool or test.
+
+At signed `93fd820`, the ordinary real-model smoke passed read, approved edit and independent test on the exact `qwen3-coder:30b` digest. The approval callback accepted only `echo LM3-APPROVED-EDIT-8c42 > result.txt` and `node check.cjs`. Actual file bytes, the independent test's single recorded zero exit, unchanged fixture/check source and unchanged personal configuration were asserted. This establishes the ordinary smoke for that exact CLI/runtime/model/context/hardware combination; it is not an offline result or human acceptance.
+
+The [app-server reference](https://learn.chatgpt.com/docs/app-server) supports `externalSandbox` with restricted network access when the host already confines the server. A fixed native `command/exec` prototype under the stronger host profile passed an allowed workspace write, denied a write outside the boundary, and denied external TCP. The canary now uses that documented policy through a main-owned constructor context after live boundary verification. It preserves native approval decisions and effective-configuration admission, freezes the boundary descriptor, and binds its profile hash to process identity and provenance. The context is not accepted from a thread, renderer or environment flag in normal `LocalExecution`; product wiring remains absent.
+
+Two main-owned-context regressions failed before implementation: the turn still selected its native sandbox and invalid/unrestricted descriptors were accepted. After repair, 52 focused execution, policy-boundary, collector, configuration and credential checks passed. They cover managed requirements still refusing before thread creation, environment flags not opting normal execution into the external boundary, policy tampering and an unconfined outside write failing verification, and a nominally successful native receipt lacking boundary proof being rejected. These scripted checks complement the real kernel prototype. The integrated network-denied model run and final whole-tree gates subsequently passed as recorded above.

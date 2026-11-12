@@ -9,6 +9,8 @@ const png = Buffer.from(
 test("Images imports, displays, inserts into Space, attaches to chat and survives relaunch", async () => {
   const { home } = seedHome();
   let { app, page } = await launch(home);
+  // Electron owns beforeunload; CDP dismissal races its native close decision.
+  page.on("dialog", dialog => { if (dialog.type() !== "beforeunload") void dialog.dismiss(); });
   try {
     await tid(page, "rail-images").click();
     await expect(
@@ -80,6 +82,7 @@ test("Images imports, displays, inserts into Space, attaches to chat and survive
     await page.getByRole("button", { name: "Restore", exact: true }).click();
     await app.close();
     ({ app, page } = await launch(home));
+    page.on("dialog", dialog => { if (dialog.type() !== "beforeunload") void dialog.dismiss(); });
     await tid(page, "rail-images").click();
     await expect(
       page.getByRole("button", { name: "Open Kept image", exact: true }),
@@ -307,5 +310,54 @@ for (const mode of ["delayed", "rejected"] as const) test(`ordinary close preser
       for (const window of BrowserWindow.getAllWindows()) window.destroy();
     }).catch(() => {});
     await app.close();
+  }
+});
+
+test("opening an already saved image draft neither rewrites it nor vetoes ordinary close", async () => {
+  const { home } = seedHome();
+  const { app, page } = await launch(home);
+  const nativeProcess = app.process();
+  const file = path.join(home, "images/jobs.json");
+  let closed = false; app.on("close", () => { closed = true; });
+  const exited = new Promise<void>(resolve => app.once("close", () => resolve()));
+  page.on("dialog", dialog => { if (dialog.type() !== "beforeunload") void dialog.dismiss(); });
+  try {
+    const capability = await page.evaluate(() => window.modex.invoke("images:bind", { runtime: "claude", account: "cli", pluginId: "modex-fixture", pluginVersion: "1", entrypoint: "modex-fixture", label: "Offline fixture", edit: true }));
+    await page.evaluate(capabilityId => window.modex.invoke("images:saveDraft", { prompt: "Already saved image idea", capabilityId, referenceIds: [] }), capability.id);
+    const before = fs.readFileSync(file);
+    await app.evaluate(({ ipcMain, BrowserWindow }) => {
+      const controls = globalThis as typeof globalThis & { unchangedImageWrites?: number; unchangedImageVetoes?: number; releaseUnchangedImageWrite?: () => void };
+      controls.unchangedImageWrites = 0; controls.unchangedImageVetoes = 0;
+      ipcMain.removeHandler("images:saveDraft");
+      ipcMain.handle("images:saveDraft", async () => {
+        controls.unchangedImageWrites!++;
+        await new Promise<void>(resolve => { controls.releaseUnchangedImageWrite = resolve; });
+      });
+      BrowserWindow.getAllWindows()[0]!.webContents.on("will-prevent-unload", () => { controls.unchangedImageVetoes!++; });
+    });
+    await tid(page, "rail-images").click();
+    await page.getByRole("button", { name: "Generate", exact: true }).click();
+    await expect(page.getByLabel("Image prompt", { exact: true })).toHaveValue("Already saved image idea");
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    const writes = await app.evaluate(() => (globalThis as { unchangedImageWrites: number }).unchangedImageWrites);
+    await app.evaluate(({ app }) => { app.quit(); });
+    await expect.poll(async () => {
+      if (closed) return "closed";
+      return app.evaluate(() => (globalThis as { unchangedImageVetoes: number }).unchangedImageVetoes ? "vetoed" : "waiting").catch(() => closed ? "closed" : "waiting");
+    }).not.toBe("waiting");
+    expect(closed, "opening an acknowledged draft must not create a new close veto").toBe(true);
+    await exited;
+    await expect.poll(() => nativeProcess.exitCode).toBe(0);
+    expect(nativeProcess.signalCode).toBeNull();
+    expect(writes).toBe(0);
+    expect(fs.readFileSync(file)).toEqual(before);
+  } finally {
+    if (!closed) {
+      await app.evaluate(({ BrowserWindow }) => {
+        (globalThis as { releaseUnchangedImageWrite?: () => void }).releaseUnchangedImageWrite?.();
+        for (const window of BrowserWindow.getAllWindows()) window.destroy();
+      }).catch(() => {});
+      await app.close();
+    }
   }
 });

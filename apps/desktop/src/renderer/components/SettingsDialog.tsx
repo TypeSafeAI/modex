@@ -11,6 +11,7 @@ import { ApprovalRules } from "./ApprovalRules";
 import { ConnectionStatus, TerminalLogin } from "./CliConnection";
 import { Icon } from "./ui/Icon";
 import { ErrorNotice } from "./ui/ErrorNotice";
+import { LocalModelsSettings } from "./LocalModelsSettings";
 
 interface Props {
   settings: Settings;
@@ -23,6 +24,8 @@ interface Props {
   codeReviewInRail?: boolean;
   onCodeReviewInRail?: (show: boolean) => void;
   onAnalyticsInRail?: (shown: boolean) => void;
+  /** Opens on this section, e.g. Local models from the model menu. */
+  initialSection?: "local";
 }
 
 /** The coding CLIs Auto may move a thread between; the offline mock is handled apart. */
@@ -49,8 +52,8 @@ const errorMessage = (err: unknown, fallback: string) =>
 const backendHealthText = (status: BackendHealth | undefined, failed: boolean) =>
   status ? `${status.version ? `v${status.version} · ` : ""}${status.detail}` : failed ? "Account check unavailable · retry" : "checking…";
 
-export function SettingsDialog({ settings, projects, currentProjectId, onSave, onClose, analyticsInRail, onAnalyticsInRail, codeReviewInRail, onCodeReviewInRail }: Props) {
-  const [section, setSection] = useState<"general" | "clis" | "routing" | "approvals" | "advanced">("routing");
+export function SettingsDialog({ settings, projects, currentProjectId, onSave, onClose, analyticsInRail, onAnalyticsInRail, codeReviewInRail, onCodeReviewInRail, initialSection }: Props) {
+  const [section, setSection] = useState<"general" | "clis" | "local" | "routing" | "approvals" | "advanced">(initialSection ?? "routing");
   const dialogRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
@@ -304,7 +307,7 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
   };
 
   const sections = [
-    ["general", "General", "gear"], ["clis", "Coding CLIs", "terminal"], ["routing", "Auto routing", "branch"], ["approvals", "Approval rules", "privacy"], ["advanced", "Advanced / demo", "grid"],
+    ["general", "General", "gear"], ["clis", "Coding CLIs", "terminal"], ["local", "Local models", "laptop"], ["routing", "Auto routing", "branch"], ["approvals", "Approval rules", "privacy"], ["advanced", "Advanced / demo", "grid"],
   ] as const;
 
   return (
@@ -604,6 +607,7 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
             <small>Used only by the Mock backend for scripted offline demos and tests.</small>
           </label>
         </section>}
+        {section === "local" && <LocalModelsSettings />}
         {section === "approvals" && <ApprovalRules rules={s.approval_rules} projects={projects} currentProjectId={currentProjectId} gateEnabled={s.approval_gate.enabled} routing={routing} onChange={(rules) => set("approval_rules", rules)} />}
         </div>
         <footer className="settings-footer" data-testid="settings-actions">

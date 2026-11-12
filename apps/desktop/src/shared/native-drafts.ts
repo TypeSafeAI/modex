@@ -4,8 +4,17 @@ import type { Thread } from "./types.js";
 export interface PendingTarget { threadId: string; projectId: string; createdAt: string }
 export interface PendingCreation { threadId: string; createdAt: string }
 export type DraftRemovalScope = { kind: "thread" | "project"; id: string };
+export interface PendingExecutionBinding {
+  schema: 1;
+  backend: Thread["backend"];
+  model: string;
+  account: string | null;
+  localTarget: import("./local-models.js").LocalThreadTarget | null;
+  localContextTokens: number | null;
+}
 export interface PendingSendRecord {
   schema: 1;
+  execution?: PendingExecutionBinding;
   id: string;
   createdAt: string;
   source: AttachmentDraftOwner;

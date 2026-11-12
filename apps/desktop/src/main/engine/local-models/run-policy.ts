@@ -8,13 +8,14 @@
  * turn content is sent, main reads `config/read` (the effective configuration and the layer that set each
  * key) and `configRequirements/read` (admin-enforced requirements) from the child itself, and admits the
  * child only when every governed key comes from Modex's session flags, the effective values are the ones
- * Modex passed, the private home is empty, no project layer is loaded and no managed requirements apply.
+ * Modex passed, the private user configuration is empty or contains only the exact current-workspace trust mark, no project layer is loaded and no managed requirements apply.
  * Anything else is refused with the layer and key named; nothing is bypassed or rewritten (#379 AC6).
  *
  * What this cannot prove: that the loopback server keeps the request local. Codex follows an HTTP
  * redirect from the configured server with the full request body (the token is dropped), exactly as a
  * server could forward it; see docs/reviews/2026-10-27-lm5-destination-policy.md.
  */
+import path from "node:path";
 
 /**
  * Whether a thread is local-only (#380): it carries a local target, valid or not. Main keeps every
@@ -31,7 +32,14 @@ export interface ConfigRead { config: Record<string, unknown>; origins: Record<s
 export interface RequirementsRead { requirements: unknown }
 
 /** What Modex passed as session flags for this child (execution.ts), to be found again in the effective configuration. */
-export interface ExpectedLocalConfiguration { provider: string; origin: string; contextTokens: number; tokenEnv: string | null }
+export interface ExpectedLocalConfiguration { provider: string; origin: string; contextTokens: number; tokenEnv: string | null; privateWorkspace?: { directory: string; configFile: string } }
+
+/** Main-owned assertion of an already enforced host boundary, never a thread or renderer setting. */
+export interface LocalHostSandbox {
+  readonly type: "externalSandbox";
+  readonly networkAccess: "restricted";
+  readonly boundaryId: string;
+}
 
 /** The configuration a child was admitted on, kept with the child for diagnostics; no secrets. */
 export interface LocalConfigurationProvenance {
@@ -39,6 +47,10 @@ export interface LocalConfigurationProvenance {
   sessionFlags: string;
   layers: { source: string; version: string; file?: string }[];
   managedRequirements: false;
+  /** Only this child's current-workspace trust metadata was admitted; no project layer or other user setting. */
+  privateWorkspaceTrust?: { scope: "current-workspace"; level: "trusted" };
+  /** The caller owns enforcing this boundary before spawning Codex; its hash binds process identity. */
+  hostSandbox?: LocalHostSandbox;
   /** Set by the caller that knows where the window came from (execution.ts). */
   context?: LocalContextEvidence;
 }
@@ -62,6 +74,8 @@ export interface LocalContextEvidence {
 
 /** Keys a layer other than Modex's session flags may not set: the inference destination, the model, its context and the tools reaching it. */
 const GOVERNED = ["model", "model_provider", "model_providers", "openai_base_url", "oss_provider", "model_catalog_json", "model_context_window", "model_auto_compact_token_limit",
+  // Native compaction: what it sends the provider and when it runs (#380 AC1; key names from codex-cli 0.166.0).
+  "compact_prompt", "model_auto_compact_token_limit_scope", "model_post_turn_compact_threshold_percent", "model_async_compact_threshold_percent",
   "model_reasoning_summary", "model_reasoning_effort", "service_tier", "web_search", "features", "mcp_servers", "shell_environment_policy", "plugins", "hooks", "marketplaces",
   "profile", "profiles", "projects", "notify", "otel", "tools", "developer_instructions", "model_instructions_file", "agents", "cloud"];
 const MANAGED = new Set(["mdm", "system", "enterpriseManaged", "legacyManagedConfigTomlFromFile", "legacyManagedConfigTomlFromMdm"]);
@@ -93,20 +107,47 @@ function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
+/** A native child may persist this one trust mark after opening its workspace. It grants no exception for other configuration. */
+function currentWorkspaceTrust(value: unknown, directory: string): boolean {
+  const projects = record(value);
+  if (!projects || Object.keys(projects).length !== 1 || !Object.hasOwn(projects, directory)) return false;
+  const project = record(projects[directory]);
+  return project !== null && Object.keys(project).length === 1 && project.trust_level === "trusted";
+}
+
+function privateTrustLayer(read: ConfigRead, expected: ExpectedLocalConfiguration): ConfigLayer | undefined {
+  const bound = expected.privateWorkspace;
+  if (!bound || !path.isAbsolute(bound.directory) || !path.isAbsolute(bound.configFile)) return;
+  const users = read.layers?.filter(layer => layer?.name?.type === "user") ?? [];
+  if (users.length !== 1) return;
+  const layer = users[0]!;
+  if (layer.name.file !== bound.configFile || layer.name.profile != null || layer.disabledReason != null || typeof layer.version !== "string") return;
+  const contents = record(layer.config);
+  if (!contents || Object.keys(contents).length !== 1 || !currentWorkspaceTrust(contents.projects, bound.directory)
+    || !currentWorkspaceTrust(read.config.projects, bound.directory)) return;
+  const origin = read.origins[`projects.${bound.directory}.trust_level`];
+  if (origin?.name?.type !== "user" || origin.name.file !== bound.configFile || origin.name.profile != null || origin.version !== layer.version) return;
+  return layer;
+}
+
 /** Admits the child or throws with the layer and key that disqualify it. Pure: nothing is read or written here. */
 export function admitLocalConfiguration(read: ConfigRead, requirements: RequirementsRead, expected: ExpectedLocalConfiguration): LocalConfigurationProvenance {
   const config = record(read?.config);
   const origins = record(read?.origins);
   if (!config || !origins) refuse("Codex did not report its effective configuration.");
   if (requirements?.requirements !== null && requirements?.requirements !== undefined) refuse("Codex is under managed requirements on this Mac.");
-  // Every governed key in effect must come from the session flags Modex passed.
+  const layers = Array.isArray(read.layers) ? read.layers : null;
+  if (!layers) refuse("Codex did not report its configuration layers.");
+  const privateTrust = privateTrustLayer(read, expected);
+  // Every governed key stays pinned to Modex, except the validated single-workspace trust mark in its own private child.
   for (const [key, origin] of Object.entries(origins)) {
     const source = record(origin)?.name as ConfigLayerSource | undefined;
     if (!source?.type) refuse(`Codex did not say which configuration sets \`${key}\`.`);
-    if (governed(key) && source.type !== "sessionFlags") refuse(`${describeLayer(source)} sets \`${key}\`.`);
+    const retainedTrust = privateTrust && key === `projects.${expected.privateWorkspace!.directory}.trust_level`
+      && source.type === "user" && source.file === privateTrust.name.file && source.profile == null
+      && record(origin)?.version === privateTrust.version;
+    if (governed(key) && source.type !== "sessionFlags" && !retainedTrust) refuse(`${describeLayer(source)} sets \`${key}\`.`);
   }
-  const layers = Array.isArray(read.layers) ? read.layers : null;
-  if (!layers) refuse("Codex did not report its configuration layers.");
   let sessionFlags: string | undefined;
   const summary: LocalConfigurationProvenance["layers"] = [];
   for (const layer of layers) {
@@ -116,7 +157,7 @@ export function admitLocalConfiguration(read: ConfigRead, requirements: Requirem
     const keys = contents ? Object.keys(contents) : [];
     if (source.type === "sessionFlags") sessionFlags = layer.version;
     else if (source.type === "project") refuse(`${describeLayer(source)} is loaded.`);
-    else if (source.type === "user" && keys.length) refuse(`${describeLayer(source)} is not empty (${keys.join(", ")}).`);
+    else if (source.type === "user" && keys.length && layer !== privateTrust) refuse(`${describeLayer(source)} is not empty (${keys.join(", ")}).`);
     else if (MANAGED.has(source.type) && keys.some(governed)) refuse(`${describeLayer(source)} sets ${keys.filter(governed).map(k => `\`${k}\``).join(", ")}.`);
     summary.push({ source: source.type, version: layer.version, ...(source.file ? { file: source.file } : {}) });
   }
@@ -131,6 +172,8 @@ export function admitLocalConfiguration(read: ConfigRead, requirements: Requirem
   want(`model_providers.${expected.provider}.requires_openai_auth`, provider.requires_openai_auth, false);
   want(`model_providers.${expected.provider}.env_key`, provider.env_key ?? null, expected.tokenEnv);
   want(`model_providers.${expected.provider}.request_max_retries`, provider.request_max_retries, 0);
+  // A dropped stream is otherwise re-sent whole: the turn reports the drop instead (#380 AC4).
+  want(`model_providers.${expected.provider}.stream_max_retries`, provider.stream_max_retries, 0);
   for (const name of ["experimental_bearer_token", "auth", "http_headers", "env_http_headers", "query_params"]) want(`model_providers.${expected.provider}.${name}`, provider[name] ?? null, null);
   want("model_context_window", config.model_context_window, expected.contextTokens);
   want("web_search", config.web_search, "disabled");
@@ -142,5 +185,5 @@ export function admitLocalConfiguration(read: ConfigRead, requirements: Requirem
   want("features.multi_agent_v2", features?.multi_agent_v2 ?? null, false);
   const servers = record(config.mcp_servers);
   if (servers && Object.keys(servers).length) refuse(`MCP servers are configured (${Object.keys(servers).join(", ")}).`);
-  return { sessionFlags, layers: summary, managedRequirements: false };
+  return { sessionFlags, layers: summary, managedRequirements: false, ...(privateTrust ? { privateWorkspaceTrust: { scope: "current-workspace", level: "trusted" } as const } : {}) };
 }

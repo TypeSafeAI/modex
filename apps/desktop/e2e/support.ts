@@ -64,7 +64,7 @@ export function seedHome(settings: Record<string, unknown> = {}): { home: string
   return { home, repo };
 }
 
-/** Launches the built app against `home`. MODEX_E2E keeps the secret store on the test cipher: CI runners have no unlocked keychain. */
+/** Launches against `home`. Only unpackaged E2E uses synthetic storage; packaged artifacts require OS encryption. */
 export async function launch(home: string): Promise<{ app: ElectronApplication; page: Page }> {
   // Release verification runs the same flows against the installed bundle, including its ASAR and native modules.
   const executablePath = process.env.MODEX_PACKAGED_APP;
