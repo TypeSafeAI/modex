@@ -234,12 +234,6 @@ Holder, Admin, or App Manager must create the app record if it does not already 
 place signing keys in this tree.
 
 
-The [two-LAN evidence map](reviews/2026-10-28-companion-two-lan-acceptance.md) names, for each
-of the four #109 requirements, the test that proves it and what that test does not prove, and
-holds the physical acceptance procedure for a Mac on two subnets with the phone on the secondary
-one. It adds two race tests: the interface list changes while **Forget paired phones** or
-**Turn off** is running, and no listener survives with the old token. The earlier
-[revocation-during-rebind evidence](reviews/2026-10-24-companion-revoke-race.md) remains the
-base for those. Whether VPN tunnels (`utun`) and virtual bridges with private addresses should
-get a listener is Val's open policy question on #109; today they do, because the filter is by
-address range only. Automated socket tests do not establish physical secondary-LAN acceptance.
+The [two-LAN evidence map](reviews/2026-10-28-companion-two-lan-acceptance.md) names, for each of the four #109 requirements, the test that proves it and what that test does not prove, and holds the physical acceptance procedure for a Mac on two subnets with the phone on the secondary one. It adds two race tests: the interface list changes while **Forget paired phones** or **Turn off** is running, and no listener survives with the old token. The earlier [revocation-during-rebind evidence](reviews/2026-10-24-companion-revoke-race.md) remains the base for those.
+
+Val confirmed on 2026-11-12 that the existing address policy stays: any non-internal interface with a private IPv4 address (`10/8`, `172.16/12` or `192.168/16`) is supported, including VPN tunnels and virtual bridges. Public, CGNAT, link-local, internal and IPv6 addresses remain excluded. This confirms existing behavior; it adds no wildcard listener. Physical secondary-LAN acceptance remains open because Val cannot run that test now. Automated socket and UI results do not substitute for it. See the [current acceptance checkpoint](reviews/2026-11-12-companion-network-policy.md).
