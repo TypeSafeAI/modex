@@ -43,6 +43,49 @@ async function openLocalSettings(page: Page) {
   await expect(tid(page, "settings-local-section")).toBeVisible();
 }
 
+test("manual IDs remain visible in Settings and the model menu after metadata failure without admitting execution", async () => {
+  const hits: string[] = [];
+  const server = http.createServer((req, res) => {
+    hits.push(`${req.method} ${req.url}`);
+    res.writeHead(503, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "metadata unavailable" }));
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`;
+  const { home } = seedHome();
+  let opened: Awaited<ReturnType<typeof launch>> | undefined;
+  try {
+    opened = await launch(home);
+    const { page } = opened;
+    await openLocalSettings(page);
+    await tid(page, "local-runtime").selectOption("responses");
+    await tid(page, "local-label").fill("Manual unavailable");
+    await tid(page, "local-url").fill(url);
+    await tid(page, "local-manual-models").fill("typed/vendor model:opaque");
+    await tid(page, "local-add").click();
+    const card = tid(page, "local-connection");
+    await expect(card).toHaveAttribute("data-state", "unavailable");
+    await expect(tid(card, "local-model")).toContainText("typed/vendor model:opaque");
+    await expect(tid(card, "local-model")).toContainText("unverified");
+    await page.keyboard.press("Escape");
+    const before = (await page.evaluate(() => window.modex!.invoke("state:get", undefined))).threads.length;
+    await tid(page, "model-picker").click();
+    await expect(tid(page, "model-local-title")).toHaveText(["typed/vendor model:opaque"]);
+    await tid(page, "model-local-option").click();
+    await tid(page, "model-local-context").getByRole("menuitemradio", { name: /32,768/ }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Local execution is unavailable." })).toBeVisible();
+    await expect.poll(async () => (await page.evaluate(() => window.modex!.invoke("state:get", undefined))).threads.length).toBe(before);
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits.every(hit => hit === "GET /v1/models")).toBe(true);
+  } finally {
+    try { await opened?.app.close(); }
+    finally {
+      server.closeAllConnections();
+      await new Promise<void>(resolve => server.close(() => resolve()));
+    }
+  }
+});
+
 test("Settings adds an LM Studio server, lists its models without loading one, and removes it", async () => {
   const runtime = lmStudio();
   const url = await runtime.start();
