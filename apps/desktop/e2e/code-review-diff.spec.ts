@@ -105,6 +105,39 @@ test("Viewed marks a file on this Mac for one revision, folds it, survives a rel
   expect(await app.evaluate(() => (globalThis as any).__diff.local)).toEqual([]);
 });
 
+test("keyboard: F6 moves between the areas and [ ] between files, and typing a bracket in the filter types it (F6)", async () => {
+  await open();
+  await expect(tid(page, "cr-file-section")).toHaveCount(4);
+  await expect(tid(page, "cr-key-hint")).toContainText("F6");
+  const paths = await tid(page, "cr-file-section").evaluateAll((sections) => sections.map((s) => (s as HTMLElement).dataset.path!));
+  await tid(page, "code-review-search").focus();
+  const focused = () => page.evaluate(() => { const a = document.activeElement as HTMLElement | null; return a?.dataset.testid ?? a?.getAttribute("role") ?? a?.tagName ?? null; });
+  // Forward: inbox search, the selected tab, the diff, the file list, and round again. Four presses, not dozens of Tabs.
+  const seen: (string | null)[] = [];
+  for (let i = 0; i < 4; i++) { await page.keyboard.press("F6"); seen.push(await focused()); }
+  expect(seen).toEqual(["code-review-tab-changes", "code-review-diff", "cr-tree-file", "code-review-search"]);
+  await page.keyboard.press("Shift+F6");
+  expect(await focused()).toBe("cr-tree-file");
+  // ] and [ step through the files from anywhere in the pane, and stop at the ends.
+  const current = () => page.locator('[data-testid="cr-tree-file"][aria-current="true"]').getAttribute("title");
+  expect(await current()).toBe(paths[0]);
+  await page.keyboard.press("]");
+  await expect.poll(current).toBe(paths[1]);
+  await expect(page.locator(`[data-testid="cr-file-section"][data-path="${paths[1]}"]`)).toBeFocused();
+  await page.keyboard.press("]"); await page.keyboard.press("]"); await page.keyboard.press("]");
+  await expect.poll(current).toBe(paths[3]);
+  await page.keyboard.press("[");
+  await expect.poll(current).toBe(paths[2]);
+  // In a text field the keys are text.
+  const filter = page.getByRole("textbox", { name: "Filter remote files" });
+  await filter.focus();
+  await page.keyboard.type("[x]");
+  await expect(filter).toHaveValue("[x]");
+  await filter.fill("");
+  await expect.poll(current, "typing brackets moved to no other file").toBe(paths[2]);
+  expect(await app.evaluate(() => (globalThis as any).__diff.local)).toEqual([]);
+});
+
 test("expanding context asks the exact remote revision and never a local file", async () => {
   await open();
   const section = tid(page, "cr-file-section").first();

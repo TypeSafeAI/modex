@@ -302,3 +302,23 @@ test("fixture keys used here carry the account they were read under", () => {
   const k: PrKey = key(ACCOUNT_B, FIELD_GUIDE, 73);
   assert.equal(k.account, ACCOUNT_B.id);
 });
+
+test("real use: F6 walks the areas on screen in order and [ ] step through files without wrapping", async () => {
+  const { nextArea, stepFile } = await import("../src/renderer/code-review/keys.js");
+  // Areas: 0 inbox, 1 tabs, 2 overview, 3 diff, 4 file list. Only those on screen take part.
+  assert.equal(nextArea([0, 1, 2], -1, false), 0, "from outside, forward enters the first area");
+  assert.equal(nextArea([0, 1, 2], -1, true), 2, "and backward the last");
+  assert.equal(nextArea([0, 1, 3, 4], 1, false), 3, "an area that is not shown is skipped");
+  assert.equal(nextArea([0, 1, 3, 4], 4, false), 0, "forward wraps to the first");
+  assert.equal(nextArea([0, 1, 3, 4], 0, true), 4, "backward wraps to the last");
+  assert.equal(nextArea([0, 1, 3, 4], 2, false), 0, "an area that has gone counts as outside");
+  assert.equal(nextArea([], 0, false), null);
+  const paths = ["a.ts", "b.ts", "c.ts"];
+  assert.equal(stepFile(paths, "a.ts", false), "b.ts");
+  assert.equal(stepFile(paths, "c.ts", false), "c.ts", "the last file stays the last");
+  assert.equal(stepFile(paths, "a.ts", true), "a.ts", "the first file stays the first");
+  assert.equal(stepFile(paths, "c.ts", true), "b.ts");
+  assert.equal(stepFile(paths, null, false), "a.ts");
+  assert.equal(stepFile(paths, "filtered-out.ts", true), "c.ts");
+  assert.equal(stepFile([], "a.ts", false), null);
+});

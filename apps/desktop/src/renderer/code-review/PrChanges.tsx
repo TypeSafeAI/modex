@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { prKeyId, sameKey, sameRevision, type PrFile, type PrOverview, type ReadResult, type PrFiles } from "../../shared/code-review.js";
 import { LineComment } from "./ReviewComposer";
 import type { Writes } from "./writes.js";
@@ -12,6 +12,7 @@ import { prUrl } from "./model.js";
 import { anchorFor, anchorState, parsePatch, hunkBounds, contextWindow, type LineAnchor, type PatchRow } from "./patch.js";
 import { unavailableText } from "./text.js";
 import { loadViewed, setViewed } from "./viewed.js";
+import { stepFile, typing } from "./keys.js";
 import { highlightRows, REMOTE_TEXT_LIMITS } from "./remote-highlight.js";
 
 let sessionSequence = 0;
@@ -107,7 +108,15 @@ function ChangesSession({ overview, views, stale, bodyRef, treeRef, treeWidth, c
   const incomplete = pages.some(p => p.result.state !== "ready") || !!next || files.length < total || (lastData && lastData.state !== "unavailable" && lastData.coverage?.complete === false);
   const missing = files.filter(f => f.patch.kind === "omitted" && f.patch.reason !== "binary").length;
   const matching = files.filter(f => `${f.path}\n${f.previousPath ?? ""}`.toLocaleLowerCase().includes(filter.toLocaleLowerCase()));
-  return <div className="cr-changes-body" data-tree={treeWidth === null ? (filesShown ? "only" : "folded") : "beside"}>
+  // `[` and `]` go to the previous and next file, wherever focus is in the pane, unless text is being typed.
+  const fileKeys = (event: KeyboardEvent) => {
+    if ((event.key !== "[" && event.key !== "]") || event.altKey || event.ctrlKey || event.metaKey || typing(event.target)) return;
+    const to = stepFile(matching.map(f => f.path), selected, event.key === "[");
+    if (to === null) return;
+    event.preventDefault();
+    select(to);
+  };
+  return <div className="cr-changes-body" data-tree={treeWidth === null ? (filesShown ? "only" : "folded") : "beside"} onKeyDown={fileKeys}>
     <div ref={bodyRef} className="cr-diff" data-testid="code-review-diff" tabIndex={-1}>
       <div className="cr-diff-toolbar">
         <button type="button" disabled={busy} onClick={() => void load(null, true)}>Refresh files</button>
@@ -139,6 +148,7 @@ function ChangesSession({ overview, views, stale, bodyRef, treeRef, treeWidth, c
       {!busy && next && !stopped && last?.state === "ready" && files.length < DISPLAY.files && <button onClick={() => void load(next)}>Load next 100 files</button>}
       {stopped && <p role="status">{stopped} <a href={`${prUrl(overview.locator)}/files`} target="_blank" rel="noreferrer">Open in GitHub</a></p>}
       {files.length >= DISPLAY.files && (next || files.length < total) && <p>Display limited to {DISPLAY.files} files. <a href={`${prUrl(overview.locator)}/files`} target="_blank" rel="noreferrer">Open remaining files in GitHub</a></p>}
+      <p className="cr-hint" data-testid="cr-key-hint">Keys: F6 moves between the inbox, the tabs, the diff and the file list; [ and ] move between files.</p>
       <p className="cr-hint">Text patches may be incomplete. Each open file reports its patch coverage. Up to {DISPLAY.open} file bodies are open at once.</p>
     </div>
     {treeWidth !== null && <PanelResizeHandle side="workspace" className="cr-tree-resizer" label="Resize the file tree" width={treeWidth} min={SPLIT.treeMin} max={Math.max(SPLIT.treeMin, changesWidth - 1 - SPLIT.diffMin)} onResize={onTreeResize} onReset={onTreeReset} />}
