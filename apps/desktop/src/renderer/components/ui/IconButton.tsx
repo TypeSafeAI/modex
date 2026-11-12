@@ -4,6 +4,8 @@ import { Tooltip } from "./Tooltip";
 
 interface Props extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> {
   icon: IconName;
+  /** Draws the icon filled where it has a filled form: the selected destination, a chosen rating. */
+  solid?: boolean;
   /** Accessible name, also shown as the tooltip. Required: an icon alone has no name. */
   label: string;
   shortcut?: string;
@@ -16,7 +18,7 @@ interface Props extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"
 }
 
 /** A square, icon-only button with an accessible name and a tooltip. */
-export function IconButton({ icon, label, shortcut, reveal, size = "sm", tooltipSide, className, type = "button", ...rest }: Props) {
+export function IconButton({ icon, solid, label, shortcut, reveal, size = "sm", tooltipSide, className, type = "button", ...rest }: Props) {
   return (
     <Tooltip label={label} shortcut={shortcut} side={tooltipSide}>
       <button
@@ -25,7 +27,7 @@ export function IconButton({ icon, label, shortcut, reveal, size = "sm", tooltip
         className={`icon-btn ${size}${reveal ? " reveal" : ""}${className ? ` ${className}` : ""}`}
         {...rest}
       >
-        <Icon name={icon} size={size === "sm" ? 14 : 16} />
+        <Icon name={icon} size={size === "sm" ? 14 : 16} solid={solid} />
       </button>
     </Tooltip>
   );

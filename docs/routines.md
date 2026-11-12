@@ -7,7 +7,14 @@ and wait for the approval gate decision.
 
 ## Making one
 
-Open **Routines** from the rail and choose **New routine**:
+The page is called **Scheduled** in the app; a routine is shown there as a task. Open **Scheduled** from the
+rail and choose **New task**, or one of the starting points. A task is made by describing it in a message:
+"Every Friday at 7 pm, send me local weekend ideas." Modex reads the schedule from the message with fixed
+rules, not with a model: every N minutes, hours, days or weeks, daily, weekly, a weekday, a clock time, or
+once tomorrow. A message with no schedule becomes daily at 8 AM, and the composer says so before you send.
+The message becomes the task's instructions, the task is saved, and its first run starts at once.
+
+**Edit** on a task opens its settings:
 
 - **Name**, **Project** and **Instructions**: what to look into and report.
 - **Mode**: Chat or Plan. Both are read-only. There is no Agent or Full access choice.
@@ -17,8 +24,12 @@ Open **Routines** from the rail and choose **New routine**:
   repeat is 5 minutes. Days are local calendar days, so a 9:00 routine stays at 9:00 across a
   daylight-saving change.
 
-Each routine can be paused, resumed, edited, deleted or run now. Deleting a routine stops its run in
-progress. Its past runs stay in Activity, and its page stays in Space.
+Each routine can be paused, resumed, edited, deleted or run now, from its row's menu. Deleting a routine
+stops its run in progress. Its past runs stay in Activity, and its page stays in Space.
+
+A task that has run opens as its conversation: the newest run's thread, beside the task list. The outputs
+button in its header lists the Space page the task writes; opening it shows the page beside the
+conversation, with its earlier revisions, Download (Markdown) and Copy.
 
 ## What a run does
 
@@ -74,7 +85,8 @@ its last window closes. Launch at login comes in Phase 3.
 
 ## Activity
 
-The Routines view lists every run, newest first. Each entry shows:
+**All activity**, in the Scheduled list's menu, lists every run, newest first; a task's own runs are under
+**Task details and runs**. Each entry shows:
 
 - the routine;
 - the trigger: Scheduled, *Missed, run on wake*, or Run now, with the due time;

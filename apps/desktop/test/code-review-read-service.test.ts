@@ -1087,3 +1087,78 @@ test("CR-4 denied deployment enrichment leaves timeline useful and explicitly pa
   assert.equal(reply.result.coverage.complete, false);
   assert(value<import("../src/shared/code-review.js").PrActivity[]>(reply).some(r => r.kind === "opened"));
 });
+
+// --- Real-use benchmark, 2026-11-12: opening a pull request was slow (F1, F2) --------------------
+
+test("real use: a read for an opened pull request goes ahead of inbox reads that have not started", async () => {
+  const { github, read, prime } = setup({ concurrency: 1 });
+  await prime();
+  const releaseSearch = github.hold(/^search\/issues\?/);
+  const before = github.calls.length;
+  const inbox = read({ op: "inbox", query: "" });
+  // One search holds the only slot; the other waits behind it.
+  await until(() => github.calls.length === before + 1);
+  const overview = read({ op: "overview", key: keyOf(LENDING, 73) });
+  for (let i = 0; i < 50; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(github.calls.length, before + 1, "nothing interrupts the read that is running");
+  releaseSearch();
+  assert.equal(value<{ title: string }>(await overview).title, "Lend a hold to another branch");
+  await inbox;
+  const order = github.calls.slice(before).map((c) => c.endpoint.replace(/\?.*/, ""));
+  assert.deepEqual(order.slice(0, 3), ["search/issues", "repos/example-org/lending/pulls/73", "search/issues"], "the pull request's read ran before the waiting inbox search");
+  assert.equal(github.peak, 1, "still one gh at a time");
+});
+
+test("real use: the overview uses resolve's read once, and only while nothing newer was read", async () => {
+  const { github, read, prime, tick } = setup();
+  await prime();
+  const key = keyOf(LENDING, 73);
+  const link = `https://github.com/${LENDING.full_name}/pull/73`;
+  const pulls = () => github.calls.filter((c) => c.endpoint === "repos/example-org/lending/pulls/73").length;
+  let seen = pulls();
+  const step = async (request: Ask, cost: number, why: string) => { const reply = await read(request); assert.equal(pulls() - seen, cost, why); seen = pulls(); return reply; };
+
+  await step({ op: "resolve", input: link }, 1, "resolve reads the pull request");
+  const overview = await step({ op: "overview", key }, 0, "the overview that follows uses that read");
+  assert.equal(value<{ title: string }>(overview).title, "Lend a hold to another branch");
+  await step({ op: "overview", key }, 1, "a second overview reads for itself: the hand-off is used once");
+
+  await step({ op: "resolve", input: link }, 1, "resolve");
+  tick(2_001);
+  await step({ op: "overview", key }, 1, "an overview that comes late reads for itself");
+
+  const revision = revisionOf(github.pulls.get("7301#73")!);
+  await step({ op: "resolve", input: link }, 1, "resolve");
+  await step({ op: "checks", key, revision }, 2, "checks is bracketed by its own two reads");
+  await step({ op: "overview", key }, 1, "a newer read of the pull request supersedes the hand-off");
+
+  // A pull request that became unreadable after resolve is not shown from the hand-off.
+  await step({ op: "resolve", input: link }, 1, "resolve");
+  github.overrides = [{ pattern: /repos\/example-org\/lending\/pulls\/73$/, answer: { kind: "http", status: 404, headers: {}, body: Buffer.from("{}") } }];
+  assert.equal((await read({ op: "activity", key, cursor: null })).result.state, "unavailable");
+  assert.equal((await read({ op: "overview", key })).result.state, "unavailable");
+});
+
+test("real use: the merge base and the file page are read together between the two reads of the pull request", async () => {
+  const { github, read, prime } = setup();
+  await prime();
+  const key = keyOf(LENDING, 73);
+  const revision = revisionOf(github.pulls.get("7301#73")!);
+  const together = async (request: Ask, held: RegExp, other: RegExp, what: string) => {
+    const release = github.hold(held);
+    const before = github.calls.length;
+    const pending = read(request);
+    const started = () => github.calls.slice(before).some((c) => other.test(c.endpoint));
+    for (let i = 0; i < 2000 && !started(); i++) await new Promise((resolve) => setImmediate(resolve));
+    const ran = started();
+    release();
+    const reply = await pending;
+    github.gates = [];
+    assert.ok(ran, what);
+    assert.notEqual(reply.result.state, "unavailable", what);
+    const mine = github.calls.slice(before).map((c) => c.endpoint);
+    assert.equal(mine[0], "repos/example-org/lending/pulls/73", "the first read is the pull request");
+    assert.equal(mine.at(-1), "repos/example-org/lending/pulls/73", "and so is the last");
+  };
+  await together({ op: "files", key, revision, cursor: null }, /\/compare\//, /\/pulls\/73\/files\?/, "the file page is asked for while the merge base is still being read");
+});

@@ -1,6 +1,19 @@
+import { useState } from "react";
+import { applyUiScale, UI_SCALES, uiScale } from "../ui-scale";
 import { SecretInput } from "../streamer";
 import type { CSSProperties } from "react";
 import { THEMES, type Theme } from "../../shared/theme";
+
+/** Interface size, for this window: the whole app drawn at 100%, 110% or 125%. */
+export function InterfaceSize() {
+  const [scale, setScale] = useState(uiScale);
+  return <fieldset className="theme-picker ui-size" data-testid="interface-size">
+    <legend>Interface size</legend>
+    <div className="ui-size-options" role="radiogroup" aria-label="Interface size">
+      {UI_SCALES.map((value) => <button key={value} type="button" role="radio" aria-checked={scale === value} onClick={() => { applyUiScale(value, true); setScale(value); }}>{Math.round(value * 100)}%</button>)}
+    </div>
+  </fieldset>;
+}
 
 export function ThemePicker({ value, onChange }: { value: Theme; onChange: (theme: Theme) => void }) {
   return <fieldset className="theme-picker">

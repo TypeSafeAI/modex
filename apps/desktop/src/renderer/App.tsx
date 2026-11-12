@@ -23,6 +23,7 @@ import { bridge } from "./bridge";
 import { Sidebar } from "./components/Sidebar";
 import { ThreadView } from "./components/ThreadView";
 import { Workspace } from "./components/Workspace";
+import { subagentsOf } from "./components/SubagentsPanel";
 import { SettingsDialog } from "./components/SettingsDialog";
 import type { LocalMenu } from "./components/ModelMenu";
 import { discoverAll, useLocalModels } from "./local-models";
@@ -30,6 +31,7 @@ import type { LocalModelRef } from "../shared/local-models";
 import { CompanionDialog } from "./components/CompanionDialog";
 import { EmptyState } from "./components/EmptyState";
 import { DraftView, type Draft } from "./components/DraftView";
+import { CreateProjectDialog } from "./components/CreateProjectDialog";
 import { TitleBar } from "./components/TitleBar";
 import { Rail } from "./components/Rail";
 import { AnalyticsView } from "./components/AnalyticsView";
@@ -50,6 +52,12 @@ const isTerminalToggle = (e: KeyboardEvent) => e.ctrlKey && !e.metaKey && !e.alt
 const TerminalPanel = lazy(() => import("./components/TerminalPanel").then((m) => ({ default: m.TerminalPanel })));
 const ImagesView = lazy(() => import("./images/ImagesView").then(m => ({ default: m.ImagesView })));
 const RoutinesView = lazy(() => import("./routines/RoutinesView").then(m => ({ default: m.RoutinesView })));
+const PluginsCatalog = lazy(() => import("./plugins/PluginsCatalog").then(m => ({ default: m.PluginsCatalog })));
+/**
+ * The browser versions: a tab on the development server (no bridge is injected), and the demo workspace at
+ * app.modex.codes. Neither has a plugin host, so Plugins is a preview with every action unavailable.
+ */
+const WEB = !window.modex || window.modex.platform === "demo";
 const PluginSurface = lazy(() => import("./plugins/PluginSurface").then(m => ({ default: m.PluginSurface })));
 const SpaceView = lazy(() => import("./space/SpaceView").then(m => ({ default: m.SpaceView })));
 const CodeReviewView = lazy(() => import("./code-review/CodeReviewView"));
@@ -197,6 +205,9 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   const changesRequest = useRef(0);
   // Which threads have their terminal panel showing. Hiding a panel leaves its shell running.
   const [terminals, setTerminals] = useState<Record<string, boolean>>({});
+  const [subagentsSignal, setSubagentsSignal] = useState(0);
+  /** The thread of the scheduled task being read on the Scheduled page, shown there beside the task list. */
+  const [scheduledThread, setScheduledThread] = useState<string | null>(null);
   // A command line for a thread's shell (a failure card's sign-in fix); the panel types it once per nonce.
   const [terminalCommands, setTerminalCommands] = useState<Record<string, { text: string; nonce: number }>>({});
   const commandNonce = useRef(0);
@@ -216,8 +227,39 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   }, []);
   const knowledgeFocused = surface === "space" && knowledgeReady;
   const sidebarOpen = knowledgeFocused ? knowledgeSidebarOpen : layout.sidebar;
+  // On the web a hidden sidebar opens over the page while the pointer is on the rail, its toggle or the
+  // sidebar itself, and closes when the pointer leaves. Clicking the toggle keeps it open as usual.
+  const [sidebarPeek, setSidebarPeek] = useState(false);
+  const railQuiet = useRef(false);
+  // Heard on every page, peeking or not: the click that changes page is what must keep the sidebar away.
+  useEffect(() => {
+    if (!WEB) return;
+    const picked = (event: MouseEvent) => { if (event.target instanceof Element && event.target.closest(".rail")) { railQuiet.current = true; setSidebarPeek(false); } };
+    document.addEventListener("click", picked, true);
+    return () => document.removeEventListener("click", picked, true);
+  }, []);
+  useEffect(() => {
+    // On Chat with the sidebar already showing there is nothing to peek; every other page hides it.
+    if (!WEB || (sidebarOpen && surface === "chat")) { setSidebarPeek(false); return; }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const over = (event: PointerEvent) => {
+      if (event.pointerType !== "mouse") return;
+      const target = event.target instanceof Element ? event.target : null;
+      const inside = Boolean(target?.closest('.rail, [data-testid="sidebar-toggle"], .sidebar, .menu, .thread-details'));
+      // A click on the rail went somewhere: the sidebar stays away until the pointer has left the rail.
+      if (railQuiet.current && target && !target.closest('.rail, [role="tooltip"]')) railQuiet.current = false;
+      clearTimeout(timer);
+      if (inside && !railQuiet.current) setSidebarPeek(true); else if (!inside) timer = setTimeout(() => setSidebarPeek(false), 220);
+    };
+
+    const gone = () => { clearTimeout(timer); timer = setTimeout(() => setSidebarPeek(false), 220); };
+    document.addEventListener("pointerover", over);
+    document.documentElement.addEventListener("pointerleave", gone);
+    return () => { clearTimeout(timer); document.removeEventListener("pointerover", over); document.documentElement.removeEventListener("pointerleave", gone); };
+  }, [sidebarOpen, surface]);
   const streamerMode = layout.streamerMode;
-  const showAnalytics = analyticsEnabled && layout.analytics;
+  // The browser version has no Analytics page: its rail entry and the page itself are desktop only.
+  const showAnalytics = !WEB && analyticsEnabled && layout.analytics;
   // Hiding Analytics in Settings while it is open returns to Chat rather than leaving an unreachable surface.
   useEffect(() => { if (!showAnalytics && surface === "analytics") setSurface("chat"); }, [showAnalytics, surface]);
   const reviewEnabled = codeReviewEnabled && layout.codeReview;
@@ -515,6 +557,12 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
     setDraft(null);
     setSelected(id);
   }, []);
+  /** Shows a scheduled task's thread on the Scheduled page itself: the same transcript and composer as Chat. */
+  const showScheduledThread = useCallback((id: string | null) => {
+    setScheduledThread(id);
+    if (!id || nativeHoldRef.current) return;
+    void (stateRef.current?.threads.some(t => t.id === id) ? Promise.resolve() : refresh()).then(() => { setDraft(null); setSelected(id); }).catch((err: Error) => setError({ message: err.message }));
+  }, []);
   /** Shows a thread in chat, refreshing first when this window has not heard of it yet. */
   const openThread = (id: string) => { void (state?.threads.some(t => t.id === id) ? Promise.resolve() : refresh()).then(() => { selectThread(id); setSurface("chat"); }).catch((err: Error) => setError({ message: err.message })); };
   const history = useSelectionHistory(selected, selectThread, (id) => Boolean(state?.threads.some((t) => t.id === id)));
@@ -615,12 +663,14 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
     return next;
   });
 
-  const addProject = () => act(async () => {
-    const folder = bridge.platform === "web" ? window.prompt("Local project folder (absolute path)")?.trim() : undefined;
-    if (bridge.platform === "web" && !folder) return;
-    const p = await bridge.invoke("project:add", folder ? { path: folder } : undefined);
+  /** Projects are made in the Create project dialog: a name and the folder it works in. */
+  const [creatingProject, setCreatingProject] = useState(false);
+  // The demo workspace has no folders on this computer: it adds its own sample project, with no dialog.
+  const addProject = () => { if (bridge.platform === "demo") void act(async () => { if (await bridge.invoke("project:add", undefined)) await refresh(); }); else setCreatingProject(true); };
+  const createProject = async (folder: string, name: string) => {
+    const p = await bridge.invoke("project:add", { path: folder, ...(name ? { name } : {}) });
     if (p) await refresh();
-  });
+  };
   const resumeNativeSend = async (initial: PendingSendView): Promise<void> => {
     const capability = nativeRef.current;
     if (!capability || pendingRuns.current.has(initial.id) || nativeHoldRef.current || nativeRecoveryError) return;
@@ -974,6 +1024,8 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   const activeAgents = activeThreads.flatMap(t => (items[t.id] ?? []).flatMap(item =>
     item.kind === "tool" && item.agent && (item.agent.state === "running" || item.agent.state === "waiting")
       ? [{ threadId: t.id, threadTitle: t.title, agent: item.agent }] : []));
+  const scheduledChat = surface === "routines" && Boolean(scheduledThread) && thread?.id === scheduledThread;
+  const threadAgents = thread ? subagentsOf(items[thread.id] ?? []) : [];
   const activeWork = { count: activeThreads.length, agents: activeAgents.length, waiting: activeThreads.filter((candidate) => candidate.status === "waiting").length };
   const openActiveWork = () => {
     const next = activeThreads[0];
@@ -1004,6 +1056,8 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
         onToggleSidebar={() => setSidebarOpen((v) => !v)}
         showChanges={showChanges}
         onToggleChanges={() => setShowChanges((v) => !v)}
+        subagents={threadAgents.length ? { active: threadAgents.filter((item) => item.agent.state === "running" || item.agent.state === "waiting").length, total: threadAgents.length } : undefined}
+        onOpenSubagents={() => { setLayout({ changes: true }); setSubagentsSignal((n) => n + 1); }}
         showTerminal={Boolean(thread && showChanges && terminals[thread.id])}
         onToggleTerminal={() => thread && toggleTerminal(thread.id)}
         changedCount={changes?.files.length ?? 0}
@@ -1013,8 +1067,9 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
         onArchive={archiveThread}
         platform={bridge.platform}
       />
-      <Rail surface={surface} onOpenRoutines={() => setSurface("routines")} onOpenAnalytics={showAnalytics ? () => setSurface("analytics") : undefined} onOpenImages={mediaFeatures.images ? openImages : undefined} onOpenPlugins={mediaFeatures.plugins ? () => setSurface("plugins") : undefined} onOpenCodeReview={reviewEnabled ? () => { setReviewOpened(true); setSurface("code-review"); } : undefined} onOpenChat={() => setSurface("chat")} onOpenSpace={spaceEnabled ? () => { setSpaceOpened(true); setSurface("space"); } : undefined} activeWork={activeWork} onOpenActiveWork={openActiveWork} onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} streamerMode={streamerMode} onEnableStreamerMode={() => setLayout({ streamerMode: !streamerMode })} />
-      <div ref={panels.setSheet} className="sheet" data-testid="sheet" data-surface={surface}>
+      <Rail surface={surface} onOpenRoutines={() => setSurface("routines")} onOpenAnalytics={showAnalytics ? () => setSurface("analytics") : undefined} onOpenImages={mediaFeatures.images ? openImages : undefined} onOpenPlugins={mediaFeatures.plugins || WEB ? () => setSurface("plugins") : undefined} onOpenCodeReview={reviewEnabled ? () => { setReviewOpened(true); setSurface("code-review"); } : undefined} onOpenChat={() => setSurface("chat")} onOpenSpace={spaceEnabled ? () => { setSpaceOpened(true); setSurface("space"); } : undefined} activeWork={activeWork} onOpenActiveWork={openActiveWork} onOpenSettings={() => setShowSettings(true)} onOpenCompanion={() => setShowCompanion(true)} streamerMode={streamerMode} onEnableStreamerMode={() => setLayout({ streamerMode: !streamerMode })} />
+      {creatingProject && <CreateProjectDialog onCreate={createProject} onClose={() => setCreatingProject(false)} />}
+      <div ref={panels.setSheet} className={`sheet${sidebarPeek && !(sidebarOpen && surface === "chat") ? " sidebar-peek" : ""}`} data-testid="sheet" data-surface={surface}>
         {(surface === "chat" || surface === "space" || surface === "code-review") && sidebarOpen && <PanelResizeHandle side="sidebar" width={panels.sidebarWidth} min={PANEL_WIDTHS.sidebar.min} max={panels.sidebarMax}
           onResize={sidebarWidth => setLayout({ sidebarWidth })} onReset={() => setLayout({ sidebarWidth: panels.sidebarDefault })} />}
         {surface === "chat" && thread && showChanges && <PanelResizeHandle side="workspace" width={panels.workspaceWidth} min={PANEL_WIDTHS.workspace.min} max={panels.workspaceMax}
@@ -1030,12 +1085,12 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
           await attachmentActions(key).onFiles([new File([bytes], staged.name, { type: staged.mime })]);
           setSurface("chat");
         }} /></Suspense>}
-        {surface === "plugins" && <Suspense fallback={<div role="status">Opening Plugins…</div>}><PluginSurface projects={state.projects} onImages={openImages} /></Suspense>}
-        {surface === "routines" && <Suspense fallback={<div role="status">Opening Routines…</div>}><RoutinesView active={!showSettings && !showCompanion} projects={state.projects}
-          onOpenThread={openThread}
+        {surface === "plugins" && <Suspense fallback={<div role="status">Opening Plugins…</div>}>{mediaFeatures.plugins ? <PluginSurface projects={state.projects} onImages={openImages} /> : <PluginsCatalog />}</Suspense>}
+        {surface === "routines" && <Suspense fallback={<div role="status">Opening Scheduled…</div>}><RoutinesView active={!showSettings && !showCompanion} projects={state.projects}
+          onOpenThread={openThread} onShowThread={showScheduledThread} chatShown={scheduledChat}
           onOpenPage={spaceEnabled ? id => { setOpenPage({ id }); setSpaceOpened(true); setSurface("space"); } : undefined} /></Suspense>}
         {spaceOpened && <Suspense fallback={surface === "space" ? <div role="status">Opening Space…</div> : null}><SpaceView onOpenThread={openThread} onOpenImages={mediaFeatures.images ? openImages : undefined} onKnowledgeReadyChange={onKnowledgeReadyChange} openPage={openPage} openProject={openProject} active={surface === "space" && !showSettings && !showCompanion} sidebarOpen={sidebarOpen} onOpenChat={openSpaceChat} chatOpen={spaceChatOpen} /></Suspense>}
-        {sidebarOpen && (
+        {(sidebarOpen || sidebarPeek) && (
           <Sidebar
             state={state}
             selected={selected}
@@ -1052,7 +1107,8 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
             {...(spaceEnabled ? { workspaces, onOpenNotes: openNotes, onMoveToWorkspace: moveToWorkspace, onMoveToNewWorkspace: moveToNewWorkspace } : {})}
           />
         )}
-        <main className={`main${surface === "space" && spaceChatOpen ? " space-chat" : ""}`} data-testid={surface === "space" && spaceChatOpen ? "space-chat" : "main"}>
+        <main className={`main${surface === "space" && spaceChatOpen ? " space-chat" : ""}${scheduledChat ? " scheduled-chat" : ""}`} data-testid={surface === "space" && spaceChatOpen ? "space-chat" : "main"}>
+          {scheduledChat && <div id="scheduled-chat-header" className="scheduled-chat-header" />}
           {surface === "space" && spaceChatOpen && <header className="space-chat-header"><IconButton icon="minus" label="Minimize chat" size="md" onClick={() => { setSpaceChatOpen(false); requestAnimationFrame(() => document.querySelector<HTMLInputElement>(".space-chat-launcher input")?.focus()); }} /><span>{thread?.title ?? "New chat"}</span><IconButton icon="expand" label="Open chat in Home" size="md" onClick={() => setSurface("chat")} /></header>}
           {surface === "chat" && <UpdateBanner {...updater} />}
           {pendingSends.map(record => <section key={record.id} className="notice" data-testid="pending-message" aria-label="Saved message awaiting send">
@@ -1116,6 +1172,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
           ) : null}
         </main>
         {thread && <Workspace key={thread.id} thread={thread} changes={changes} onRefresh={() => loadChanges(thread.id)} onRevert={revert}
+          items={items[thread.id] ?? []} subagentsSignal={subagentsSignal}
           visible={surface === "chat" && showChanges} onShow={() => setLayout({ changes: true })} onHide={() => setLayout({ changes: false })}
           suspended={suspended || surface !== "chat" || showSettings || showCompanion}
           onOpenTerminal={() => { setLayout({ changes: true }); setTerminals((m) => ({ ...m, [thread.id]: true })); }}
@@ -1138,7 +1195,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
           </div>
         )}
       </div>
-      {showSettings && <SettingsDialog settings={state.settings} projects={state.projects} currentProjectId={thread?.projectId ?? draft?.projectId} onSave={saveSettings} onClose={() => { setShowSettings(false); setSettingsSection(undefined); }} initialSection={settingsSection} {...(analyticsEnabled ? { analyticsInRail: layout.analytics, onAnalyticsInRail: (shown: boolean) => setLayout({ analytics: shown }) } : {})} {...(codeReviewEnabled ? { codeReviewInRail: layout.codeReview, onCodeReviewInRail: (codeReview: boolean) => setLayout({ codeReview }) } : {})} />}
+      {showSettings && <SettingsDialog settings={state.settings} projects={state.projects} currentProjectId={thread?.projectId ?? draft?.projectId} onSave={saveSettings} onClose={() => { setShowSettings(false); setSettingsSection(undefined); }} initialSection={settingsSection} {...(analyticsEnabled && !WEB ? { analyticsInRail: layout.analytics, onAnalyticsInRail: (shown: boolean) => setLayout({ analytics: shown }) } : {})} {...(codeReviewEnabled ? { codeReviewInRail: layout.codeReview, onCodeReviewInRail: (codeReview: boolean) => setLayout({ codeReview }) } : {})} />}
       {showCompanion && <CompanionDialog onClose={() => setShowCompanion(false)} />}
     </>
   ) : <span>{error?.message ?? "Loading…"}</span>;

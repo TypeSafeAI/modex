@@ -4,6 +4,7 @@ import { prKeyId, scopeOf, SIGN_IN_CHANGED, type CodeReviewReply, type CodeRevie
 import { Reader } from "../src/renderer/code-review/reader.js";
 import { back, canBack, canForward, closeChanges, current, DEFAULT_VIEW, fitSplit, fitTree, forward, panesFor, showTab, SPLIT, toggleSplit, visit, type History } from "../src/renderer/code-review/navigation.js";
 import { isPinned, loadPins, PINS_KEY, togglePin } from "../src/renderer/code-review/pins.js";
+import { loadViewed, setViewed, VIEWED_KEY } from "../src/renderer/code-review/viewed.js";
 import { LAYOUT_KEY, LEGACY_CODE_REVIEW_SWITCH, loadLayout, saveLayout } from "../src/shared/layout.js";
 import { ACCOUNT_A, ACCOUNT_B, FIELD_GUIDE, key, LENDING, locator, R1, R4 } from "./fixtures/code-review.js";
 
@@ -241,6 +242,36 @@ test("pins are local, per account, validated on load and capped", () => {
   assert.equal(loadPins(storage, ACCOUNT_A.id).length, 50);
 });
 
+test("viewed marks are local, per account and belong to one revision (C65)", () => {
+  const store = new Map<string, string>();
+  const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) };
+  const pr = key(ACCOUNT_A, LENDING, 73);
+  const at = (head: string, base = "a") => ({ baseRef: "main", baseSha: base.repeat(40), headSha: head.repeat(40) });
+  assert.deepEqual(loadViewed(storage, pr, at("b")), []);
+  assert.deepEqual(setViewed(storage, pr, at("b"), "src/a.ts", true), ["src/a.ts"]);
+  assert.deepEqual(setViewed(storage, pr, at("b"), "src/b.ts", true), ["src/a.ts", "src/b.ts"]);
+  assert.deepEqual(setViewed(storage, pr, at("b"), "src/a.ts", true), ["src/b.ts", "src/a.ts"], "marking twice keeps one mark");
+  assert.deepEqual(loadViewed(storage, pr, at("b")), ["src/b.ts", "src/a.ts"]);
+  assert.deepEqual(loadViewed(storage, pr, at("c")), [], "a new head shows no marks: the files may have changed");
+  assert.deepEqual(loadViewed(storage, pr, at("b", "d")), [], "so does a moved base");
+  assert.deepEqual(loadViewed(storage, key(ACCOUNT_B, LENDING, 73), at("b")), [], "another account sees none of them");
+  assert.deepEqual(loadViewed(storage, key(ACCOUNT_A, LENDING, 74), at("b")), [], "nor does another pull request");
+  assert.deepEqual(setViewed(storage, pr, at("b"), "src/b.ts", false), ["src/a.ts"]);
+  assert.deepEqual(setViewed(storage, pr, at("c"), "src/c.ts", true), ["src/c.ts"], "a mark at a new head replaces the earlier revision's");
+  assert.deepEqual(loadViewed(storage, pr, at("b")), []);
+  assert.deepEqual(setViewed(storage, pr, at("c"), "src/c.ts", false), []);
+  assert.deepEqual(JSON.parse(store.get(VIEWED_KEY)!)[ACCOUNT_A.id], {}, "an unmarked pull request leaves no entry");
+  store.set(VIEWED_KEY, JSON.stringify({ [ACCOUNT_A.id]: { [`${pr.repoId}#73`]: { baseSha: "a".repeat(40), headSha: "b".repeat(40), paths: ["ok.ts", 7, "", "ok.ts"] }, [`${pr.repoId}#74`]: { baseSha: "zz", headSha: "b".repeat(40), paths: ["x"] } } }));
+  assert.deepEqual(loadViewed(storage, pr, at("b")), ["ok.ts"], "malformed paths are dropped");
+  assert.deepEqual(loadViewed(storage, key(ACCOUNT_A, LENDING, 74), at("b")), [], "a malformed revision holds no marks");
+  store.set(VIEWED_KEY, "{not json");
+  assert.deepEqual(loadViewed(storage, pr, at("b")), []);
+  for (let n = 1; n <= 210; n++) setViewed(storage, key(ACCOUNT_A, LENDING, n), at("b"), "f.ts", true);
+  assert.equal(Object.keys(JSON.parse(store.get(VIEWED_KEY)!)[ACCOUNT_A.id]).length, 200, "the oldest pull requests' marks go first");
+  assert.deepEqual(loadViewed(storage, key(ACCOUNT_A, LENDING, 210), at("b")), ["f.ts"]);
+  assert.deepEqual(loadViewed(storage, key(ACCOUNT_A, LENDING, 1), at("b")), []);
+});
+
 test("the destination defaults on, keeps an explicit old off, and the saved choice wins over the old switch", () => {
   const storage = (value: string | null, saved?: object) => ({ getItem: (k: string) => k === LEGACY_CODE_REVIEW_SWITCH ? value : k === LAYOUT_KEY && saved ? JSON.stringify(saved) : null, setItem: () => {} });
   assert.equal(loadLayout(storage(null)).codeReview, false);
@@ -270,4 +301,24 @@ test("the workspace's pane widths persist with the layout, and invalid saved val
 test("fixture keys used here carry the account they were read under", () => {
   const k: PrKey = key(ACCOUNT_B, FIELD_GUIDE, 73);
   assert.equal(k.account, ACCOUNT_B.id);
+});
+
+test("real use: F6 walks the areas on screen in order and [ ] step through files without wrapping", async () => {
+  const { nextArea, stepFile } = await import("../src/renderer/code-review/keys.js");
+  // Areas: 0 inbox, 1 tabs, 2 overview, 3 diff, 4 file list. Only those on screen take part.
+  assert.equal(nextArea([0, 1, 2], -1, false), 0, "from outside, forward enters the first area");
+  assert.equal(nextArea([0, 1, 2], -1, true), 2, "and backward the last");
+  assert.equal(nextArea([0, 1, 3, 4], 1, false), 3, "an area that is not shown is skipped");
+  assert.equal(nextArea([0, 1, 3, 4], 4, false), 0, "forward wraps to the first");
+  assert.equal(nextArea([0, 1, 3, 4], 0, true), 4, "backward wraps to the last");
+  assert.equal(nextArea([0, 1, 3, 4], 2, false), 0, "an area that has gone counts as outside");
+  assert.equal(nextArea([], 0, false), null);
+  const paths = ["a.ts", "b.ts", "c.ts"];
+  assert.equal(stepFile(paths, "a.ts", false), "b.ts");
+  assert.equal(stepFile(paths, "c.ts", false), "c.ts", "the last file stays the last");
+  assert.equal(stepFile(paths, "a.ts", true), "a.ts", "the first file stays the first");
+  assert.equal(stepFile(paths, "c.ts", true), "b.ts");
+  assert.equal(stepFile(paths, null, false), "a.ts");
+  assert.equal(stepFile(paths, "filtered-out.ts", true), "c.ts");
+  assert.equal(stepFile([], "a.ts", false), null);
 });

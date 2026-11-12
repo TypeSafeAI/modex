@@ -3,6 +3,17 @@ import { IMAGE_TYPES, LIMITS } from "../shared/attachments";
 import type { BridgeCommands, ModexBridge, ThreadEvent, TerminalEvent } from "../shared/types";
 
 /** Same-origin dev transport. The Electron preload continues to take precedence. */
+/** True when the page is being reloaded for a stale token. At most once a minute, so a real refusal still shows. */
+function staleTokenReload(): boolean {
+  try {
+    const last = Number(sessionStorage.getItem("modex.bridge.reloaded") ?? 0);
+    if (Date.now() - last < 60_000) return false;
+    sessionStorage.setItem("modex.bridge.reloaded", String(Date.now()));
+  } catch { return false; }
+  location.reload();
+  return true;
+}
+
 export function createBrowserBridge(): ModexBridge {
   const token = document.querySelector<HTMLMetaElement>('meta[name="modex-browser-token"]')?.content ?? "";
   const threads = new Set<(event: ThreadEvent) => void>();
@@ -63,6 +74,8 @@ export function createBrowserBridge(): ModexBridge {
         body: JSON.stringify(staging ? payload : { channel, payload }),
       });
       const result = await response.json();
+      // The dev server was restarted: this page holds the old server's token. Load the page again, once.
+      if (!response.ok && result.error === "Untrusted browser bridge request." && staleTokenReload()) return new Promise<never>(() => {});
       if (!response.ok) throw new Error(result.error ?? `Browser bridge failed (${response.status}).`);
       return result.value;
     },

@@ -1,7 +1,7 @@
 import { SecretOption, SecretInput } from "../streamer";
 import { ModexAccount } from "./ModexAccount";
 import { ClaudeAccounts } from "./ClaudeAccounts";
-import { ThemePicker } from "./ThemePicker";
+import { ThemePicker, InterfaceSize } from "./ThemePicker";
 import { useEffect, useRef, useState } from "react";
 import type { BackendHealth, BackendId, ChatGPTStatus, EffortLevel, Mode, ModelInfo, Project, RoutingPolicy, RoutingStatus, RoutingTest, Settings } from "../../shared/types";
 import { BACKENDS, EFFORT_LEVELS, MODES } from "../../shared/types";
@@ -327,6 +327,7 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
           <h3 id="settings-general-title">General</h3>
           <ModexAccount />
           <ThemePicker value={s.theme} onChange={(theme) => set("theme", theme)} />
+          <InterfaceSize />
           <label className="field">
             <span>Default backend for new threads</span>
             <select value={s.default_backend} onChange={(e) => set("default_backend", e.target.value as BackendId)}>

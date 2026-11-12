@@ -73,6 +73,73 @@ test("grouped diffs, both gutters, hierarchy, filter and keyboard selection use 
   expect((await log()).filter((r: any) => r.op === "files")).toHaveLength(1);
 });
 
+test("Viewed marks a file on this Mac for one revision, folds it, survives a reload and asks GitHub nothing (C65)", async () => {
+  await open();
+  const first = tid(page, "cr-file-section").first();
+  const viewed = page.getByRole("checkbox", { name: "Viewed src/holds/move.ts", exact: true });
+  await expect(tid(page, "cr-viewed-count")).toHaveText("0 of 4 viewed");
+  await expect(first.getByTestId("diff").first()).toBeVisible();
+  const asked = (await log()).length;
+  await viewed.focus();
+  await page.keyboard.press("Space");
+  await expect(viewed).toBeChecked();
+  await expect(first.getByTestId("diff")).toHaveCount(0);
+  await expect(tid(page, "cr-viewed-count")).toHaveText("1 of 4 viewed");
+  await expect(page.getByRole("button", { name: "View remote diff for src/holds/move.ts, viewed", exact: true })).toBeVisible();
+  // The file can still be opened, and unmarking it does not reopen or lose anything.
+  await page.getByRole("button", { name: "Expand src/holds/move.ts", exact: true }).click();
+  await expect(first.getByTestId("diff").first()).toBeVisible();
+  expect((await log()).length, "a mark is local: no read, and there is no write channel call").toBe(asked);
+  await page.reload();
+  await tid(page, "rail-code-review").click();
+  await page.locator('[data-testid="code-review-row"][data-pr="example-org/field-guide#91"]').click();
+  await tid(page, "code-review-tab-changes").click();
+  await expect(page.getByRole("checkbox", { name: "Viewed src/holds/move.ts", exact: true })).toBeChecked();
+  await expect(tid(page, "cr-viewed-count")).toHaveText("1 of 4 viewed");
+  // A new head may have changed the file: its marks are not carried over.
+  await app.evaluate(() => { const s = (globalThis as any).__diff; s.revision = { ...s.revision, headSha: "f".repeat(40) }; });
+  await refreshOverview();
+  await expect(tid(page, "cr-file-section").first()).toHaveAttribute("data-head-sha", "f".repeat(40));
+  await expect(tid(page, "cr-viewed-count")).toHaveText("0 of 4 viewed");
+  await expect(page.getByRole("checkbox", { name: "Viewed src/holds/move.ts", exact: true })).not.toBeChecked();
+  expect(await app.evaluate(() => (globalThis as any).__diff.local)).toEqual([]);
+});
+
+test("keyboard: F6 moves between the areas and [ ] between files, and typing a bracket in the filter types it (F6)", async () => {
+  await open();
+  await expect(tid(page, "cr-file-section")).toHaveCount(4);
+  await expect(tid(page, "cr-key-hint")).toContainText("F6");
+  const paths = await tid(page, "cr-file-section").evaluateAll((sections) => sections.map((s) => (s as HTMLElement).dataset.path!));
+  await tid(page, "code-review-search").focus();
+  const focused = () => page.evaluate(() => { const a = document.activeElement as HTMLElement | null; return a?.dataset.testid ?? a?.getAttribute("role") ?? a?.tagName ?? null; });
+  // Forward: inbox search, the selected tab, the diff, the file list, and round again. Four presses, not dozens of Tabs.
+  const seen: (string | null)[] = [];
+  for (let i = 0; i < 4; i++) { await page.keyboard.press("F6"); seen.push(await focused()); }
+  expect(seen).toEqual(["code-review-tab-changes", "code-review-diff", "cr-tree-file", "code-review-search"]);
+  await page.keyboard.press("Shift+F6");
+  expect(await focused()).toBe("cr-tree-file");
+  // ] and [ step through the files from anywhere in the pane, and stop at the ends.
+  const current = () => page.locator('[data-testid="cr-tree-file"][aria-current="true"]').getAttribute("title");
+  expect(await current()).toBe(paths[0]);
+  await page.keyboard.press("]");
+  await expect.poll(current).toBe(paths[1]);
+  await expect(page.locator(`[data-testid="cr-file-section"][data-path="${paths[1]}"]`)).toBeFocused();
+  await page.keyboard.press("]"); await page.keyboard.press("]"); await page.keyboard.press("]");
+  await expect.poll(current).toBe(paths[3]);
+  await page.keyboard.press("[");
+  await expect.poll(current).toBe(paths[2]);
+  // The move focuses its file on the next frame; wait for it, or that focus lands in the middle of the typing below.
+  await expect(page.locator(`[data-testid="cr-file-section"][data-path="${paths[2]}"]`)).toBeFocused();
+  // In a text field the keys are text.
+  const filter = page.getByRole("textbox", { name: "Filter remote files" });
+  await filter.focus();
+  await page.keyboard.type("[x]");
+  await expect(filter).toHaveValue("[x]");
+  await filter.fill("");
+  await expect.poll(current, "typing brackets moved to no other file").toBe(paths[2]);
+  expect(await app.evaluate(() => (globalThis as any).__diff.local)).toEqual([]);
+});
+
 test("expanding context asks the exact remote revision and never a local file", async () => {
   await open();
   const section = tid(page, "cr-file-section").first();

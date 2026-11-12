@@ -390,7 +390,7 @@ must prove it.
 | C04 | R1, R2, R3, R4 | Title bar | Top-right buttons (expand, right panel) | shell | Existing title-bar controls; #322 confirms which apply on this surface |
 | C05 | R1, R2, R3, R4 | Tab strip | PR tab: icon, truncated title, close | #322 | Navigation spec: open, switch and close, per PR key |
 | C06 | R1, R2, R3, R4 | Tab strip | Changes tab with +/− totals | #322 | Opens the PR's Changes; totals from `overview.totals` |
-| C07 | R1, R2, R3, R4 | Tab strip | New tab (+) | #322 | Decision 6 (2026-11-04): the control is removed from this surface. Until that change lands it is shown unavailable |
+| C07 | R1, R2, R3, R4 | Tab strip | New tab (+) | #322 | Decision 6 (2026-11-04): the control is removed from this surface |
 | C08 | R1, R2, R3, R4 | Rail | Code Review rail button, selected | #322 | Opens the `code-review` surface; selected state |
 | C09 | R1, R2, R3, R4 | Rail | Other rail icons and their dots | shell | Existing rail; unchanged |
 | C10 | R1, R2, R3, R4 | Rail | Account monogram at the bottom | shell | Existing; unchanged |
@@ -448,7 +448,7 @@ must prove it.
 | C62 | R4 | Changes header | State, number and header actions repeated in the Changes pane | #322 | Same controls as C21–C29, second pane |
 | C63 | R4 | Changes toolbar | ⋯ menu and view toggles (tree, file, image, layout) | #324 | Each mapped to a `Diff` option (wrap, highlight exist) or left out |
 | C64 | R4 | Diff | File header: icon, path with a truncated head, +/− | #324 | `FileIcon` (`ChangesPanel.tsx:96`); `PrFile` |
-| C65 | R4 | Diff | Viewed (eye) toggle per file | #324 | Decision 5 (2026-11-04): stored locally and tied to the revision; no GitHub write. Not built yet |
+| C65 | R4 | Diff | Viewed (eye) toggle per file | #324 | Decision 5 (2026-11-04): stored locally and tied to the revision; no GitHub write. Built: a checkbox per file and a count of viewed files |
 | C66 | R4 | Diff | File ⋯ menu | #324 | Copy path, Open in GitHub; never Discard (#324 AC4) |
 | C67 | R4 | Diff | Folded unmodified lines with expand up/down | #324 | `context` request (contract test bounds it); `Diff` `onExpand` |
 | C68 | R4 | Diff | Old and new line numbers, added and removed rows | #324 | Patch-model anchor tests (#324 AC2) over the R4 fixture patches |
@@ -490,8 +490,8 @@ not built yet says so.
 2. **C21, the state menu** (close, reopen, draft): **in #326's scope** (Val, 2026-10-25). Built: [CR-7 state, edits and reviewers](#cr-7-state-edits-and-reviewers).
 3. **C31 and C35, editing the title and description:** **in #326's scope** (Val, 2026-10-25). Built, as above.
 4. **C38 and C43, requesting reviewers:** **in #326's scope** (Val, 2026-10-25). Built, as above.
-5. **C65, the Viewed toggle:** **build it, stored locally and tied to the revision; no GitHub write** (Val, 2026-11-04). Not built yet.
-6. **C07, the new-tab button** on this surface: **remove the control** (Val, 2026-11-04). Not removed yet.
+5. **C65, the Viewed toggle:** **build it, stored locally and tied to the revision; no GitHub write** (Val, 2026-11-04). Built.
+6. **C07, the new-tab button** on this surface: **remove the control** (Val, 2026-11-04). Removed.
 7. **C82, the access-mode indicator.** The reference's PR composer shows full access. Review is
    read-only (#325), so should this composer show an access mode at all, and if so, which? The review
    panel states the confinement in words ([CR-6](#cr-6-agent-review-and-questions)); no indicator is drawn.
@@ -585,8 +585,7 @@ window when restored and never rewritten by the fit.
 | C62 | The header over Changes repeats C21–C29 | split captures |
 | C74, C75 | Pointer and keyboard dividers, persisted as `codeReviewSplit` and `codeReviewTree` | keyboard alone works… |
 
-C07 (new tab) is shown focusable, named and `aria-disabled`, with the capability's reason as its
-description; C27 and C28 (review, instructions) are shown that way until the pull request has loaded and
+C07 (new tab) was removed on Val's decision 6 (2026-11-04). C27 and C28 (review, instructions) are shown that way until the pull request has loaded and
 then open CR-6's panel and popover (below). C29 (Merge) and C21's menu are CR-7's (below). C16's
 avatars and C58, C60 and C61 of the composer are not built (open decisions, #325).
 

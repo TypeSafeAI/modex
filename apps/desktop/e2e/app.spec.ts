@@ -395,17 +395,17 @@ test("primitives: the model Menu is keyboard-driven, and icon buttons are named,
   await expect(more).toHaveAccessibleName("Project actions");
   // Row actions are hidden until hover, but a keyboard user reaching one sees it, with its tooltip and shortcut.
   await expect(more).toHaveCSS("opacity", "0");
-  await newThread.focus();
-  await page.keyboard.press("Tab"); // → worktree
+  // The row's actions run worktree chat, ⋯, new chat.
+  await tid(project, "project-new-worktree-thread").focus();
   await page.keyboard.press("Tab"); // → ⋯
   await expect(more).toBeFocused();
   await expect(more).toHaveCSS("opacity", "1");
   const tip = page.getByRole("tooltip", { name: "Project actions" });
   await expect(tip).toHaveText("Project actions");
   await expect(more).toHaveAttribute("aria-describedby", (await tip.getAttribute("id"))!);
-  // The ⋯ opens a Menu: focus lands on its first item (Open notes), Escape hands focus back.
+  // The ⋯ opens a Menu: focus lands on its first item (reveal the folder), Escape hands focus back.
   await page.keyboard.press("Enter");
-  await expect(tid(project, "project-notes")).toBeFocused();
+  await expect(tid(project, "project-reveal")).toBeFocused();
   await expect(tid(project, "project-remove")).toHaveRole("menuitem");
   await page.keyboard.press("Escape");
   await expect(tid(project, "project-remove")).toHaveCount(0);
