@@ -53,7 +53,7 @@ found that asserts it; it is not a pass.
 | C04 | Top-right buttons | shell | deviation D9 (only the split toggle applies) | `code-review-navigation.spec.ts`; journey (split toggle) | `A-322`, `A-main`, `A-main-2` (split) | — | open (VoiceOver) |
 | C05 | PR tab: icon, title, close | #322 | built | `code-review-navigation.spec.ts`; journey; `code-review-a11y.spec.ts` | — | — | open (VoiceOver) |
 | C06 | Changes tab with +/− | #322 | built | `code-review-navigation.spec.ts`; journey (totals from the production overview) | `A-322`, `A-main`, `A-main-2` (overview totals) | — | open (VoiceOver) |
-| C07 | New tab (+) | needs decision 6 | unavailable | `code-review-navigation.spec.ts` (aria-disabled); `code-review-regressions.spec.ts` "hostile content" (double-click, Enter and Space dispatch nothing) | — | — | open (VoiceOver) |
+| C07 | New tab (+) | decision 6 (2026-11-04): remove | unavailable; removal not landed yet | `code-review-navigation.spec.ts` (aria-disabled); `code-review-regressions.spec.ts` "hostile content" (double-click, Enter and Space dispatch nothing) | — | — | open (VoiceOver) |
 | C08 | Code Review rail button | #322 | built | `code-review-navigation.spec.ts`; journey (`aria-current`) | `A-322` | — | open (VoiceOver) |
 | C09 | Other rail icons | shell | unchanged | full `pnpm test:e2e` | — | — | — |
 | C10 | Account monogram | shell | unchanged | full `pnpm test:e2e` | — | — | — |
@@ -62,7 +62,7 @@ found that asserts it; it is not a pass.
 | C13 | "Authored by me" group | #322 | built | contract test; `code-review-navigation.spec.ts`; `code-review-regressions.spec.ts` "incomplete data" | `A-322`, `A-main`, `A-main-2` (inbox) | — | open (VoiceOver) |
 | C14 | "Needs my review" group | #322 | built | as C13 | `A-322` | — | open (VoiceOver) |
 | C15 | PR row: title, author, age | #322 | built | `code-review-navigation.spec.ts`; journey | `A-322` | — | open: reference comparison |
-| C16 | Row avatar and badge | needs decision 1 | needs decision 1 (not built; D1 login only) | — | — | — | — |
+| C16 | Row avatar and badge | decision 1 (2026-11-04): logins only | deviation D1 (login only; no avatar fetched) | — | — | — | — |
 | C17 | Row stack icon | #322 | built | `code-review-navigation.spec.ts` (only for `stackHint: true`, named "inferred") | — | — | open (VoiceOver) |
 | C18 | Selected and hover rows | #322 | built | `code-review-navigation.spec.ts`, journey (`aria-current`, R1/R4 captures) | — | — | open: reference comparison |
 | C19 | Show more | #322 | built | contract test (`knownCount`, `mergePages`, #438 same-total rule); `code-review-navigation.spec.ts` pagination ×3; `code-review-measure.spec.ts` | — | — | open (VoiceOver) |
@@ -104,14 +104,14 @@ found that asserts it; it is not a pass.
 | C55 | Comment composer | #326 | built (#416 `b3aad0d`) | `code-review-actions.spec.ts` "a comment stays a local draft across a reload…", "navigating before the draft debounce…", "a denial and a moved head…", "a crash mid-send…", "a send GitHub may or may not have received…"; `code-review-writes.test.ts`, `code-review-write-ipc.test.ts`, `code-review-draft-buffer.test.ts`, `code-review-intents.test.ts` | — | open (needs disposable repo Val names, #326) | open (VoiceOver) |
 | C56 | Review instructions popover (R3) | #325 | built (#422 `b643617`) | `code-review-agent.spec.ts` instructions case; journey R3 (#440 `d1cc80a`: focus, Escape, scroll kept) | — | open (needs repo Val names, #325) | open (VoiceOver) |
 | C57 | Ask about this pull request | #325 | built (#422 `b643617`); an inline field in the overview's review section, not a floating composer | `code-review-agent.spec.ts` question case; `code-review-agent.test.ts` | — | open (needs repo Val names, #325) | open (VoiceOver) |
-| C58 | Attach (+) | #325 | not built (left out; no numbered decision covers it) | — | — | — | — |
-| C59 | Model and reasoning effort | #325 | built: model select only, effort left out (#422 `b643617`) | `code-review-agent.spec.ts` (runs with `--model`); `code-review-agent.test.ts` (unknown model refused) | — | open (needs repo Val names, #325) | open (VoiceOver) |
+| C58 | Attach (+) | #325 | approved omission (Val, 2026-11-04) | — | — | — | — |
+| C59 | Model and reasoning effort | #325 | built: model select only; effort is an approved omission (Val, 2026-11-04) (#422 `b643617`) | `code-review-agent.spec.ts` (runs with `--model`); `code-review-agent.test.ts` (unknown model refused) | — | open (needs repo Val names, #325) | open (VoiceOver) |
 | C60 | Voice input | deferred | deviation D5 | — | — | — | — |
 | C61 | Composer clearance | #323 / #324 | built at fixture (#393 `6c40547`): bottom clearance; final Comment in viewport at 900×600 | `code-review-overview.spec.ts` "hostile Markdown is inert and narrow content remains reachable"; `code-review-scroll.spec.ts`. On `main` (#491): `code-review-agent.spec.ts` "C61…" measures Ask and the last activity item beside CR-6's inline section and its open panel, at 900×600 and 1440×900; red under an overlay and under a panel that takes the pane's height | — | — | open (VoiceOver) |
 | C62 | Header repeated over Changes | #322 | built; now repeats the live C21 and C27–C29 | `code-review-navigation.spec.ts`; journey (R4); `code-review-a11y.spec.ts` | — | — | open (VoiceOver) |
 | C63 | Changes ⋯ menu and view toggles | #324 | built in part (#404 `e3527f4`): "Wrap lines" and "Highlight changes" toggles. The ⋯ menu and the tree/image/layout toggles are left out, as the inventory allows | on `main` (#484 via #490): `code-review-diff.spec.ts` "wrapping and highlighting change rendered code…" | — | — | open (VoiceOver); open: reference comparison |
 | C64 | File header | #324 | built (#404 `e3527f4`) | `code-review-diff.spec.ts` "grouped diffs, both gutters, hierarchy, filter…"; review-flow (#441) | `A-324` (service: 15/15 files) | — | open (VoiceOver); open: reference comparison |
-| C65 | Viewed toggle | needs decision 5 | needs decision 5 (not built) | — | — | — | — |
+| C65 | Viewed toggle | decision 5 (2026-11-04): local, revision-bound, no GitHub write | not built yet | — | — | — | — |
 | C66 | File ⋯ menu (never Discard) | #324 | built (#404 `e3527f4`): Copy path and Open in GitHub only | `code-review-regressions.spec.ts` "local Changes stay local"; `code-review-diff.spec.ts` "…use remote data only". On `main` (#484 via #490): the same file's "file menu copies the remote path…" opens the menu and asserts both items and no Discard | — | — | open (VoiceOver) |
 | C67 | Folded lines, expand | #324 | built (#404 `e3527f4`) | `code-review-diff.spec.ts` "expanding context asks the exact remote revision…", "review: context expands adjacent to both ends…", "context text budget is shared…"; `code-review-diff.test.ts` "context windows reveal both ends…" | `A-main` (context read), `A-324` (base context matched the merge base) | — | open (VoiceOver) |
 | C68 | Line numbers, add/remove rows | #324 | built (#404 `e3527f4`) | `code-review-diff.test.ts` ×9; `code-review-diff.spec.ts` "line anchors have one keyboard entry per file…", "old-line anchors name the merge base…"; review-flow | `A-324` (15/15 patches parsed; anchor) | — | open (VoiceOver) |
@@ -127,12 +127,14 @@ found that asserts it; it is not a pass.
 | C78 | Diff pane scroll | #324 | built (#404 `e3527f4`) | `code-review-scroll.spec.ts`; `code-review-diff.spec.ts` "returning from Overview preserves… overall scroll position" | — | — | — |
 | C79 | File tree scroll | #324 | built (#404 `e3527f4`) | `code-review-scroll.spec.ts` (#438 `afec85b`) | — | — | — |
 | C80 | Closing Changes / leaving the split | #322 | built | `code-review-navigation.spec.ts` back/forward test | — | — | open (VoiceOver) |
-| C81 | Timeline and composer avatars | needs decision 1 | needs decision 1 (not built; D1 login only) | — | — | — | — |
-| C82 | Access-mode indicator | needs decision 7 | needs decision 7 (not built; the review panel states the confinement in words) | — | — | — | — |
+| C81 | Timeline and composer avatars | decision 1 (2026-11-04): logins only | deviation D1 (login only; no avatar fetched) | — | — | — | — |
+| C82 | Access-mode indicator | decision 7 (2026-11-04): no indicator | none drawn, by decision; the review panel states the confinement in words | — | — | — | — |
 
 `A-322` keeps its baseline meaning: CR-3's authenticated navigation smoke on candidate `65e86dd` + `4dd5bb5`.
 Decisions 2–4 (C21, C31, C35, C38, C43's +) were settled by Val on 2026-10-25 and built in #416. Decisions 1
-(C16, C81), 5 (C65), 6 (C07) and 7 (C82) are still open.
+(C16, C81), 5 (C65), 6 (C07) and 7 (C82) were answered on 2026-11-04, when Val accepted a planning session's
+recommendations; the [design page](../design/code-review.md#open-decisions) records them. Two are not built yet:
+the local Viewed toggle (C65) and the removal of C07.
 
 ## Acceptance criteria #321–#326
 
@@ -180,8 +182,8 @@ Decisions 2–4 (C21, C31, C35, C38, C43's +) were settled by Val on 2026-10-25 
 
 | AC | Where it stands on `0a8c513` |
 | --- | --- |
-| AC1 R1–R4 in real Electron | All four reached through real controls over production reads with synthetic `gh` (`F-1101` journey). **Open (Val):** comparison with the original references, which are gone; needs re-captured references or Val's decision to accept re-captures. |
-| AC2 every visible control has behaviour or an explicit unavailable state | Partial: C58 attachment and C59 reasoning effort remain omitted without an approved deviation or numbered decision. The other controls are mapped above; seven built controls also lack an asserting spec (follow-ups below). |
+| AC1 R1–R4 in real Electron | All four reached through real controls over production reads with synthetic `gh` (`F-1101` journey). The original references are gone. On 2026-11-04 Val retired the comparison in favour of a benchmark on real pull requests against GitHub's pages; that benchmark has not run, and this does not tick a box whose text still requires the comparison. |
+| AC2 every visible control has behaviour or an explicit unavailable state | C58 attachment and C59 reasoning effort are approved omissions (Val, 2026-11-04). C07 is to be removed and C65 to be built (decisions 6 and 5). The other controls are mapped above; seven built controls also lack an asserting spec (follow-ups below). |
 | AC3 isolation, injection, incomplete data, at-most-once | Met at fixture: read regressions, native denial on 2.1.316 (`N`), agent stop/unknown/restart, write at-most-once and reconciliation (`F-1101`). **Open:** the live smoke (#325) and live canary (#326). |
 | AC4 local Changes, navigation, conversation and approvals intact | `S-1101`: unit green; the local E2E had one non-Code-Review failure that passed alone, so it is not counted as green. The hosted required check passed on `c1f74c7`. |
 | AC5 performance, keyboard/contrast; human screen-reader gate | Baseline measurements and contrast stand for `0e674e7`; `F-1101` re-ran measure and a11y green. **Open (Val):** the [VoiceOver checklist](2026-10-22-cr8-voiceover/checklist.md), Result row empty. |
@@ -199,7 +201,7 @@ it, and main's channels answer regardless of whether the destination is visible.
 - **Stage 0, now:** hidden in packaged builds. Val (or a tester) turns it on per home from DevTools.
 - **Stage 1, after the live smoke and canary pass on repositories Val names:** still hidden by default; testers
   use it on their own repositories. Writes stay preview-bound and at-most-once.
-- **Stage 2, after VoiceOver and Val's call on the references, decisions 1, 5, 6, 7, and the C58/C59 omissions:** remove the switch (or
+- **Stage 2, after VoiceOver, the real-use benchmark, and building decisions 5 and 6:** remove the switch (or
   invert it) in a product PR that Val approves. That PR updates `docs/status.md` and this matrix.
 
 **Rollback:** from v0.4.2, clearing "Show Code Review in the rail" hides the destination at once and across a
@@ -215,15 +217,14 @@ the destination is visible. A product rollback (removing a capability) is a code
    `node ../../docs/reviews/2026-10-22-cr8-voiceover/seed.mjs /tmp/modex-cr8-voiceover`, run the printed
    `env … npx electron .` line, then follow the [checklist](2026-10-22-cr8-voiceover/checklist.md) and fill its
    Result row. Since 2026-11-01 the seed puts recorder `claude`/`codex` on PATH, so nothing reaches your login.
-2. **R1–R4 references (AC1, #322 AC1, #323 AC1, #324 AC1):** a folder with `R1.png`–`R4.png`, or your decision
-   to accept re-captures. Then `pnpm exec playwright test e2e/code-review-journey.spec.ts` and
-   `pnpm run ui:compare -- --captures test-results/ui-code-review <folder>`.
-3. **CR-6 live smoke (#325 AC6):** name a repository and PR on #325 and say go;
+2. **R1–R4 references (AC1, #322 AC1, #323 AC1, #324 AC1):** retired on 2026-11-04 in favour of a benchmark on
+   real pull requests. The issue boxes that name the comparison stay unticked until their text is met or changed.
+3. **CR-6 live smoke (#325 AC6):** authorized on 2026-11-04 for one small open TypeSafeAI/modex PR, once; not run yet;
    [procedure](2026-10-28-cr6-native-review.md#live-smoke-procedure-325-ac6-not-run).
 4. **CR-7 live canary (#326 AC6):** name a disposable repository on #326 and say go;
    [procedure](2026-11-01-cr7-live-canary.md).
-5. **Decisions 1 (avatars C16/C81), 5 (Viewed C65), 6 (new tab C07), 7 (access mode C82).**
-6. **C58 attachment and C59 reasoning effort:** decide whether to implement each omission or record an approved deviation; neither currently has a numbered decision.
+5. **Decisions 1, 5, 6 and 7:** answered on 2026-11-04 (above). Nothing is left for Val here.
+6. **C58 attachment and C59 reasoning effort:** approved omissions (2026-11-04).
 7. **The `modex.codeReview` packaged-build switch:** when it goes (stages above).
 
 ## Follow-ups found in this refresh (agent work, not gates)
@@ -259,4 +260,4 @@ Playwright wipes it.
 - **VoiceOver seed on `0a8c513`:** `seed.mjs` ran, and its printed launch line opened the app against the seeded
   home (user data under `<seed>/home/electron`). The app's provider probe reached only the recorder
   (`provider-calls.log`: `claude --version`), and `gh-calls.log` stayed empty (Code Review was not opened in this launch check).
-- **Next action:** Val names the two repositories (#325, #326) and answers decisions 1, 5, 6 and 7 on #319.
+- **Next action (2026-11-12):** the decisions are answered and the CR-6 smoke is authorized on TypeSafeAI/modex. Val still names a disposable repository for the CR-7 canary (#326).
