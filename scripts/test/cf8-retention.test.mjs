@@ -28,13 +28,23 @@ function manifestFixture(t) {
   const dir = temporary(t), source = path.join(dir, "source"), dependencies = path.join(dir, "dependencies");
   fs.mkdirSync(path.join(source, "apps/desktop/dist"), { recursive: true });
   fs.mkdirSync(dependencies);
+  const driverDir = path.join(dependencies, "driver"); fs.mkdirSync(driverDir);
+  fs.writeFileSync(path.join(driverDir, "entry.mjs"), 'import { value } from "./neighbor.mjs"; export { value };\n');
+  fs.writeFileSync(path.join(driverDir, "neighbor.mjs"), 'export const value = "bound";\n');
   fs.writeFileSync(path.join(dependencies, "pnpm-lock.yaml"), "pinned fixture lock\n");
+  const core = path.join(dependencies, "packages/core"), alias = path.join(dependencies, "apps/desktop/node_modules/@modex/core");
+  fs.mkdirSync(path.join(core, "dist/src"), { recursive: true }); fs.mkdirSync(path.dirname(alias), { recursive: true });
+  fs.writeFileSync(path.join(dependencies, "apps/desktop/package.json"), '{"name":"desktop-fixture","type":"module"}');
+  const packageText = '{"name":"@modex/core","type":"module","main":"./dist/src/index.js","exports":{".":{"default":"./dist/src/index.js"}}}';
+  const entryText = 'export const core = 1;\n'; fs.writeFileSync(path.join(core, "package.json"), packageText); fs.writeFileSync(path.join(core, "dist/src/index.js"), entryText); fs.symlinkSync(core, alias, "dir");
+  const coreBinding = { root: fs.realpathSync(core), aliasPath: path.resolve(alias), packagePath: fs.realpathSync(path.join(core, "package.json")), packageSha256: digest(packageText), entryPath: fs.realpathSync(path.join(core, "dist/src/index.js")), entrySha256: digest(entryText) };
+
   const files = [["apps/desktop/package.json", '{"version":"0.2.0"}\n'], ["apps/desktop/dist/main.js", 'throw new Error("verification must not execute this file");\n']];
   for (const [name, text] of files) fs.writeFileSync(path.join(source, name), text);
-  const manifest = { schema: 1, role: "baseline", source: { sha: "a".repeat(40), tree: "b".repeat(40), root: source, files: [{ path: files[0][0], sha256: digest(files[0][1]) }] }, build: { files: [{ path: files[1][0], sha256: digest(files[1][1]) }] }, dependencies: { root: dependencies, lockSha256: digest("pinned fixture lock\n"), links: [] }, driver: { head: "c".repeat(40), files: [] } };
+  const manifest = { schema: 1, role: "baseline", source: { sha: "a".repeat(40), tree: "b".repeat(40), root: source, files: [{ path: files[0][0], sha256: digest(files[0][1]) }] }, build: { files: [{ path: files[1][0], sha256: digest(files[1][1]) }] }, dependencies: { root: dependencies, lockSha256: digest("pinned fixture lock\n"), links: [], coreFiles: [{ path: "packages/core/dist/src/index.js", sha256: digest(entryText) }], coreBinding }, driver: { head: "c".repeat(40), files: ["entry.mjs", "neighbor.mjs"].map(name => ({ path: path.join(driverDir, name), sha256: digest(fs.readFileSync(path.join(driverDir, name))) })) } };
   const file = path.join(dir, "manifest.json");
   const write = () => fs.writeFileSync(file, JSON.stringify(manifest)); write();
-  return { dir, source, manifest, file, write };
+  return { dir, source, manifest, file, write, core, alias };
 }
 
 test("existing retention output is refused before source resolution and remains untouched", t => {
@@ -180,4 +190,74 @@ test("offline verification detects a changed executable mode as a source change"
   const f = manifestFixture(t); f.manifest.source.files[0].mode = "100644"; f.write();
   fs.chmodSync(path.join(f.source, f.manifest.source.files[0].path), 0o755);
   const result = invoke(["--verify", f.file]); assert.notEqual(result.status, 0); assert.match(result.stderr, /source mode mismatch/i);
+});
+
+test("benchmark inputs survive a failed real Playwright worker and its exit cleanup", { timeout: 30_000, skip: process.platform === "win32" }, t => {
+  const probes = path.join(root, "apps/desktop/.probes"); fs.mkdirSync(probes, { recursive: true });
+  const dir = fs.mkdtempSync(path.join(probes, "cf8-retain-worker-control-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const inputs = path.join(dir, "retained-inputs"), locator = path.join(dir, "fixture.json"), runtimeTemp = path.join(dir, "runtime-temp"); fs.mkdirSync(inputs, { mode: 0o700 }); fs.mkdirSync(runtimeTemp, { mode: 0o700 });
+  const generated = retention.createWorkloadDrivers({ templateDir: path.join(root, "apps/desktop/bench/retention"), destination: path.join(dir, "generated-driver"), targetAppDir: path.join(root, "apps/desktop"), libraryFile: path.join(root, "scripts/lib/cf8-retention.mjs") });
+  fs.writeFileSync(path.join(dir, "fixture.spec.ts"), `import { test } from "@playwright/test"; import fs from "node:fs"; import os from "node:os"; import { seedHome } from ${JSON.stringify(path.join(generated.directory, "target-support.ts"))}; test("intentional early fixture failure", () => { const before = os.tmpdir(); const fixture = seedHome(); fs.writeFileSync(${JSON.stringify(locator)}, JSON.stringify({ ...fixture, runtimeBefore: before, runtimeAfter: os.tmpdir() })); throw new Error("intentional benchmark fixture failure before app launch"); });\n`);
+  fs.writeFileSync(path.join(dir, "playwright.config.ts"), `export default { testDir: ".", testMatch: "fixture.spec.ts", outputDir: ${JSON.stringify(path.join(dir, 'test-results'))}, workers: 1, retries: 0, maxFailures: 1, reporter: "list", use: { trace: "off" } };\n`);
+  const child = spawnSync("pnpm", ["exec", "playwright", "test", "--config", path.join(dir, "playwright.config.ts")], { cwd: path.join(root, "apps/desktop"), encoding: "utf8", env: { ...retention.workloadEnvironment(), TMPDIR: runtimeTemp, MODEX_RETENTION_FIXTURE_ROOT: inputs }, maxBuffer: 2 * 1024 * 1024 });
+  assert.equal(child.status, 1, child.stdout + child.stderr); assert.match(child.stdout + child.stderr, /intentional benchmark fixture failure before app launch/);
+  const seeded = JSON.parse(fs.readFileSync(locator, "utf8"));
+  for (const key of ["home", "repo"]) assert.equal(path.dirname(seeded[key]), inputs);
+  assert.equal(seeded.runtimeBefore, runtimeTemp); assert.equal(seeded.runtimeAfter, runtimeTemp, "runtime temp context must be restored before app launch");
+  assert.ok(fs.existsSync(path.join(seeded.home, "app/state.json")), "retained state must survive failed worker exit");
+  assert.ok(fs.existsSync(path.join(seeded.repo, "README.md")), "retained disposable repository must survive failed worker exit");
+});
+
+test("matching-byte driver file symlinks cannot redirect relative module resolution", t => {
+  const f = manifestFixture(t), file = f.manifest.driver.files[0].path, moved = path.join(f.dir, "moved-driver.mjs"); fs.renameSync(file, moved); fs.symlinkSync(moved, file);
+  const result = invoke(["--verify", f.file]); assert.notEqual(result.status, 0); assert.match(result.stderr, /driver.*symlink/i);
+});
+test("matching-byte driver ancestor symlinks are refused", t => {
+  const f = manifestFixture(t), dir = path.dirname(f.manifest.driver.files[0].path), moved = path.join(f.dir, "moved-driver"); fs.renameSync(dir, moved); fs.symlinkSync(moved, dir, "dir");
+  const result = invoke(["--verify", f.file]); assert.notEqual(result.status, 0); assert.match(result.stderr, /driver.*symlink/i);
+});
+test("driver manifest dot traversal is refused even when it reads matching bytes", t => {
+  const f = manifestFixture(t), dir = path.dirname(f.manifest.driver.files[0].path); f.manifest.driver.files[0].path = dir + "/../driver/entry.mjs"; f.write();
+  const result = invoke(["--verify", f.file]); assert.notEqual(result.status, 0); assert.match(result.stderr, /unsafe driver path/i);
+});
+test("a driver manifest cannot omit all driver provenance", t => {
+  const f = manifestFixture(t); f.manifest.driver.files = []; f.write();
+  const result = invoke(["--verify", f.file]); assert.notEqual(result.status, 0); assert.match(result.stderr, /missing driver manifest/i);
+});
+
+test("a retargeted desktop core alias is refused while recorded core build bytes stay unchanged", t => {
+  const f = manifestFixture(t), other = path.join(f.dir, "other-core"); fs.cpSync(f.core, other, { recursive: true }); fs.unlinkSync(f.alias); fs.symlinkSync(other, f.alias, "dir");
+  const result = invoke(["--verify", f.file]); assert.notEqual(result.status, 0); assert.match(result.stderr, /core binding/i);
+  assert.equal(digest(fs.readFileSync(path.join(f.core, "dist/src/index.js"))), f.manifest.dependencies.coreFiles[0].sha256);
+});
+test("changed core entry metadata is refused even when all recorded build files are unchanged", t => {
+  const f = manifestFixture(t), otherEntry = path.join(f.core, "dist/src/other.js"); fs.writeFileSync(otherEntry, "export const other = 2;\n"); f.manifest.dependencies.coreFiles.push({ path: "packages/core/dist/src/other.js", sha256: digest(fs.readFileSync(otherEntry)) }); f.write();
+  const pkg = JSON.parse(fs.readFileSync(path.join(f.core, "package.json"), "utf8")); pkg.exports["."].default = "./dist/src/other.js"; fs.writeFileSync(path.join(f.core, "package.json"), JSON.stringify(pkg));
+  const result = invoke(["--verify", f.file]); assert.notEqual(result.status, 0); assert.match(result.stderr, /core binding/i);
+});
+test("desktop core binding resolves the expected package and entry without executing the module", t => {
+  const f = manifestFixture(t), effect = path.join(f.dir, "module-executed"), entry = path.join(f.core, "dist/src/index.js");
+  fs.writeFileSync(entry, `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(effect)}, 'ran'); export const core = 1;\n`);
+  const result = retention.resolveDesktopCoreBinding(f.manifest.dependencies.root);
+  assert.deepEqual(result, { ...f.manifest.dependencies.coreBinding, entrySha256: digest(fs.readFileSync(entry)) }); assert.equal(fs.existsSync(effect), false);
+});
+test("prebuild core binding works before its declared compiled entry exists", t => {
+  const f = manifestFixture(t); fs.unlinkSync(path.join(f.core, "dist/src/index.js"));
+  const result = retention.resolveDesktopCoreBinding(f.manifest.dependencies.root, { requireBuilt: false });
+  assert.deepEqual(result, { ...f.manifest.dependencies.coreBinding, entrySha256: null });
+});
+
+test("a retargeted installed core stops preparation before its first build", { skip: process.platform !== "darwin" }, t => {
+  const f = manifestFixture(t), repoRoot = f.manifest.dependencies.root;
+  fs.mkdirSync(path.join(repoRoot, "apps/desktop/e2e")); fs.mkdirSync(path.join(repoRoot, "scripts"));
+  fs.writeFileSync(path.join(repoRoot, "apps/desktop/e2e/support.ts"), "export {};\n"); fs.writeFileSync(path.join(repoRoot, "apps/desktop/vite.config.ts"), "export default {};\n"); fs.writeFileSync(path.join(repoRoot, "scripts/worktree.sh"), "exit 0\n"); fs.writeFileSync(path.join(repoRoot, ".gitignore"), "node_modules/\npackages/core/dist/\n");
+  const env = { ...process.env, GIT_AUTHOR_NAME: "retention fixture", GIT_AUTHOR_EMAIL: "fixture@modex.local", GIT_COMMITTER_NAME: "retention fixture", GIT_COMMITTER_EMAIL: "fixture@modex.local" };
+  const git = args => { const result = spawnSync("git", args, { cwd: repoRoot, env, encoding: "utf8" }); assert.equal(result.status, 0, result.stderr); return result.stdout.trim(); };
+  git(["init", "-q"]); git(["add", "."]); git(["-c", "commit.gpgsign=false", "commit", "-qm", "fixture source"]); const ref = git(["rev-parse", "HEAD"]);
+  const other = path.join(f.dir, "other-core"); fs.cpSync(f.core, other, { recursive: true }); fs.unlinkSync(f.alias); fs.symlinkSync(other, f.alias, "dir");
+  const bin = path.join(f.dir, "bin"), effect = path.join(f.dir, "build-started"), output = path.join(f.dir, "output"); fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, "pnpm"), `#!${process.execPath}\nrequire('node:fs').writeFileSync(${JSON.stringify(effect)}, 'ran'); process.exit(91);\n`, { mode: 0o755 });
+  const previous = process.env.PATH; process.env.PATH = bin + path.delimiter + previous; t.after(() => { if (previous === undefined) delete process.env.PATH; else process.env.PATH = previous; });
+  assert.throws(() => retention.prepareRetention({ repoRoot, output, baseline: ref, current: ref }), /desktop core binding/i);
+  assert.equal(fs.existsSync(effect), false, "no build command may start against another installed core"); assert.equal(fs.existsSync(output), false);
 });

@@ -12,6 +12,9 @@ import { root, sourceHead, driverHead, driverRoot, manifest, legacy, verifySourc
 for (let replicate = 1; replicate <= 3; replicate++) {
   test(`repeated synthetic log streaming memory replicate ${replicate}`, async () => {
     const { home, repo } = seedHome({ default_backend: "codex" });
+    const receipt = path.join(root, `stream-${replicate}.json`);
+    expect(fs.existsSync(receipt)).toBe(false);
+    fs.writeFileSync(receipt, JSON.stringify({ state: "fixture-seeded", sourceHead, sourceRole: manifest.role, fixture: { home, repo }, at: new Date().toISOString() }, null, 2) + "\n", { flag: "wx", mode: 0o600 });
     const callLog = path.join(home, "stream-calls.jsonl"); fs.writeFileSync(callLog, "", { flag: "wx" });
     const cli = fakeCodex(home);
     const retainedCli = path.join(root, `stream-${replicate}-cli.cjs`);
@@ -21,18 +24,19 @@ for (let replicate = 1; replicate <= 3; replicate++) {
     const calls = (): any[] => fs.readFileSync(callLog, "utf8").split("\n").filter(Boolean).map(line => JSON.parse(line));
     const out: Record<string, any> = { startedAt: new Date().toISOString(), diagnosticDriverHead: execFileSync("git", ["rev-parse", "HEAD"], { cwd: driverRoot, encoding: "utf8" }).trim(), sourceHead, sourceRole: manifest.role, replicate, state: "started", samples: [],
       workload: { warmupStreams: 1, measuredStreams: 21, bytesPerStream: Buffer.byteLength(CHUNK) * CHUNKS, deltasPerStream: CHUNKS, deltaSpacingMs: 10, openedPreviewBytes: legacy ? null : PREVIEW, expectedLegacyOutputViolation: legacy },
-      fixture: { scriptSha256: crypto.createHash("sha256").update(fs.readFileSync(cli)).digest("hex"), retainedScript: retainedCli, synthetic: true },
+      fixture: { home, repo, scriptSha256: crypto.createHash("sha256").update(fs.readFileSync(cli)).digest("hex"), retainedScript: retainedCli, synthetic: true },
       host: { cpu: os.cpus()[0]?.model, cores: os.cpus().length, memoryBytes: os.totalmem(), release: os.release(), arch: os.arch(), node: process.version, loadAverage: os.loadavg() },
       instrumentation: "Existing synthetic native-CLI fixture, no real inference or emitted command execution. Per-thread main IPC observer calls original send. All per-stream renderer/main memory samples natural; renderer GC only matched warm detached before/after endpoints. Timed detached natural samples at declared1s/5s. Two RAF sampling is not exhaustive settlement. No latency/memory-ceiling/leak-freedom/historical improvement or fullCF8 acceptance claim. Trace off." };
-    const receipt = path.join(root, `stream-${replicate}.json`); expect(fs.existsSync(receipt)).toBe(false); expect(out.diagnosticDriverHead).toBe(driverHead);
+    expect(out.diagnosticDriverHead).toBe(driverHead);
     const persist = () => fs.writeFileSync(receipt, JSON.stringify(out, null, 2) + "\n"); persist();
     let opened: Awaited<ReturnType<typeof launch>> | undefined;
     try {
       out.sourceVerification = verifySource();
+      expect(appDir).toBe(manifest.appDir);
       opened = await launch(home); const { app, page } = opened;
       const cdp = await page.context().newCDPSession(page);
       out.native = await app.evaluate(({ app, BrowserWindow }) => ({ appVersion: app.getVersion(), electron: process.versions.electron, chromium: process.versions.chrome, mainPid: process.pid, executablePath: process.execPath, appPath: app.getAppPath(), userData: app.getPath("userData"), rendererPids: BrowserWindow.getAllWindows().map(w => w.webContents.getOSProcessId()) }));
-      expect(out.native.appPath).toBe(appDir); expect(out.native.appVersion).toBe(manifest.appVersion); out.document = await page.evaluate(() => location.href); expect(out.document).toBe(pathToFileURL(path.join(appDir, "dist/renderer/index.html")).href);
+      expect(out.native.appPath).toBe(manifest.appDir); expect(out.native.appVersion).toBe(manifest.appVersion); out.document = await page.evaluate(() => location.href); expect(out.document).toBe(pathToFileURL(path.join(appDir, "dist/renderer/index.html")).href);
       await app.evaluate(({ BrowserWindow }) => {
         const g = globalThis as any; g.__streamMemory = { byThread: {} };
         const contents = BrowserWindow.getAllWindows()[0]!.webContents; const original = contents.send.bind(contents);

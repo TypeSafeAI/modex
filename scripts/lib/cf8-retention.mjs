@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 export const sha256 = bytes => crypto.createHash("sha256").update(bytes).digest("hex");
 const revision = value => typeof value === "string" && /^[0-9a-f]{40}$/.test(value);
@@ -58,11 +59,23 @@ export function verifyManifest(file, expectedSha256) {
   verifyFiles(manifest.source.root, manifest.build?.files, "Build");
   const lock = regularFile(manifest.dependencies.root, "pnpm-lock.yaml");
   if (!hash(manifest.dependencies.lockSha256) || sha256(fs.readFileSync(lock)) !== manifest.dependencies.lockSha256) throw new Error("Dependency lock hash mismatch.");
-  if (manifest.dependencies.coreFiles) verifyFiles(manifest.dependencies.root, manifest.dependencies.coreFiles, "Dependency core build");
+  if (!manifest.dependencies.coreBinding) throw new Error("Missing desktop core binding.");
+  verifyFiles(manifest.dependencies.root, manifest.dependencies.coreFiles, "Dependency core build");
+  const actualCore = resolveDesktopCoreBinding(manifest.dependencies.root);
+  for (const key of ["root", "aliasPath", "packagePath", "packageSha256", "entryPath", "entrySha256"]) if (actualCore[key] !== manifest.dependencies.coreBinding[key]) throw new Error("Desktop core binding identity mismatch: " + key);
   if (!Array.isArray(manifest.dependencies.links)) throw new Error("Missing dependency links.");
   for (const link of manifest.dependencies.links) if (typeof link.path !== "string" || typeof link.realPath !== "string" || fs.realpathSync(link.path) !== link.realPath) throw new Error("Dependency link identity mismatch.");
-  if (!Array.isArray(manifest.driver.files)) throw new Error("Missing driver manifest.");
-  for (const entry of manifest.driver.files) if (typeof entry.path !== "string" || !path.isAbsolute(entry.path) || !hash(entry.sha256) || sha256(fs.readFileSync(entry.path)) !== entry.sha256) throw new Error("Driver hash mismatch.");
+  if (!Array.isArray(manifest.driver.files) || manifest.driver.files.length === 0) throw new Error("Missing driver manifest.");
+  const driverPaths = new Set();
+  for (const entry of manifest.driver.files) {
+    if (typeof entry.path !== "string" || !path.isAbsolute(entry.path) || path.resolve(entry.path) !== entry.path || !hash(entry.sha256) || driverPaths.has(entry.path)) throw new Error("Unsafe driver path or invalid driver identity.");
+    const relative = path.relative(manifest.dependencies.root, entry.path);
+    if (!relative || path.isAbsolute(relative) || relative === ".." || relative.startsWith(".." + path.sep)) throw new Error("Unsafe driver path outside the declared driver root.");
+    let file;
+    try { file = regularFile(manifest.dependencies.root, relative); } catch (error) { throw new Error("Driver " + error.message); }
+    driverPaths.add(entry.path);
+    if (sha256(fs.readFileSync(file)) !== entry.sha256) throw new Error("Driver hash mismatch.");
+  }
   return manifest;
 }
 
@@ -140,6 +153,7 @@ export function prepareRetention({ repoRoot, output, baseline, current }) {
   const commonCoreTree = assertCommonCore(repoRoot, [baseline, current, driverHead]);
   const coreDirty = execFileSync("git", ["status", "--porcelain", "--untracked-files=all", "--", "packages/core"], { cwd: repoRoot, encoding: "utf8" });
   if (coreDirty.trim()) throw new Error("Common dependency core has working changes; preserve them and use a clean owned driver checkout.");
+  resolveDesktopCoreBinding(repoRoot, { requireBuilt: false });
   for (const identity of Object.values(refs)) {
     for (const file of ["apps/desktop/package.json", "apps/desktop/e2e/support.ts", "apps/desktop/vite.config.ts"]) {
       try { execFileSync("git", ["cat-file", "-e", identity.sha + ":" + file], { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] }); }
@@ -165,7 +179,7 @@ export function prepareRetention({ repoRoot, output, baseline, current }) {
   };
   try {
     run("common-core-build", "pnpm", ["--filter", "@modex/core", "build"], repoRoot);
-    const dependencies = { root: repoRoot, lockSha256: sha256(fs.readFileSync(path.join(repoRoot, "pnpm-lock.yaml"))), commonCoreTree, coreFiles: collectFiles(repoRoot, "packages/core/dist"), links: [] };
+    const dependencies = { root: repoRoot, lockSha256: sha256(fs.readFileSync(path.join(repoRoot, "pnpm-lock.yaml"))), commonCoreTree, coreFiles: collectFiles(repoRoot, "packages/core/dist"), coreBinding: resolveDesktopCoreBinding(repoRoot), links: [] };
     const toolFiles = ["scripts/cf8-retention.mjs", "scripts/lib/cf8-retention.mjs"];
     if (fs.existsSync(path.join(repoRoot, "apps/desktop/bench/retention"))) toolFiles.push(...collectFiles(repoRoot, "apps/desktop/bench/retention").map(x => x.path));
     const driver = { head: driverHead, workingTreeDirty: execFileSync("git", ["status", "--porcelain=v1", "--untracked-files=all"], { cwd: repoRoot, encoding: "utf8" }).trim().length !== 0, fileHashMeaning: "Actual driver bytes are bound separately; checkout HEAD is not a claim that uncommitted files belong to that commit", node: process.version, files: toolFiles.map(name => ({ path: path.join(repoRoot, name), sha256: sha256(fs.readFileSync(path.join(repoRoot, name))) })) };
@@ -206,20 +220,24 @@ export function createWorkloadDrivers({ templateDir, destination, targetAppDir, 
   const sourceImport = 'from "../../../../scripts/lib/cf8-retention.mjs"';
   const guard = fs.readFileSync(path.join(templateDir, "source-guard.ts"), "utf8");
   if (guard.split(sourceImport).length !== 2) throw new Error("Retention source-guard import is not the expected single binding.");
+  const targetImport = 'from "../../e2e/support"';
+  const support = fs.readFileSync(path.join(templateDir, "target-support.ts"), "utf8");
+  if (support.split(targetImport).length !== 2) throw new Error("Retention target-support import is not the expected single binding.");
   fs.mkdirSync(destination, { mode: 0o700 });
   for (const file of files) {
     const target = path.join(destination, file.path); fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
     let bytes = fs.readFileSync(path.join(templateDir, file.path));
-    if (path.normalize(file.path) === "target-support.ts") bytes = Buffer.from(`export { appDir, launch, seedHome, tid, items } from ${JSON.stringify(path.join(targetAppDir, "e2e/support.ts"))};\n`);
+    if (path.normalize(file.path) === "target-support.ts") bytes = Buffer.from(support.replace(targetImport, "from " + JSON.stringify(path.join(targetAppDir, "e2e/support.ts"))));
     if (path.normalize(file.path) === "source-guard.ts") bytes = Buffer.from(guard.replace(sourceImport, "from " + JSON.stringify(libraryFile)));
     fs.writeFileSync(target, bytes, { flag: "wx", mode: 0o600 });
   }
   return { directory: destination, files: collectFiles(destination, ".").map(file => ({ path: path.resolve(destination, file.path), sha256: file.sha256 })) };
 }
 
-function workloadEnvironment() {
+export function workloadEnvironment() {
   const env = { ...process.env };
   for (const key of Object.keys(env)) if (key.startsWith("MODEX_")) delete env[key];
+  env.MODEX_KEEP_TEST_TMP = "1";
   for (const key of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "JEV_API_KEY", "TYPESAFE_API_KEY", "GH_TOKEN", "GITHUB_TOKEN", "OPENAI_BASE_URL", "ANTHROPIC_BASE_URL"]) delete env[key];
   return env;
 }
@@ -234,7 +252,9 @@ export function runPreparedWorkloads({ repoRoot, prepared }) {
       if (!source) throw new Error(`Prepared source is absent: ${role}`);
       const manifest = verifyManifest(source.manifest, source.manifestSha256);
       const output = path.join(prepared.output, role); assertNewPath(output); fs.mkdirSync(output, { mode: 0o700 });
-      const env = { ...workloadEnvironment(), MODEX_RETENTION_MANIFEST: source.manifest, MODEX_RETENTION_MANIFEST_SHA256: source.manifestSha256, MODEX_RETENTION_OUTPUT: output };
+      const fixtureRoot = path.join(output, "fixtures"); fs.mkdirSync(fixtureRoot, { mode: 0o700 });
+      state.activeRole = role; state.activeFixtureRoot = fixtureRoot; persist();
+      const env = { ...workloadEnvironment(), MODEX_RETENTION_FIXTURE_ROOT: fixtureRoot, MODEX_RETENTION_MANIFEST: source.manifest, MODEX_RETENTION_MANIFEST_SHA256: source.manifestSha256, MODEX_RETENTION_OUTPUT: output };
       const config = path.join(manifest.driver.directory, "playwright.config.ts");
       const discovery = runLogged({ command: "pnpm", args: ["exec", "playwright", "test", "--config", config, "--list"], cwd: path.join(repoRoot, "apps/desktop"), env, log: path.join(output, "list-first.log") }); state.commands.push(discovery); persist();
       if (discovery.exit !== 0) { const error = new Error(`${role} discovery failed before app launch with original exit ${discovery.exit}; retained ${discovery.log}`); error.exitCode = discovery.exit; throw error; }
@@ -250,11 +270,46 @@ export function runPreparedWorkloads({ repoRoot, prepared }) {
       for (const kind of ["history", "stream"]) for (let replicate = 1; replicate <= 3; replicate++) {
         const file = path.join(output, `${kind}-${replicate}.json`), observation = JSON.parse(fs.readFileSync(file, "utf8"));
         if (observation.state !== "observations-complete" || observation.appClose !== "returned" || observation.sourceHead !== manifest.source.sha || observation.samples?.length !== (kind === "history" ? 63 : 21)) throw new Error(`Incomplete ${role}/${kind}/${replicate} observation.`);
-        observations.push({ kind, replicate, file, sha256: sha256(fs.readFileSync(file)) });
+        for (const key of ["home", "repo"]) {
+          const retained = observation.fixture?.[key];
+          if (typeof retained !== "string" || !fs.lstatSync(retained).isDirectory() || fs.lstatSync(retained).isSymbolicLink() || path.dirname(fs.realpathSync(retained)) !== fs.realpathSync(fixtureRoot)) throw new Error(`Missing or unbound retained ${role}/${kind}/${replicate}/${key} input.`);
+        }
+        if (!fs.existsSync(path.join(observation.fixture.home, "app/state.json")) || !fs.existsSync(path.join(observation.fixture.repo, "README.md"))) throw new Error(`Retained fixture state is incomplete: ${role}/${kind}/${replicate}`);
+        observations.push({ kind, replicate, file, sha256: sha256(fs.readFileSync(file)), retainedFixture: observation.fixture });
       }
       verifyManifest(source.manifest, source.manifestSha256);
       state.sources.push({ role, source: manifest.source.sha, reportSha256: sha256(fs.readFileSync(path.join(output, "report.json"))), passed: 6, skipped: 0, retries: 0, observations }); persist();
     }
     state.state = "observations-complete"; state.finishedAt = new Date().toISOString(); persist(); return state;
   } catch (error) { state.state = "failed"; state.failure = String(error.message); state.finishedAt = new Date().toISOString(); persist(); throw error; }
+}
+
+/** Resolve metadata only: never import or execute the installed core module. */
+export function resolveDesktopCoreBinding(repoRoot, { requireBuilt = true } = {}) {
+  try {
+    const root = fs.realpathSync(path.join(repoRoot, "packages/core"));
+    const aliasPath = path.resolve(repoRoot, "apps/desktop/node_modules/@modex/core");
+    if (fs.realpathSync(aliasPath) !== root) throw new Error("desktop dependency resolves to a different common core");
+    const packagePath = regularFile(root, "package.json"), packageBytes = fs.readFileSync(packagePath);
+    if (JSON.parse(packageBytes.toString("utf8")).name !== "@modex/core") throw new Error("unexpected core package metadata");
+    const resolved = execFileSync(process.execPath, ["--input-type=module", "--eval", 'process.stdout.write(import.meta.resolve("@modex/core"))'], { cwd: path.join(repoRoot, "apps/desktop"), encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    const candidate = fileURLToPath(resolved);
+    const physicalAlias = path.join(fs.realpathSync(path.dirname(aliasPath)), path.basename(aliasPath));
+    let relative;
+    for (const base of [root, aliasPath, physicalAlias]) {
+      const part = path.relative(base, candidate);
+      if (part && !path.isAbsolute(part) && part !== ".." && !part.startsWith(".." + path.sep)) { relative = part; break; }
+    }
+    if (!relative || relative.split(path.sep)[0] !== "dist") throw new Error("core entry is outside its bound compiled directory");
+    const entryPath = path.join(root, relative);
+    let cursor = root, missing = false;
+    for (const part of relative.split(path.sep)) {
+      cursor = path.join(cursor, part);
+      try { if (fs.lstatSync(cursor).isSymbolicLink()) throw new Error("core entry contains a symlink"); }
+      catch (error) { if (error.code !== "ENOENT") throw error; missing = true; break; }
+    }
+    if (missing && requireBuilt) throw new Error("core entry has not been built");
+    if (!missing && !fs.statSync(entryPath).isFile()) throw new Error("core entry is not a regular file");
+    return { root, aliasPath, packagePath, packageSha256: sha256(packageBytes), entryPath, entrySha256: missing ? null : sha256(fs.readFileSync(entryPath)) };
+  } catch (error) { throw new Error("Desktop core binding is invalid: " + error.message); }
 }

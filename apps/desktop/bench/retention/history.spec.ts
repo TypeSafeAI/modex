@@ -12,6 +12,9 @@ import { root, sourceHead, driverHead, driverRoot, manifest, verifySource } from
 for (let replicate = 1; replicate <= 3; replicate++) {
   test(`three-history natural-GC observations replicate ${replicate}`, async () => {
     const { home, repo } = seedHome();
+    const receipt = path.join(root, `history-${replicate}.json`);
+    expect(fs.existsSync(receipt)).toBe(false);
+    fs.writeFileSync(receipt, JSON.stringify({ state: "fixture-seeded", sourceHead, sourceRole: manifest.role, fixture: { home, repo }, at: new Date().toISOString() }, null, 2) + "\n", { flag: "wx", mode: 0o600 });
     const now = new Date().toISOString();
     const ids = ["history-a", "history-b", "history-c"];
     const files = ids.map(id => path.join(home, "app", "threads", id + ".json"));
@@ -26,22 +29,21 @@ for (let replicate = 1; replicate <= 3; replicate++) {
     const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
     state.threads = ids.map(id => ({ id, projectId: "p1", title: id, titleSource: "manual", createdAt: now, updatedAt: now, cwd: repo, backend: "codex", mode: "chat", plan: false, model: "", status: "idle" }));
     fs.writeFileSync(statePath, JSON.stringify(state));
-    const out: Record<string, any> = { diagnosticDriverHead: execFileSync("git", ["rev-parse", "HEAD"], { cwd: driverRoot, encoding: "utf8" }).trim(), sourceHead, sourceRole: manifest.role, replicate, startedAt: now, state: "started", samples: [],
+    const out: Record<string, any> = { diagnosticDriverHead: execFileSync("git", ["rev-parse", "HEAD"], { cwd: driverRoot, encoding: "utf8" }).trim(), sourceHead, sourceRole: manifest.role, fixture: { home, repo }, replicate, startedAt: now, state: "started", samples: [],
       workload: { histories: 3, shape: "200 turns/1400 items each; distinct thread provenance and first request, otherwise same deterministic shape", warmupOpens: 3, measuredOpens: 63, opensPerHistory: 21, savedBytes: files.map(f => fs.statSync(f).size), savedSha256: beforeHashes },
       host: { cpu: os.cpus()[0]?.model, cores: os.cpus().length, memoryBytes: os.totalmem(), release: os.release(), arch: os.arch(), node: process.version, loadAverage: os.loadavg() },
       instrumentation: "Renderer forced GC only after three-history warmup and at final detached endpoint. All 63 per-open samples and timed post-detach observations are natural-GC snapshots. Main always natural GC. Two RAF plus positive last-answer/nondeferred checks are a sampling point, not exhaustive async settlement. Trace off. No latency/memory-ceiling/leak-freedom or historical-improvement claim." };
     expect(out.diagnosticDriverHead).toBe(driverHead);
-    const receipt = path.join(root, `history-${replicate}.json`);
-    expect(fs.existsSync(receipt)).toBe(false);
     const persist = () => fs.writeFileSync(receipt, JSON.stringify(out, null, 2) + "\n"); persist();
     let opened: Awaited<ReturnType<typeof launch>> | undefined;
     try {
       out.sourceVerification = verifySource();
+      expect(appDir).toBe(manifest.appDir);
       opened = await launch(home);
       const { app, page } = opened;
       const cdp = await page.context().newCDPSession(page);
       out.native = await app.evaluate(({ app, BrowserWindow }) => ({ appVersion: app.getVersion(), electron: process.versions.electron, chromium: process.versions.chrome, mainPid: process.pid, executablePath: process.execPath, appPath: app.getAppPath(), userData: app.getPath("userData"), rendererPids: BrowserWindow.getAllWindows().map(w => w.webContents.getOSProcessId()) }));
-      expect(out.native.appPath).toBe(appDir); expect(out.native.appVersion).toBe(manifest.appVersion);
+      expect(out.native.appPath).toBe(manifest.appDir); expect(out.native.appVersion).toBe(manifest.appVersion);
       out.document = await page.evaluate(() => location.href); expect(out.document).toBe(pathToFileURL(path.join(appDir, "dist/renderer/index.html")).href);
       const observe = async (phase: string, forcedGc = false) => {
         await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
