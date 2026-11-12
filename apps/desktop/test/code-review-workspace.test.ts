@@ -272,6 +272,66 @@ test("viewed marks are local, per account and belong to one revision (C65)", () 
   assert.deepEqual(loadViewed(storage, key(ACCOUNT_A, LENDING, 1), at("b")), []);
 });
 
+for (const denyReads of [false, true]) {
+  test(`viewed marks survive successive failed writes${denyReads ? " and denied reads" : ""}`, () => {
+    const storage = {
+      getItem: () => { if (denyReads) throw new Error("blocked"); return null; },
+      setItem: () => { throw new Error("quota exceeded"); },
+    };
+    const pr = key(ACCOUNT_A, LENDING, 73);
+    const revision = { baseRef: "main", baseSha: "a".repeat(40), headSha: "b".repeat(40) };
+    assert.deepEqual(setViewed(storage, pr, revision, "a.ts", true), ["a.ts"]);
+    assert.deepEqual(setViewed(storage, pr, revision, "b.ts", true), ["a.ts", "b.ts"]);
+    assert.deepEqual(setViewed(storage, pr, revision, "a.ts", false), ["b.ts"]);
+    assert.deepEqual(setViewed(storage, pr, revision, "c.ts", true), ["b.ts", "c.ts"]);
+    assert.deepEqual(loadViewed(storage, pr, revision), ["b.ts", "c.ts"]);
+    assert.deepEqual(loadViewed({ ...storage }, pr, revision), [], "another storage object has no unsaved session");
+    assert.deepEqual(loadViewed(storage, key(ACCOUNT_B, LENDING, 73), revision), []);
+    assert.deepEqual(loadViewed(storage, key(ACCOUNT_A, FIELD_GUIDE, 73), revision), []);
+    assert.deepEqual(loadViewed(storage, key(ACCOUNT_A, LENDING, 74), revision), []);
+    assert.deepEqual(loadViewed(storage, pr, { ...revision, baseSha: "c".repeat(40) }), []);
+    assert.deepEqual(setViewed(storage, pr, { ...revision, headSha: "d".repeat(40) }, "d.ts", true), ["d.ts"]);
+    assert.deepEqual(loadViewed(storage, pr, revision), [], "a new revision replaces pending old marks");
+  });
+}
+
+test("viewed unmarks do not resurrect stale storage and pending changes persist when writes recover", () => {
+  const pr = key(ACCOUNT_A, LENDING, 73);
+  const revision = { baseRef: "main", baseSha: "a".repeat(40), headSha: "b".repeat(40) };
+  const document = (paths: string[]) => JSON.stringify({ [pr.account]: { [`${pr.repoId}#73`]: { ...revision, paths } } });
+  let saved = document(["a.ts", "b.ts"]), blocked = true;
+  const storage = { getItem: () => saved, setItem: (_key: string, value: string) => { if (blocked) throw new Error("full"); saved = value; } };
+  assert.deepEqual(setViewed(storage, pr, revision, "a.ts", false), ["b.ts"]);
+  assert.deepEqual(setViewed(storage, pr, revision, "c.ts", true), ["b.ts", "c.ts"]);
+  assert.deepEqual(setViewed(storage, pr, revision, "b.ts", false), ["c.ts"]);
+  blocked = false;
+  assert.deepEqual(setViewed(storage, pr, revision, "d.ts", true), ["c.ts", "d.ts"]);
+  assert.deepEqual(loadViewed({ ...storage }, pr, revision), ["c.ts", "d.ts"], "a fresh reader sees successfully persisted pending changes");
+  saved = document(["external.ts"]);
+  assert.deepEqual(loadViewed(storage, pr, revision), ["external.ts"], "successful writes release fallback and ordinary external reads still work");
+});
+
+test("failed Viewed writes preserve account separation and bounded eviction", () => {
+  const storage = { getItem: () => null, setItem: () => { throw new Error("blocked"); } };
+  const revision = { baseRef: "main", baseSha: "a".repeat(40), headSha: "b".repeat(40) };
+  const pr = key(ACCOUNT_A, LENDING, 73), other = key(ACCOUNT_B, LENDING, 73);
+  setViewed(storage, pr, revision, "mine.ts", true);
+  setViewed(storage, other, revision, "theirs.ts", true);
+  assert.deepEqual(loadViewed(storage, pr, revision), ["mine.ts"]);
+  assert.deepEqual(loadViewed(storage, other, revision), ["theirs.ts"]);
+  setViewed(storage, pr, revision, "mine.ts", false);
+  assert.deepEqual(loadViewed(storage, pr, revision), [], "failed removal of the final mark remains empty");
+  assert.deepEqual(loadViewed(storage, other, revision), ["theirs.ts"]);
+  for (let n = 1; n <= 201; n++) setViewed(storage, key(ACCOUNT_A, LENDING, n), revision, "f.ts", true);
+  assert.deepEqual(loadViewed(storage, key(ACCOUNT_A, LENDING, 1), revision), []);
+  assert.deepEqual(loadViewed(storage, key(ACCOUNT_A, LENDING, 2), revision), ["f.ts"]);
+  for (let n = 0; n <= 3000; n++) setViewed(storage, pr, revision, `file-${n}.ts`, true);
+  const paths = loadViewed(storage, pr, revision);
+  assert.equal(paths.length, 3000);
+  assert.equal(paths.includes("file-0.ts"), false);
+  assert.equal(paths.at(-1), "file-3000.ts");
+});
+
 test("the destination defaults on, keeps an explicit old off, and the saved choice wins over the old switch", () => {
   const storage = (value: string | null, saved?: object) => ({ getItem: (k: string) => k === LEGACY_CODE_REVIEW_SWITCH ? value : k === LAYOUT_KEY && saved ? JSON.stringify(saved) : null, setItem: () => {} });
   assert.equal(loadLayout(storage(null)).codeReview, false);

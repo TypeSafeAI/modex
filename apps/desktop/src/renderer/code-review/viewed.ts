@@ -10,12 +10,16 @@ const PRS = 200, PATHS = 3000;
 
 type Storage = { getItem(key: string): string | null; setItem(key: string, value: string): void };
 interface Entry { baseSha: string; headSha: string; paths: string[] }
+// Only failed writes need a session fallback. Successful writes resume ordinary storage reads.
+const pending = new WeakMap<Storage, Record<string, unknown>>();
 
 const ACCOUNT = /^[1-9][0-9]{0,19}$/;
 const SHA = /^[0-9a-f]{40}$/;
 const id = (key: PrKey) => `${key.repoId}#${key.number}`;
 
 function read(storage: Storage): Record<string, unknown> {
+  const unsaved = pending.get(storage);
+  if (unsaved) return unsaved;
   try {
     const value: unknown = JSON.parse(storage.getItem(VIEWED_KEY) ?? "null");
     return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -51,8 +55,12 @@ export function setViewed(storage: Storage, key: PrKey, revision: PrRevision, pa
   // Newest last; the oldest pull requests' marks go first when the list is full.
   const rest = Object.entries(mine).filter(([other]) => other !== id(key)).slice(-(PRS - 1));
   const next = paths.length ? [...rest, [id(key), { baseSha: revision.baseSha, headSha: revision.headSha, paths } satisfies Entry]] : rest;
+  const document = { ...read(storage), [key.account]: Object.fromEntries(next) };
   try {
-    storage.setItem(VIEWED_KEY, JSON.stringify({ ...read(storage), [key.account]: Object.fromEntries(next) }));
-  } catch { /* A full or blocked store keeps the mark for this session only. */ }
+    storage.setItem(VIEWED_KEY, JSON.stringify(document));
+    pending.delete(storage);
+  } catch {
+    pending.set(storage, document);
+  }
   return paths;
 }
