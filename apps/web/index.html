@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#1b1b1c" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta
+      name="description"
+      content="Try the Modex desktop interface in your browser. A demo workspace with simulated threads, approvals and changes. Coding with Claude Code or Codex runs in the Mac app."
+    />
+    <link rel="canonical" href="https://app.modex.codes/" />
+    <link rel="icon" href="/modex-icon.png" type="image/png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Modex — try the workspace in your browser" />
+    <meta
+      property="og:description"
+      content="A demo workspace with simulated threads, approvals and changes. Coding with Claude Code or Codex runs in the Mac app."
+    />
+    <meta property="og:url" content="https://app.modex.codes/" />
+    <meta property="og:image" content="https://modex.codes/assets/social-preview.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <title>Modex — demo workspace</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>
+      <p style="font: 15px/1.6 system-ui, sans-serif; color: #e3e4e6; background: #0f0f11; margin: 0; padding: 32px">
+        The Modex demo workspace needs JavaScript.
+        <a style="color: #a89bd8" href="https://modex.codes/">Download Modex for Mac</a> instead.
+      </p>
+    </noscript>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

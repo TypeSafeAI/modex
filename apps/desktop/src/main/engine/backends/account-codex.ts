@@ -88,7 +88,8 @@ export class AccountCodexBackend implements Backend {
     const id = opts.account ?? this.identity();
     return this.use(id, (backend) => generateTitle(backend, opts, text, signal));
   }
-  listModels(): Promise<ModelInfo[]> { return this.use(this.identity(), (backend) => backend.listModels()); }
+  listModels(account = this.identity()): Promise<ModelInfo[]> { return this.use(account, (backend) => backend.listModels()); }
+  quota(account = this.identity()) { return this.use(account, (backend) => backend.quota()); }
   async health() {
     const id = this.identity(); if (id === "cli") return this.cli.health();
     const installed = await installation(this.bin, this.spawnImpl);

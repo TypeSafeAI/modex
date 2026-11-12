@@ -1,4 +1,3 @@
-import "@fontsource-variable/manrope";
 import "./style.css";
 import "./viewport.css";
 import "./release";
@@ -28,7 +27,7 @@ const scenes = [
       "One new file. The install, test, and pull-request steps, visible before the edit.",
     outcome: "The demo pauses at a real approval request.",
     image: "workflow-approval.png",
-    alt: "A proposed CONTRIBUTING.md patch with Approve, Always and Deny buttons in Modex",
+    alt: "A proposed CONTRIBUTING.md patch in Modex, with Approve, Always, YOLO and Deny choices",
   },
   {
     kicker: "03 / THE RESULT",
@@ -36,7 +35,7 @@ const scenes = [
     description:
       "After approval, inspect the diff beside the conversation. The result and the next instruction stay in the same place.",
     example:
-      "CONTRIBUTING.md added: five lines, with a visible diff and an approval receipt.",
+      "CONTRIBUTING.md added: five lines, with the diff beside the conversation.",
     outcome: "Approved. Changed. Ready for your next instruction.",
     image: "workflow-complete.png",
     alt: "The approved contributor guide, its five added lines, and the completion message in Modex",

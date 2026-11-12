@@ -39,8 +39,10 @@ the `Release` workflow, behind the `release-signing` reviewer → GitHub release
 
 ## Landing page
 
-The download site lives in `apps/site`, deployed to Vercel project `modex`. The new
-landing design keeps the near-black blue/pink identity and follows a concrete task through
+The download site lives in `apps/site`, deployed to Vercel project `modex`. Since
+2026-11-12 it wears the desktop app's graphite appearance: the hero is the app's welcome
+workspace (start card, four work modes, shortcuts), and the workflow captures were retaken from
+the current interface. It follows a concrete task through
 request, proposed patch and approved result with manually selected real app captures.
 The page scrolls through agent choice, parallel worktrees, Pages/Knowledge, setup, optional
 iPhone Companion and inline FAQ. Mobile retains the product explanation and platform
@@ -61,11 +63,24 @@ homepage and generated brand artwork now use that address. The Vercel alias
 repository's site-only build and output configuration. See [site development and asset provenance](../apps/site/README.md)
 and [landing verification](reviews/2026-10-11-landing-clarity.md).
 
+## Browser demo
+
+`apps/web` puts the desktop renderer in a browser on the Store edition's in-memory demo
+workspace, for <https://app.modex.codes> (Vercel project `modex-app`, root `apps/web`). Threads,
+the approval, the sample change and replies are scripted in the tab; no model, CLI, file or
+network request is involved after the page loads, and there is still no hosted or API mode. A
+banner says so and links to the Mac download; phones get a short explanation and a link to the
+site. The landing page's "Try the demo" opens it. See [apps/web](../apps/web/README.md).
+
 ## On main, unreleased
+
+- **Model-picker search** (#381, #502). Protected main `bf497f7` has connection/model filtering with exact IDs, retained query/focus through metadata completion, and keyboard return to the filter. Its signed merge exactly matches the reviewed/tested tree; the protected queue passed 2,478 units with 36 skips, 520 desktop E2E cases with eight skips and seven site cases. The separate source iPhone suite passed 43 ordinary cases and one expected-failure selftest; installer/human/admission limits remain. The full #381 preservation and qualification matrix stays open. [Delivery and limits](reviews/2026-11-12-model-search.md).
 
 The published application source is `6a97d23aaea315b29008890f25dde2d7ea07f1d0` (v0.4.1). v0.4.2 is in preparation with Code Review hidden ([review](reviews/2026-11-03-v0.4.2-release-review.md)). Later source deliveries remain unreleased: #462 records local-model context provenance; #461 enforces local-only auxiliary dispatch; #465 refuses known cloud-routed and non-generative models; #463 (`32f1cb4`) defers Markdown far from the view so long threads open fast. Main still does not construct `LocalExecution`; native qualification and product admission remain separate gates. #459, #460 and #464 (`3d72c6e`, the CR-3 acceptance re-run) are evidence/documentation deliveries after the release source.
 
 Also unreleased, since that summary: #467 (`8a28df3`) adds the Claude account pool with OrcaRouter keys; #477 (`49aa449`) keeps Code Review links right after a repository rename; #487 (`b785054`) adds CF-3 draft and YOLO regressions; #488 (`68fe543`) adds owner-authorized worktree retirement; #490 (`a4f2f70`) adds the Code Review setting and its gates, and turned Code Review on by default. #492 (`4297235`) turned that default off, because Val chose v0.4.2 with Code Review hidden on 2026-11-03. #468, #470, #472, #473, #474, #476 and #483 are evidence or documentation only.
+
+Automatic credit conservation adds account-bound CLI quota admission, configurable 20% allowance / 10 provider-credit-unit thresholds, economical suitable routes and explicit standard speed during conservation. Every automatic model/account replacement rechecks quota, supported effort and the task capability floor; enabled Claude rotation can skip exhausted fresh-thread accounts before coding. Conservation also avoids a separate paid title-generation turn. Local qualification passes build/typechecks, 216 focused cases, 2,530 full unit cases (36 explicit skips), 518 desktop UI cases (11 explicit skips) and seven site UI cases; protected hosted CI and merge-queue acceptance are separate delivery gates. Exact price savings, live coding/billing and installed-release acceptance remain unqualified. [Delivery audit](reviews/2026-11-12-credit-conservation-delivery.md), [behavior](auto-routing.md#automatic-credit-conservation).
 
 ## v0.4.1 publication and remaining acceptance
 
@@ -116,11 +131,11 @@ before relying on a tick.
 | [#325](https://github.com/TypeSafeAI/modex/issues/325) CR-6 | 13/14 | Authorized live native smoke (AC6) | Run the smoke once on a small open TypeSafeAI/modex PR (authorized 2026-11-04) |
 | [#326](https://github.com/TypeSafeAI/modex/issues/326) CR-7 | 13/14 | Live canary on a disposable repository (AC6) | Val names a disposable repository |
 | [#327](https://github.com/TypeSafeAI/modex/issues/327) CR-8 | 5/17 | Reference comparison (retired 2026-11-04, boxes still name it), VoiceOver and the live gates. Budgets and C76 landed in #490; re-check item 18 and AC5 once Val confirms the budget numbers | Val's [one session](reviews/2026-11-02-v0.5.0-val-session.md) |
-| [#376](https://github.com/TypeSafeAI/modex/issues/376) LM tracker | 1/14 | LM-2 to LM-8 acceptance; `LocalExecution` is not constructed, so the product refuses local turns | Val answers the five questions in `docs/reviews/2026-11-03-lm5-val-decision.md` on branch `lm-ready` |
+| [#376](https://github.com/TypeSafeAI/modex/issues/376) LM tracker | 1/14 | LM-2 to LM-7 core acceptance; LM-8 is optional and does not block the core release; `LocalExecution` is not constructed, so the product refuses local turns | Val answers the five questions in `docs/reviews/2026-11-03-lm5-val-decision.md` on branch `lm-ready` |
 | [#378](https://github.com/TypeSafeAI/modex/issues/378) LM-2 | 12/13 | #498 delivered the cold-load explanation and token/export regressions; #499 delivered manual-ID visibility and the complete metadata IPC fixture matrix. Packaged secure-storage acceptance remains open | Complete secure-storage acceptance and re-audit every criterion; existing ticks do not replace current evidence. [Receipt](reviews/2026-11-12-lm2-manual-visibility.md) |
 | [#379](https://github.com/TypeSafeAI/modex/issues/379) LM-3 | 12/13 | AC1's real native read/edit/check and AC4's regression/configuration receipts now bind to actual main. AC6 still has native redirect and managed-policy gaps; simultaneous isolation claims retain their tested fixture scope | Resolve AC6 without weakening destination binding; product admission stays separate. [Receipt](https://github.com/TypeSafeAI/modex/issues/379#issuecomment-6811858808) |
 | [#380](https://github.com/TypeSafeAI/modex/issues/380) LM-5 | 6/13 | S5 shared capacity/cancellable waiting/explicit status and AC3/AC5 are reconciled on protected main. Redirect privacy, action-safe compaction, genuine OOM and older-client presentation remain open | Complete remaining engineering/native gates; preserve #475's owner disposition. [Delivered S5 evidence](https://github.com/TypeSafeAI/modex/issues/380#issuecomment-6815410455) |
-| [#381](https://github.com/TypeSafeAI/modex/issues/381) LM-4 | 2/13 | S4 separates inference/workspace/harness labels and AC6 preserves existing cloud/workspace behavior on main. Search, native compatibility-test/qualification UI and phone inference provenance are not implemented | Complete missing implementation, delayed-refresh/state/keyboard coverage and human/device gates; product admission remains separate. [Criterion evidence](https://github.com/TypeSafeAI/modex/issues/381#issuecomment-6813640283) |
+| [#381](https://github.com/TypeSafeAI/modex/issues/381) LM-4 | 2/13 | S4 separates inference/workspace/harness labels and AC6 preserves existing cloud/workspace behavior on main. Search is delivered by #502; native compatibility-test/qualification UI and phone inference provenance are not implemented | Complete missing implementation, delayed-refresh/state/keyboard coverage and human/device gates; product admission remains separate. [Criterion evidence](https://github.com/TypeSafeAI/modex/issues/381#issuecomment-6813640283) |
 | [#382](https://github.com/TypeSafeAI/modex/issues/382) LM-6 | 0/11 | Bounded native bundled llama-server read/edit/check, Stop and two-worker restart receipts exist; the full runtime matrix is incomplete | Qualify remaining runtime/resource cases without generalizing one named combination |
 | [#383](https://github.com/TypeSafeAI/modex/issues/383) LM-7 | 0/15 | [Evidence map](reviews/2026-11-03-lm7-evidence-map.md) reconciles actual #498/#499 protected delivery and separates fixtures, native models, network-denied and human evidence; privacy/compaction/resource gaps remain | Complete producer criteria, integrated golden/adversarial workflow and runtime/human gates |
 | [#384](https://github.com/TypeSafeAI/modex/issues/384) LM-8 | 0/11 | Optional; an outside contributor's scope question is unanswered | A maintainer answers the [scope question](https://github.com/TypeSafeAI/modex/issues/384#issuecomment-6390714922) |
@@ -252,7 +267,8 @@ that fixed each.
 
 ## Next
 
-- **Model-picker search** (#381), owned `model-search` candidate: exact-ID/connection filtering, delayed-listing query/focus and draft preservation, plus keyboard return to the retained filter. Seven focused Electron cases pass; final build/typecheck, 2,478 units with 36 skips, 517 desktop E2E cases with 11 skips and seven site cases passed. Hosted checks and protected delivery remain pending. The full issue, attachment/thread/profile matrix, native qualification and paired-client provenance stay open. [Evidence](reviews/2026-11-12-model-search.md).
+- **Local-model refresh preservation** (#381), owned `model-refresh-preservation` candidate: promote two reviewed scripted-fixture characterizations into canonical coverage for cross-thread image/raw-draft preservation, edit-form focus, exact-request stale completion and unchanged old revision-bound targets. Both targeted cases pass with before/after selection checks. Build/typecheck, 2,478 units with 36 skips, 519 desktop E2E cases with 11 skips and seven site cases pass; final artifacts and terminal results are independently verified. Draft #503 has signed source `16d4fa8`; source-head hosted macOS, iPhone and native-platform jobs pass. Final-head checks and protected delivery are tracked in #503. [Plan](superpowers/plans/2026-11-12-local-model-refresh-preservation.md); [evidence and limits](reviews/2026-11-12-local-model-refresh-preservation.md).
+
 
 Roughly in the order they earn their place; none is scheduled.
 
