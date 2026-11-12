@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "./ui/Icon";
+import { uiScale } from "../ui-scale";
 
 /** A hover card lives outside the scrolling list so inspection never moves another chat. */
 export function useThreadDetails(enabled: boolean) {
@@ -28,7 +29,7 @@ export function useThreadDetails(enabled: boolean) {
     clearTimeout(timer.current);
     const open = () => {
       const bounds = anchor.current?.getBoundingClientRect();
-      if (bounds) { focusOnOpen.current = focus; setPosition({ left: Math.max(8, Math.min(bounds.right + 3, innerWidth - 328)), top: Math.max(8, Math.min(bounds.top, innerHeight - 180)) }); }
+      if (bounds) { focusOnOpen.current = focus; const z = uiScale(); setPosition({ left: Math.max(8, Math.min(bounds.right / z + 3, innerWidth / z - 328)), top: Math.max(8, Math.min(bounds.top / z, innerHeight / z - 180)) }); }
     };
     if (immediate) open(); else timer.current = setTimeout(open, 400);
   };
@@ -50,8 +51,9 @@ export function useThreadDetails(enabled: boolean) {
 
 export function ThreadDetails({ card, title, project, updatedAt, children }: { card: ReturnType<typeof useThreadDetails>; title: string; project: string; updatedAt: string; children: ReactNode }) {
   if (!card.position) return null;
-  const days = Math.max(0, Math.floor((Date.now() - Date.parse(updatedAt)) / 86_400_000));
-  const age = days >= 7 ? `${Math.floor(days / 7)}w` : days ? `${days}d` : "Today";
+  const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(updatedAt)) / 60_000));
+  const days = Math.floor(minutes / 1440);
+  const age = days >= 7 ? `${Math.floor(days / 7)}w` : days ? `${days}d` : minutes >= 60 ? `${Math.floor(minutes / 60)}h` : minutes ? `${minutes}m` : "just now";
   return createPortal(<div ref={card.panel} id={card.id} className="thread-details" role="dialog" aria-label="Chat details" style={card.position} onPointerDown={event => event.stopPropagation()} onPointerEnter={card.keep} onPointerLeave={card.leave} onFocus={event => { event.stopPropagation(); card.keep(); }} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) card.leave(); }}>
     <div className="thread-details-title"><span>{title}</span><Icon name="laptop" size={13} /><time dateTime={updatedAt}>{age}</time></div>
     <details><summary><Icon name="folder" size={14} /><span>{project}</span></summary><div className="thread-details-meta">{children}</div></details>

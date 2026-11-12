@@ -1,3 +1,4 @@
+import { uiScale } from "../../ui-scale";
 import { cloneElement, useEffect, useId, useRef, useState, type ReactElement } from "react";
 import { createPortal } from "react-dom";
 import { Kbd } from "./Kbd";
@@ -33,7 +34,8 @@ export function Tooltip({ label, shortcut, side = "bottom", children }: Props) {
       const r = el.getBoundingClientRect();
       const roomBelow = window.innerHeight - r.bottom > 40;
       const s = side === "bottom" && !roomBelow ? "top" : side === "top" && r.top < 40 ? "bottom" : side;
-      setPos({ x: r.left + r.width / 2, y: s === "bottom" ? r.bottom + GAP : r.top - GAP, side: s });
+      const z = uiScale();
+      setPos({ x: (r.left + r.width / 2) / z, y: (s === "bottom" ? r.bottom : r.top) / z + (s === "bottom" ? GAP : -GAP), side: s });
     };
     if (delayed) {
       const ms = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tooltip-delay")) || 400;

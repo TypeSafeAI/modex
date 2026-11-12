@@ -4,6 +4,9 @@ import { App } from "./App";
 import "./tokens.css";
 import "./styles.css";
 import { restoreTheme } from "./theme";
+import { applyUiScale, savedUiScale } from "./ui-scale";
+
+applyUiScale(savedUiScale());
 
 restoreTheme();
 

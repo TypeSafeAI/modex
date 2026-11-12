@@ -27,6 +27,9 @@ interface Props {
   /** Puts the thread away (true) or brings it back (false). */
   onArchive: (thread: Thread, archived: boolean) => void;
   platform: string;
+  /** Subagents this thread's CLI reported: shown only when there are any. */
+  subagents?: { active: number; total: number };
+  onOpenSubagents?: () => void;
 }
 
 /**
@@ -34,10 +37,10 @@ interface Props {
  * lights, back/forward through selected threads, and the sidebar toggle. Right, over the thread: its
  * title (double-click to rename) and the thread's status and Changes controls.
  */
-export function TitleBar({ thread, onRename, canBack, canForward, onBack, onForward, sidebarOpen, onToggleSidebar, showChanges, onToggleChanges, changedCount, showTerminal, onToggleTerminal, onOpenPath, onOpenTerminal, onDelete, onArchive, platform }: Props) {
+export function TitleBar({ thread, onRename, canBack, canForward, onBack, onForward, sidebarOpen, onToggleSidebar, showChanges, onToggleChanges, changedCount, showTerminal, onToggleTerminal, onOpenPath, onOpenTerminal, onDelete, onArchive, platform, subagents, onOpenSubagents }: Props) {
   const [renameSignal, setRenameSignal] = useState(0);
   return (
-    <header className={`titlebar drag${sidebarOpen ? "" : " sidebar-closed"}`} data-testid="titlebar">
+    <header className={`titlebar drag${sidebarOpen ? "" : " sidebar-closed"}${platform === "darwin" ? "" : " no-window-buttons"}`} data-testid="titlebar">
       <div className="titlebar-nav">
         <IconButton icon="arrow-left" label="Back" size="md" data-testid="nav-back" disabled={!canBack} onClick={onBack} />
         <IconButton icon="arrow-right" label="Forward" size="md" data-testid="nav-forward" disabled={!canForward} onClick={onForward} />
@@ -51,6 +54,14 @@ export function TitleBar({ thread, onRename, canBack, canForward, onBack, onForw
           <ThreadTitle key={thread.id} title={thread.title} onRename={onRename} renameSignal={renameSignal} />
           <span className="spacer" />
           <div className="titlebar-actions">
+            {subagents && subagents.total > 0 && (
+              <Tooltip label={subagents.active ? `Subagents: ${subagents.active} working, ${subagents.total - subagents.active} done` : `Subagents: ${subagents.total} done`}>
+                <button className={`icon-btn md subagents-toggle${subagents.active ? " on" : ""}`} data-testid="subagents-toggle" aria-label="Subagents" onClick={onOpenSubagents}>
+                  <Icon name="agents" size={16} />
+                  <span className="subagents-count" data-testid="subagents-count">{subagents.active ? `${subagents.active} working` : `${subagents.total} done`}</span>
+                </button>
+              </Tooltip>
+            )}
             <IconButton icon="terminal" label={showTerminal ? "Hide terminal" : "Show terminal"} shortcut="⌃`" size="md" className={showTerminal ? "on" : undefined} data-testid="terminal-toggle" aria-pressed={showTerminal} onClick={onToggleTerminal} />
             <ThreadMenu thread={thread} platform={platform} onRename={() => setRenameSignal((n) => n + 1)} onOpenPath={onOpenPath} onOpenTerminal={onOpenTerminal} onDelete={onDelete} onArchive={onArchive} />
             <Tooltip label={showChanges ? "Hide side panel" : "Show side panel"} shortcut="⌘J">

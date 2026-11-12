@@ -92,8 +92,15 @@ test("new-tab menu, launcher, full view and Files replace the old panel", async 
   await tid(page, "workspace-full").click();
   await expect(tid(page, "main")).toBeHidden();
   await page.getByRole("button", { name: "Files ⌘P", exact: true }).click();
-  await page.getByRole("button", { name: "Open README.md", exact: true }).click();
+  await page.getByRole("treeitem", { name: "Open README.md", exact: true }).click();
+  // Markdown opens rendered; View source shows the file's own text. The crumb opens the folder tree.
+  await expect(tid(page, "workspace-file-content").getByRole("heading", { name: "e2e" })).toBeVisible();
+  await tid(page, "file-view-source").click();
   await expect(tid(page, "workspace-file-content")).toContainText("# e2e");
+  await page.getByRole("navigation", { name: "File path" }).getByRole("button").first().click();
+  await expect(tid(page, "file-crumb-pop").getByRole("treeitem", { name: "Open README.md" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(tid(page, "file-crumb-pop")).toHaveCount(0);
   await tid(page, "workspace-full").click();
   await expect(tid(page, "main")).toBeVisible();
   await page.keyboard.press("Meta+Shift+f");

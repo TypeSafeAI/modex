@@ -34,8 +34,15 @@ test("browser without preload: add folder, approve a turn, inspect changes, term
     await page.setViewportSize({ width: 1400, height: 1000 });
     await tid(page, "empty-open-project").focus();
     await expect(tid(page, "empty-open-project")).toBeFocused();
-    page.once("dialog", (dialog) => dialog.accept(repo));
+    // A project is made in the Create project dialog; a browser tab has no folder picker, so the path is typed.
     await page.keyboard.press("Enter");
+    await expect(tid(page, "create-project")).toBeVisible();
+    await expect(tid(page, "create-project-submit")).toBeDisabled();
+    await tid(page, "create-project-path").fill(repo);
+    await page.keyboard.press("Enter");
+    await expect(tid(page, "create-project-folder")).toContainText(path.basename(repo));
+    await tid(page, "create-project-submit").click();
+    await expect(tid(page, "create-project")).toHaveCount(0);
     await expect(tid(page, "draft-view")).toBeVisible();
     await expect(tid(page, "model-picker")).toContainText("Scripted mock");
     await tid(page, "composer-input").fill("Add a contributing guide");

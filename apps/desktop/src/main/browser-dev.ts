@@ -14,6 +14,7 @@ import { hydratePath } from "./engine/shell-env.js";
 import { LIMITS } from "../shared/attachments.js";
 import { revealAttachment } from "./reveal-attachment.js";
 import { openTerminal } from "./engine/open-terminal.js";
+import { RoutinePages, RoutineScheduler, validateRoutine } from "./engine/routines.js";
 
 /** Local development transport only; never included in the packaged renderer. */
 export function createBrowserDev(home: string) {
@@ -42,6 +43,22 @@ export function createBrowserDev(home: string) {
     return store.thread(id)!.cwd;
   }, (event) => broadcast("terminal", event), undefined, process.env,
   process.env.MODEX_E2E ? { file: "/bin/bash", args: ["--noprofile", "--norc"] } : undefined);
+  // Scheduled tasks in browser development: they can be made, edited and run by hand. The timer is never
+  // started here, so nothing runs unattended from a dev server.
+  const routines = new RoutineScheduler(home, {
+    project: (id) => store.project(id),
+    createThread: async (projectId, routine) => { await pathReady; return runner.createRoutineThread(projectId, routine); },
+    sendUnattended: (id, text) => runner.sendUnattended(id, text),
+    stop: (id) => runner.stop(id),
+    items: (id) => runner.items(id),
+    status: (id) => runner.status(id),
+    addNotice: (id, level, text) => runner.addNotice(id, level, text),
+    pages: new RoutinePages(store.space),
+  });
+  handlers.set("routines:list", (() => routines.list()) as (payload: never) => unknown);
+  handlers.set("routines:save", ((draft: unknown) => routines.save(validateRoutine(draft, (id) => Boolean(store.project(id))))) as (payload: never) => unknown);
+  handlers.set("routines:delete", (({ id }: { id: string }) => routines.remove(id)) as (payload: never) => unknown);
+  handlers.set("routines:run", (({ id }: { id: string }) => routines.runNow(id)) as (payload: never) => unknown);
   registerCommands((channel, handler) => handlers.set(channel, handler as (payload: never) => unknown), {
     store, runner, terminals, emit,
     pickDirectory: async () => { throw new Error("Enter the local project folder's absolute path."); },
@@ -171,6 +188,7 @@ export function createBrowserDev(home: string) {
       for (const upload of uploads) upload.destroy();
       for (const client of clients) client.end();
       clients.clear();
+      try { routines.dispose(); } catch { /* Nothing was scheduled. */ }
       const results = await Promise.allSettled([terminals.dispose(), runner.dispose()]);
       const failure = results.find((result) => result.status === "rejected");
       if (failure?.status === "rejected") throw failure.reason;

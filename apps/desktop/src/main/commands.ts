@@ -90,8 +90,9 @@ export function registerCommands(handle: RegisterCommand, {
       dir = await pickDirectory() ?? undefined;
       if (!dir) return null;
     }
-    return store.addProject(dir);
+    return store.addProject(dir, req?.name);
   });
+  handle("project:pick-folder", async () => await pickDirectory() ?? null);
   handle("project:remove", async ({ projectId }) => {
     await runner.removeProject(projectId);
     return store.snapshot();
@@ -109,6 +110,7 @@ export function registerCommands(handle: RegisterCommand, {
   handle("thread:answer-question", ({ threadId, itemId, answers }) => runner.answerQuestion(threadId, itemId, answers));
   handle("thread:update", ({ threadId, patch }) => runner.updateThread(threadId, patch));
   handle("thread:archive", ({ threadId, archived }) => runner.setArchived(threadId, archived));
+  handle("thread:vote", ({ threadId, itemId, vote }) => runner.setVote(threadId, itemId, vote));
   handle("thread:delete", async ({ threadId, removeWorktree }) => {
     await runner.deleteThread(threadId, removeWorktree);
     return store.snapshot();

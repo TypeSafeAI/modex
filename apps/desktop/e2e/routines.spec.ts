@@ -23,6 +23,17 @@ async function openRoutines(page: Page) {
   await expect(tid(page, "routines-view")).toBeVisible();
 }
 
+/** Selects the first task and shows its details and runs. A task that has run opens as its conversation first. */
+async function openTaskDetails(page: Page) {
+  await tid(page, "routine-row").first().click();
+  await expect(tid(page, "routine-detail").or(tid(page, "sched-chat-title"))).toBeVisible();
+  if (await tid(page, "sched-chat-title").count()) {
+    await tid(page, "sched-chat-title").click();
+    await tid(page, "sched-details").click();
+  }
+  await expect(tid(page, "routine-detail")).toBeVisible();
+}
+
 test("with the window closed, a routine still runs, and reopening shows it in Activity", async () => {
   test.skip(process.platform !== "darwin", "macOS keeps Modex running after its last window closes");
   const { home } = seedHome();
@@ -42,6 +53,7 @@ test("with the window closed, a routine still runs, and reopening shows it in Ac
   page = await nextWindow;
   await waitForWindowReady(app, page);
   await openRoutines(page);
+  await openTaskDetails(page);
   const row = tid(page, "activity-row");
   await expect(row).toHaveCount(1);
   await expect(row).toHaveAttribute("data-status", "completed");
@@ -80,6 +92,7 @@ test("killing Modex mid-run leaves the run interrupted on restart, with no page 
   fs.writeFileSync(path.join(home, "app", "state.json"), JSON.stringify(restarted));
   ({ app, page } = await launch(home));
   await openRoutines(page);
+  await openTaskDetails(page);
   const interrupted = tid(page, "activity-row");
   await expect(interrupted).toHaveCount(1, { timeout: 10_000 });
   await expect(interrupted).toHaveAttribute("data-status", "interrupted");
@@ -93,7 +106,7 @@ test("killing Modex mid-run leaves the run interrupted on restart, with no page 
   await expect(tid(page, "activity-row")).toHaveCount(2);
 });
 
-test("a routine made in the editor runs read-only: its edit is refused with a receipt and the checkout is untouched", async () => {
+test("a task made from a message runs read-only: its edit is refused with a receipt and the checkout is untouched", async () => {
   const { home, repo } = seedHome();
   const state = JSON.parse(fs.readFileSync(path.join(home, "app", "state.json"), "utf8"));
   state.settings.mock_script = script(home, "edit", [
@@ -104,21 +117,39 @@ test("a routine made in the editor runs read-only: its edit is refused with a re
   let page: Page;
   ({ app, page } = await launch(home));
   await openRoutines(page);
+  // A task is made by describing it in a message, never in a form: the schedule is read from the message.
   await tid(page, "routine-new").click();
-  await tid(page, "routine-name").fill("Weekly summary");
-  await tid(page, "routine-instructions").fill("Write a short summary of the week.");
-  await tid(page, "routine-mode-plan").check();
-  await tid(page, "routine-save").click();
+  await expect(tid(page, "routine-name")).toHaveCount(0);
+  await tid(page, "sched-compose-text").fill("Every week, write a short summary of the week.");
+  await expect(tid(page, "sched-reading")).toContainText("s at 8:00 AM · first run now");
+  await tid(page, "sched-compose-send").click();
   const row = tid(page, "routine-row");
-  await expect(row).toContainText("Weekly summary");
-  await expect(row).toContainText("Plan (read-only)");
-  await expect(tid(row, "routine-next")).toContainText("Next run");
+  await expect(row).toContainText("Write a short summary of the week");
 
-  await tid(row, "routine-run-now").click();
+  // Its first run starts at once and opens as the task's conversation; the runs are one menu away.
+  await expect(tid(page, "sched-chat-title")).toContainText("Write a short summary of the week", { timeout: 30_000 });
+  await tid(page, "sched-chat-title").click();
+  await tid(page, "sched-details").click();
+  await expect(tid(page, "routine-detail")).toContainText("Chat (read-only)");
   const activity = tid(page, "activity-row").first();
   await expect(activity).toHaveAttribute("data-status", "completed", { timeout: 30_000 });
   await expect(activity).toContainText("Run now");
-  await expect(tid(activity, "activity-page")).toHaveText("Weekly summary · revision 1");
+  await expect(tid(activity, "activity-page")).toHaveText("Write a short summary of the week · revision 1");
+  await expect(tid(page, "routine-next")).toContainText("Next run");
+
+  // What the run wrote opens beside its conversation, from the outputs list; the row's menu holds its actions.
+  await tid(page, "routine-row").first().click();
+  await tid(page, "sched-info").click();
+  await tid(page, "sched-output-open").click();
+  await expect(tid(page, "sched-output-page")).toContainText("I could not edit files, so here is the summary instead.");
+  await page.getByRole("button", { name: "Close output" }).click();
+  await expect(tid(page, "sched-output")).toHaveCount(0);
+  await tid(page, "routine-row").first().hover();
+  await tid(page, "routine-row-menu").first().click();
+  await expect(page.getByRole("menuitem", { name: "Pause" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await tid(page, "sched-chat-title").click();
+  await tid(page, "sched-details").click();
   await tid(activity, "activity-thread").click();
   // A finished turn folds its work; the refused approval is part of it.
   await tid(page, "turn-label").last().click();
