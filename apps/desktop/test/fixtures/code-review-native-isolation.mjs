@@ -7,9 +7,9 @@ import { spawn, execFileSync } from 'node:child_process';
 let pinnedClaude;
 
 /** Scripted provider wire data drives the installed CLI, not a real model or a mocked tool refusal. */
-export async function claudeFixture(t, mode = 'candidate') {
+export async function claudeFixture(t, mode = 'candidate', options = {}) {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'modex-cr6-claude-proof-')));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  if (!options.keepRoot) t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const repo = path.join(root, 'snapshot'), home = path.join(root, 'home'), bin = path.join(root, 'claude');
   fs.mkdirSync(repo); fs.mkdirSync(home);
   const installed = process.env.MODEX_CR6_CLAUDE_BIN ?? execFileSync('/usr/bin/which', ['claude'], { encoding: 'utf8', timeout: 5000 }).trim();
@@ -33,8 +33,11 @@ export async function claudeFixture(t, mode = 'candidate') {
       let data; try { data = JSON.parse(body); } catch { res.writeHead(400); res.end('{}'); return; }
       for (const tool of data.tools ?? []) if (typeof tool.name === 'string') advertised.add(tool.name);
       results.push(...(data.messages ?? []).flatMap(m => Array.isArray(m.content) ? m.content.filter(x => x.type === 'tool_result') : []));
-      const blocks = turns === 1 ? [
-        { type: 'tool_use', id: 'read-good', name: 'Read', input: { file_path: selected } },
+      const blocks = options.readFirst && turns === 1 ? [
+        { type: 'tool_use', id: 'pr-context', name: 'Read', input: { file_path: options.readFirst } },
+      ] : turns === (options.readFirst ? 2 : 1) ? [
+        ...(options.readFirst ? [{ type: 'tool_use', id: 'deferred-placeholder', name: 'DeferredToolPlaceholder', input: {} }] : []),
+        { type: 'tool_use', id: 'read-good', name: 'Read', input: { file_path: options.selectedInput ?? selected } },
         { type: 'tool_use', id: 'read-secret', name: 'Read', input: { file_path: secret } },
         { type: 'tool_use', id: 'read-symlink', name: 'Read', input: { file_path: path.join(repo, 'escape-link') } },
         { type: 'tool_use', id: 'run-shell', name: 'Bash', input: { command: `touch ${JSON.stringify(writeMarker)}` } },
@@ -70,16 +73,20 @@ export async function claudeFixture(t, mode = 'candidate') {
     : production ? ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', ...production, '--max-turns', '3', '--append-system-prompt', 'Synthetic fixture only.', '--settings', settings, '--model', 'claude-sonnet-4-6', '--max-budget-usd', '0.01']
     : [...candidate, ...common, '-p', '--output-format', 'stream-json', '--verbose', '--max-turns', '3', '--max-budget-usd', '0.01', 'Synthetic fixture only.'];
   const started = Date.now();
+  let outcome, stdout = '', stderr = '', timedOut = false, overflow = false;
+  if (options.launch) {
+    outcome = await options.launch({ root, repo, home, bin, guard, env, port, version });
+  } else {
   const child = spawn('/usr/bin/sandbox-exec', ['-p', guard, bin, ...action], { cwd: repo, env, detached: true, stdio: [production ? 'pipe' : 'ignore', 'pipe', 'pipe'] });
   // The production argv reads its prompt from stdin as Modex writes it: one stream-json user message.
   if (production) child.stdin.end(`${JSON.stringify({ type: 'user', message: { role: 'user', content: 'Synthetic fixture only.' } })}\n`);
-  let stdout = '', stderr = '', timedOut = false, overflow = false;
   const terminate = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch {} };
   child.stdout.on('data', bytes => { stdout += bytes; if (stdout.length > 1024 * 1024) { overflow = true; terminate(); } });
   child.stderr.on('data', bytes => { stderr += bytes; if (stderr.length > 65536) { overflow = true; terminate(); } });
   const timer = setTimeout(() => { timedOut = true; terminate(); }, 45000);
-  const outcome = await new Promise(resolve => { child.once('error', error => resolve({ code: null, error: error.code })); child.once('close', (code, signal) => resolve({ code, signal })); });
+  outcome = await new Promise(resolve => { child.once('error', error => resolve({ code: null, error: error.code })); child.once('close', (code, signal) => resolve({ code, signal })); });
   clearTimeout(timer); terminate();
+  }
   const markers = { write: fs.existsSync(writeMarker), hook: fs.existsSync(hookMarker), mcp: fs.existsSync(mcpMarker) };
-  return { ...outcome, timedOut, overflow, elapsedMs: Date.now() - started, version, installed: pinnedClaude, guard: guard.split(root).join('<fixture>'), requests, turns, results, selected: fs.readFileSync(selected, 'utf8'), advertised: [...advertised], markers, stdout, stderr };
+  return { ...outcome, ...(options.launch ? {} : { timedOut, overflow, stdout, stderr }), elapsedMs: Date.now() - started, version, installed: pinnedClaude, guard: guard.split(root).join('<fixture>'), requests, turns, results, selected: fs.readFileSync(selected, 'utf8'), advertised: [...advertised], markers };
 }
