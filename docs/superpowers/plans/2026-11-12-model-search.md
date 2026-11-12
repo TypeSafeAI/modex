@@ -24,5 +24,5 @@
 - [x] Run the cases against unchanged production source and retain the first missing-search failures.
 - [x] Extend `ModelMenu.tsx` with local query state, input and filtered cloud/local groups; clear query on closure. Keep management and cloud-return controls available.
 - [x] Extend `components/ui/Menu.tsx` with optional initial input focus and text-editing-aware key handling. Add theme-token styling in `styles.css`.
-- [ ] Run focused search and existing local-model/menu suites, inspect actual Electron captures, then root build/typecheck/units and full E2E. Review before signed commit/push and protected delivery.
+- [x] Run focused search and existing local-model/menu suites, inspect actual Electron captures, then root build/typecheck/units and full E2E. Review before signed commit/push and protected delivery.
 - [x] Reconcile the delivered #500 queue evidence and #380 S5 count in `docs/status.md` and dated receipts; record search's actual verification and limits separately.
