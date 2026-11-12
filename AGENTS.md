@@ -53,6 +53,9 @@ itself driving one of them.
 
 - `apps/desktop` — the Electron app (`src/main` process + backends, `src/renderer` React UI,
   `e2e/` Playwright). `packages/core` — the offline scripted engine used by demos and tests.
+- `apps/site` — the landing page at modex.codes. `apps/web` — the renderer in a browser at
+  app.modex.codes, on an in-memory demo workspace only: it runs no model, CLI, shell or file
+  operation and makes no request beyond its own origin. Keep it that way.
 - `docs/release-signing.md` — how release builds are signed and notarized, and where the
   credentials live (never in the tree). `pnpm --filter @modex/desktop dist` stays ad-hoc for
   everyday builds.

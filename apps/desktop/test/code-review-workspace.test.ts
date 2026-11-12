@@ -274,16 +274,14 @@ test("viewed marks are local, per account and belong to one revision (C65)", () 
 
 test("the destination defaults on, keeps an explicit old off, and the saved choice wins over the old switch", () => {
   const storage = (value: string | null, saved?: object) => ({ getItem: (k: string) => k === LEGACY_CODE_REVIEW_SWITCH ? value : k === LAYOUT_KEY && saved ? JSON.stringify(saved) : null, setItem: () => {} });
-  assert.equal(loadLayout(storage(null)).codeReview, false);
-  assert.equal(loadLayout(storage(null), true).codeReview, true);
-  assert.equal(loadLayout(storage("off"), true).codeReview, false);
+  assert.equal(loadLayout(storage(null)).codeReview, true);
   assert.equal(loadLayout(storage("on")).codeReview, true);
   assert.equal(loadLayout(storage("off")).codeReview, false);
   assert.equal(loadLayout(storage("yes")).codeReview, false);
   assert.equal(loadLayout(storage("off", { v: 1, codeReview: true })).codeReview, true);
   assert.equal(loadLayout(storage(null, { v: 1, codeReview: false })).codeReview, false);
-  assert.equal(loadLayout(storage(null, { v: 1, sidebar: false })).codeReview, false);
-  assert.equal(loadLayout({ getItem: () => { throw new Error("blocked"); }, setItem: () => {} }).codeReview, false);
+  assert.equal(loadLayout(storage(null, { v: 1, sidebar: false })).codeReview, true);
+  assert.equal(loadLayout({ getItem: () => { throw new Error("blocked"); }, setItem: () => {} }).codeReview, true);
 });
 
 test("the workspace's pane widths persist with the layout, and invalid saved values fall back", () => {

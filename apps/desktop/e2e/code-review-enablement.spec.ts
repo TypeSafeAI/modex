@@ -4,8 +4,8 @@ import { tid } from "./support.js";
 import { baseWorld, launchWithGh, prRow, type Harness } from "./code-review-support.js";
 
 /**
- * The Code Review setting (#319, #327): hidden by default in a built app until its gates pass, shown from Settings →
- * General or by the old switch's "on". Turning it off hides the surface; it does not touch main's records.
+ * The Code Review setting (#319, #327): shown by default in built apps. Settings → General and the old
+ * switch preserve an explicit choice to hide the surface; turning it off does not touch main's records.
  */
 let h: Harness;
 test.afterEach(async () => { await h?.close(); });
@@ -16,20 +16,23 @@ async function general() {
   return tid(h.page, "code-review-in-rail");
 }
 
-test("Code Review is hidden by default: the rail leaves it out, makes no gh read, and Settings can show it", async () => {
+test("Code Review is visible by default without a switch, stays idle until opened, and survives a reload", async () => {
   h = await launchWithGh(baseWorld(), { showCodeReview: false });
   const { page } = h;
   await expect(tid(page, "open-settings")).toBeVisible();
-  await expect(tid(page, "rail-code-review")).toHaveCount(0);
+  await expect(tid(page, "rail-code-review")).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem("modex.codeReview"))).toBeNull();
   const box = await general();
-  await expect(box).not.toBeChecked();
+  await expect(box).toBeChecked();
   expect(h.calls().filter((call) => call.includes("search"))).toEqual([]);
-  await box.check();
   await page.keyboard.press("Escape");
   await tid(page, "rail-code-review").click();
   await expect(prRow(page, "example-org/lending#73")).toBeVisible();
   await page.reload();
   await expect(tid(page, "rail-code-review")).toBeVisible();
+  // The app checks its installed CLIs during this test (version checks and Codex's app-server); what must not start is a model turn.
+  expect(h.providerStarts().filter((start) => /^claude .*-p\b/.test(start) || /^codex exec\b/.test(start))).toEqual([]);
+  expect(h.posts()).toEqual([]);
 });
 
 test("turning it off is the rollback: the surface leaves at once, survives a relaunch, keeps a draft, and can come back", async () => {

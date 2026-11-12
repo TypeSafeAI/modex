@@ -16,7 +16,7 @@ export type Layout = {
   streamerMode: boolean;
   /** Analytics' icon in the rail (Settings → General). */
   analytics: boolean;
-  /** Code Review's destination in the rail (Settings → General), off by default until its live and human gates pass (#319). Turning it off hides it: main's records and any write already sent stay. */
+  /** Code Review's destination in the rail (Settings → General), shown by default. Turning it off hides it: main's records and any write already sent stay. */
   codeReview: boolean;
 };
 
@@ -25,13 +25,13 @@ export const LAYOUT_KEY = "modex.layout";
 export const LEGACY_SIDEBAR_KEY = "modex.sidebar";
 /** The per-home switch Code Review had before this setting: "on" showed it; read until the layout saves a choice. */
 export const LEGACY_CODE_REVIEW_SWITCH = "modex.codeReview";
-export const DEFAULT_LAYOUT: Layout = { sidebar: true, changes: true, streamerMode: false, analytics: true, codeReview: false };
+export const DEFAULT_LAYOUT: Layout = { sidebar: true, changes: true, streamerMode: false, analytics: true, codeReview: true };
 
 type Storage = { getItem(key: string): string | null; setItem(key: string, value: string): void };
 
-/** Reads the saved layout; unknown or malformed fields fall back to their defaults, never throw. Development builds show Code Review unless told otherwise. */
-export function loadLayout(storage: Storage, development = false): Layout {
-  const layout: Layout = { ...DEFAULT_LAYOUT, codeReview: development };
+/** Reads the saved layout; unknown or malformed fields fall back to their defaults, never throw. */
+export function loadLayout(storage: Storage): Layout {
+  const layout: Layout = { ...DEFAULT_LAYOUT };
   // The old switch keeps its meaning: "on" shows Code Review, and any other value that was set hides it.
   try {
     const legacy = storage.getItem(LEGACY_CODE_REVIEW_SWITCH);

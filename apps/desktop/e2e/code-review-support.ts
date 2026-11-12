@@ -77,7 +77,7 @@ export async function launchWithGh(initial: GhWorld, options: { showCodeReview?:
     // Row ages and captures read the renderer's clock: pin it to the fixtures' (test/fixtures/code-review.ts NOW).
     await page.clock.setFixedTime(new Date("2026-10-18T20:41:00Z"));
     await page.reload();
-    // Built apps hide Code Review by default (e2e/code-review-enablement.spec.ts); these specs test the workspace itself.
+    // Workspace fixtures keep the legacy opt-in; the enablement spec omits it to exercise the built app's default.
     if (options.showCodeReview !== false) await page.evaluate(() => localStorage.setItem("modex.codeReview", "on"));
     await page.reload();
     // Settings is always in the rail, whether or not Code Review's button is.
