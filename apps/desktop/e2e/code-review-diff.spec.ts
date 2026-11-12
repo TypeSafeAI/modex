@@ -105,6 +105,33 @@ test("Viewed marks a file on this Mac for one revision, folds it, survives a rel
   expect(await app.evaluate(() => (globalThis as any).__diff.local)).toEqual([]);
 });
 
+test("Viewed keeps multiple session marks when storage writes fail", async () => {
+  await open();
+  await page.evaluate(() => {
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key === "modex.codeReview.viewed") throw new DOMException("Quota exceeded", "QuotaExceededError");
+      return original.call(this, key, value);
+    };
+  });
+  const marks = page.getByRole("checkbox", { name: /^Viewed / });
+  await expect(marks).toHaveCount(4);
+  const asked = (await log()).length;
+  await marks.nth(0).check();
+  await marks.nth(1).check();
+  await expect(marks.nth(0)).toBeChecked();
+  await expect(marks.nth(1)).toBeChecked();
+  await expect(tid(page, "cr-viewed-count")).toHaveText("2 of 4 viewed");
+  await marks.nth(0).uncheck();
+  await marks.nth(2).check();
+  await expect(marks.nth(0)).not.toBeChecked();
+  await expect(marks.nth(1)).toBeChecked();
+  await expect(marks.nth(2)).toBeChecked();
+  await expect(tid(page, "cr-viewed-count")).toHaveText("2 of 4 viewed");
+  expect((await log()).length).toBe(asked);
+  expect(await app.evaluate(() => (globalThis as any).__diff.local)).toEqual([]);
+});
+
 test("keyboard: F6 moves between the areas and [ ] between files, and typing a bracket in the filter types it (F6)", async () => {
   await open();
   await expect(tid(page, "cr-file-section")).toHaveCount(4);
