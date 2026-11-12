@@ -143,6 +143,12 @@ test("the rail opens the inbox, and a row opens its PR with the PR and Changes t
   await expect(inbox.getByRole("group", { name: "Authored by me" })).toBeVisible();
   await expect(inbox.getByRole("group", { name: "Needs my review" })).toBeVisible();
   await expect(row(page, "example-org", "lending", 73)).toContainText(R1.overview.title);
+  // The repository and number are drawn on the row, not kept for screen readers only: pull requests from many
+  // repositories share one list (real-use benchmark, F5). The owner completes the accessible name.
+  const rowId = row(page, "example-org", "lending", 73).getByTestId("code-review-row-id");
+  await expect(rowId).toHaveText("lending #73");
+  expect((await rowId.boundingBox())!.width, "drawn at its own width, not clipped to a pixel").toBeGreaterThan(40);
+  await expect(row(page, "example-org", "lending", 73)).toHaveAccessibleName(/example-org\/ ?lending #73 · /);
   await row(page, "example-org", "lending", 73).click();
   await expect(row(page, "example-org", "lending", 73)).toHaveAttribute("aria-current", "true");
   const prTab = tid(page, "code-review-tab-overview");

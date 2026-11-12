@@ -71,7 +71,8 @@ export function InboxPane({ ref, connection, account, inbox, pages, query, now, 
         aria-current={selected ? "true" : undefined} tabIndex={focusable ? 0 : -1} onClick={row.open}>
         <span className="cr-row-title">{row.title}</span>
         {row.stack && <span className="cr-row-stack" title="Its base is another branch, so it may be part of a stack (inferred)"><Icon name="stack" size={14} /><span className="sr-only">May be part of a stack (inferred from its base branch)</span></span>}
-        <span className="cr-row-meta"><span className="sr-only">{`${row.locator.owner}/${row.locator.repo} #${row.locator.number}, `}</span>{row.meta}</span>
+        {/* The repository and number are on the row for everyone: with open pull requests in many repositories, a title alone does not say which one this is. */}
+        <span className="cr-row-meta"><span className="sr-only">{`${row.locator.owner}/`}</span><span data-testid="code-review-row-id">{`${row.locator.repo} #${row.locator.number}`}</span>{row.meta && ` · ${row.meta}`}</span>
       </button>
     </li>;
   };
@@ -107,7 +108,7 @@ export function InboxPane({ ref, connection, account, inbox, pages, query, now, 
         </p>}
         {account && pins.length > 0 && <section className="cr-group" role="group" aria-label="Pinned">
           <h2 className="cr-group-label">Pinned</h2>
-          <ul>{pins.map((pin) => rowFor({ key: pin.key, locator: pin.locator, title: pin.title, meta: `${pin.locator.repo} #${pin.locator.number}`, stack: false, open: () => onOpenPin(pin) }))}</ul>
+          <ul>{pins.map((pin) => rowFor({ key: pin.key, locator: pin.locator, title: pin.title, meta: "", stack: false, open: () => onOpenPin(pin) }))}</ul>
         </section>}
         {account && inbox && inbox.state !== "unavailable" && GROUPS.map(({ id, label }) => {
           const base = inboxGroup(inbox, id);

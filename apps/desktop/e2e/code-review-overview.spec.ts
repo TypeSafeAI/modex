@@ -19,7 +19,7 @@ async function open(hostile = false, mode = "normal") {
       const failed = { state: "unavailable", reason: "offline", fetchedAt: NOW };
       const overview = structuredClone(req.key?.number === 91 ? R4.overview : R1.overview);
       if (g.__overviewMode === "renamed") overview.locator = { ...overview.locator, owner: "current-org", repo: "lending-renamed" };
-      if (hostile) overview.body = '# Hostile fixture\n\n<script>window.__pwned=true</script>\n\n[bad](javascript:alert(1))\n\n![remote](https://invalid.example/tracker.svg)\n\n[Safe](https://example.com/path)';
+      if (hostile) overview.body = '# Hostile fixture\n\n<script>window.__pwned=true</script>\n\n[bad](javascript:alert(1))\n\n![remote](https://invalid.example/tracker.svg)\n\n[Safe](https://example.com/path)\n\n<picture><source media="(prefers-color-scheme: dark)" srcset="https://invalid.example/dark.svg"><img src="https://invalid.example/light.png" alt="Medium severity" width="62"></picture> Contrast gate\n\n<a href="https://evil.example/login">visible words</a> and `<img alt="kept in code">`';
       let result: unknown = failed;
       if (req.op === "connection") result = R1.connection;
       if (req.op === "inbox") result = R1.inbox;
@@ -136,6 +136,12 @@ test("hostile Markdown is inert and narrow content remains reachable", async () 
   await expect(description).toContainText("<script>");
   await expect(description.locator("script,img,iframe,svg")).toHaveCount(0);
   await expect(description.locator('a[href^="javascript:"]')).toHaveCount(0);
+  // Bot-style HTML reads as its text: no source, no element, no hidden destination; code stays as written.
+  await expect(description).toContainText("Image: Medium severity Contrast gate");
+  await expect(description).toContainText("visible words and <img alt=\"kept in code\">");
+  await expect(description).not.toContainText("<picture");
+  await expect(description).not.toContainText("srcset");
+  await expect(description.locator('picture,source,a[href*="evil.example"]')).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__pwned)).toBeUndefined();
   await page.getByRole("button", { name: "Load more activity" }).click();
   const comment = page.getByRole("button", { name: "Comment", exact: true });
