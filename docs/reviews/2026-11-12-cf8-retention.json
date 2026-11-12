@@ -1,0 +1,880 @@
+{
+  "at": "2026-11-12T09:40:39.871112+00:00",
+  "currentSource": "44fb41eecf718cf6648b7c8ee95cab1e85e0e072",
+  "historicalSource": "89c98f280292b13fd9b1c7af1bf2fe65cd2fa0d1",
+  "groups": {
+    "historical": {
+      "history": [
+        {
+          "replicate": 1,
+          "host": {
+            "cpu": "Apple M5 Max",
+            "cores": 18,
+            "memoryBytes": 137438953472,
+            "release": "27.2.0",
+            "arch": "arm64",
+            "node": "v24.22.0",
+            "loadAverage": [
+              9.4541015625,
+              11.06494140625,
+              11.78466796875
+            ]
+          },
+          "native": {
+            "appVersion": "0.2.0",
+            "electron": "44.4.5",
+            "chromium": "152.0.7977.130"
+          },
+          "rendererForcedDetachedBeforeAfterBytes": [
+            17336928,
+            15012276
+          ],
+          "rendererRetainedEndpointDeltaBytes": -2324652,
+          "mainNaturalHeapBeforeAfterBytes": [
+            32592720,
+            29485112
+          ],
+          "mainNaturalPrivateBeforeAfterKiB": [
+            84449,
+            105025
+          ],
+          "beforeDOM": {
+            "documents": 1,
+            "nodes": 317,
+            "jsEventListeners": 269
+          },
+          "afterDOM": {
+            "documents": 1,
+            "nodes": 317,
+            "jsEventListeners": 230
+          },
+          "measuredOpens": 63,
+          "warmupOpens": 3,
+          "naturalSampledRendererHeapRangeBytes": [
+            30501696,
+            116625604
+          ],
+          "savedBytes": [
+            2994024,
+            2994024,
+            2994024
+          ],
+          "sourceReceipt": {
+            "file": "cf8-historical-natural-89c-replicate-1.json",
+            "sha256": "c302735a90fa3b74a7b0487cec2a456816b1110fc70575d15e8139d74bbe747c",
+            "startedAt": "2026-11-12T09:34:32.690Z",
+            "finishedAt": "2026-11-12T09:34:46.338Z",
+            "state": "observations-complete",
+            "appClose": "returned"
+          }
+        },
+        {
+          "replicate": 2,
+          "host": {
+            "cpu": "Apple M5 Max",
+            "cores": 18,
+            "memoryBytes": 137438953472,
+            "release": "27.2.0",
+            "arch": "arm64",
+            "node": "v24.22.0",
+            "loadAverage": [
+              10.6201171875,
+              11.25439453125,
+              11.83984375
+            ]
+          },
+          "native": {
+            "appVersion": "0.2.0",
+            "electron": "44.4.5",
+            "chromium": "152.0.7977.130"
+          },
+          "rendererForcedDetachedBeforeAfterBytes": [
+            14349376,
+            15011772
+          ],
+          "rendererRetainedEndpointDeltaBytes": 662396,
+          "mainNaturalHeapBeforeAfterBytes": [
+            32720296,
+            29708988
+          ],
+          "mainNaturalPrivateBeforeAfterKiB": [
+            84385,
+            105105
+          ],
+          "beforeDOM": {
+            "documents": 1,
+            "nodes": 312,
+            "jsEventListeners": 230
+          },
+          "afterDOM": {
+            "documents": 1,
+            "nodes": 317,
+            "jsEventListeners": 230
+          },
+          "measuredOpens": 63,
+          "warmupOpens": 3,
+          "naturalSampledRendererHeapRangeBytes": [
+            27623008,
+            117432380
+          ],
+          "savedBytes": [
+            2994024,
+            2994024,
+            2994024
+          ],
+          "sourceReceipt": {
+            "file": "cf8-historical-natural-89c-replicate-2.json",
+            "sha256": "93c5a394508ac04d5bf7cb2a741013318078e027f5193290a5e90886664a914f",
+            "startedAt": "2026-11-12T09:34:46.396Z",
+            "finishedAt": "2026-11-12T09:34:59.849Z",
+            "state": "observations-complete",
+            "appClose": "returned"
+          }
+        },
+        {
+          "replicate": 3,
+          "host": {
+            "cpu": "Apple M5 Max",
+            "cores": 18,
+            "memoryBytes": 137438953472,
+            "release": "27.2.0",
+            "arch": "arm64",
+            "node": "v24.22.0",
+            "loadAverage": [
+              10.205078125,
+              11.14111328125,
+              11.78857421875
+            ]
+          },
+          "native": {
+            "appVersion": "0.2.0",
+            "electron": "44.4.5",
+            "chromium": "152.0.7977.130"
+          },
+          "rendererForcedDetachedBeforeAfterBytes": [
+            14349524,
+            15017540
+          ],
+          "rendererRetainedEndpointDeltaBytes": 668016,
+          "mainNaturalHeapBeforeAfterBytes": [
+            32684652,
+            34822572
+          ],
+          "mainNaturalPrivateBeforeAfterKiB": [
+            84049,
+            114337
+          ],
+          "beforeDOM": {
+            "documents": 1,
+            "nodes": 312,
+            "jsEventListeners": 230
+          },
+          "afterDOM": {
+            "documents": 1,
+            "nodes": 317,
+            "jsEventListeners": 230
+          },
+          "measuredOpens": 63,
+          "warmupOpens": 3,
+          "naturalSampledRendererHeapRangeBytes": [
+            27657652,
+            83517336
+          ],
+          "savedBytes": [
+            2994024,
+            2994024,
+            2994024
+          ],
+          "sourceReceipt": {
+            "file": "cf8-historical-natural-89c-replicate-3.json",
+            "sha256": "ca10b19772e3b4b4b7cb075d424bc64c0fe28d94344dec5863e814a296dbe52c",
+            "startedAt": "2026-11-12T09:34:59.900Z",
+            "finishedAt": "2026-11-12T09:35:15.153Z",
+            "state": "observations-complete",
+            "appClose": "returned"
+          }
+        }
+      ],
+      "stream": [
+        {
+          "replicate": 1,
+          "host": {
+            "cpu": "Apple M5 Max",
+            "cores": 18,
+            "memoryBytes": 137438953472,
+            "release": "27.2.0",
+            "arch": "arm64",
+            "node": "v24.22.0",
+            "loadAverage": [
+              11.296875,
+              11.34423828125,
+              11.849609375
+            ]
+          },
+          "native": {
+            "appVersion": "0.2.0",
+            "electron": "44.4.5",
+            "chromium": "152.0.7977.130"
+          },
+          "rendererForcedDetachedBeforeAfterBytes": [
+            8688596,
+            76521192
+          ],
+          "rendererRetainedEndpointDeltaBytes": 67832596,
+          "mainNaturalHeapBeforeAfterBytes": [
+            72123300,
+            202668900
+          ],
+          "mainNaturalPrivateBeforeAfterKiB": [
+            169825,
+            294529
+          ],
+          "beforeDOM": {
+            "documents": 1,
+            "nodes": 243,
+            "jsEventListeners": 220
+          },
+          "afterDOM": {
+            "documents": 1,
+            "nodes": 371,
+            "jsEventListeners": 241
+          },
+          "measuredStreams": 21,
+          "warmupStreams": 1,
+          "logicalMeasuredBytes": 66060288,
+          "observedWindowBytesMeasured": 1684719770,
+          "maxSampledOutputBytes": 3145728,
+          "fixtureCodingStarts": 22,
+          "fixtureCodingFinishes": 22,
+          "naturalSampledRendererHeapRangeBytes": [
+            37475912,
+            249385848
+          ],
+          "sourceReceipt": {
+            "file": "cf8-historical-log-89c-replicate-1.json",
+            "sha256": "994bcc6c1eb517852524da27f3bc194b56d2e59be1804c15395df72ad771217a",
+            "startedAt": "2026-11-12T09:35:15.240Z",
+            "finishedAt": "2026-11-12T09:35:51.356Z",
+            "state": "observations-complete",
+            "appClose": "returned"
+          }
+        },
+        {
+          "replicate": 2,
+          "host": {
+            "cpu": "Apple M5 Max",
+            "cores": 18,
+            "memoryBytes": 137438953472,
+            "release": "27.2.0",
+            "arch": "arm64",
+            "node": "v24.22.0",
+            "loadAverage": [
+              11.66796875,
+              11.443359375,
+              11.86474609375
+            ]
+          },
+          "native": {
+            "appVersion": "0.2.0",
+            "electron": "44.4.5",
+            "chromium": "152.0.7977.130"
+          },
+          "rendererForcedDetachedBeforeAfterBytes": [
+            5542560,
+            73373420
+          ],
+          "rendererRetainedEndpointDeltaBytes": 67830860,
+          "mainNaturalHeapBeforeAfterBytes": [
+            72134436,
+            202845984
+          ],
+          "mainNaturalPrivateBeforeAfterKiB": [
+            165073,
+            291442
+          ],
+          "beforeDOM": {
+            "documents": 1,
+            "nodes": 243,
+            "jsEventListeners": 220
+          },
+          "afterDOM": {
+            "documents": 1,
+            "nodes": 371,
+            "jsEventListeners": 241
+          },
+          "measuredStreams": 21,
+          "warmupStreams": 1,
+          "logicalMeasuredBytes": 66060288,
+          "observedWindowBytesMeasured": 1684719770,
+          "maxSampledOutputBytes": 3145728,
+          "fixtureCodingStarts": 22,
+          "fixtureCodingFinishes": 22,
+          "naturalSampledRendererHeapRangeBytes": [
+            37565804,
+            214739488
+          ],
+          "sourceReceipt": {
+            "file": "cf8-historical-log-89c-replicate-2.json",
+            "sha256": "788da1a4bf82119616be1eb878e697b241ab88c9a6367b8250978f026ba71ef7",
+            "startedAt": "2026-11-12T09:35:51.419Z",
+            "finishedAt": "2026-11-12T09:36:26.842Z",
+            "state": "observations-complete",
+            "appClose": "returned"
+          }
+        },
+        {
+          "replicate": 3,
+          "host": {
+            "cpu": "Apple M5 Max",
+            "cores": 18,
+            "memoryBytes": 137438953472,
+            "release": "27.2.0",
+            "arch": "arm64",
+            "node": "v24.22.0",
+            "loadAverage": [
+              10.150390625,
+              11.091796875,
+              11.71826171875
+            ]
+          },
+          "native": {
+            "appVersion": "0.2.0",
+            "electron": "44.4.5",
+            "chromium": "152.0.7977.130"
+          },
+          "rendererForcedDetachedBeforeAfterBytes": [
+            5549952,
+            73340480
+          ],
+          "rendererRetainedEndpointDeltaBytes": 67790528,
+          "mainNaturalHeapBeforeAfterBytes": [
+            72136404,
+            202849580
+          ],
+          "mainNaturalPrivateBeforeAfterKiB": [
+            165617,
+            291506
+          ],
+          "beforeDOM": {
+            "documents": 1,
+            "nodes": 243,
+            "jsEventListeners": 220
+          },
+          "afterDOM": {
+            "documents": 1,
+            "nodes": 371,
+            "jsEventListeners": 241
+          },
+          "measuredStreams": 21,
+          "warmupStreams": 1,
+          "logicalMeasuredBytes": 66060288,
+          "observedWindowBytesMeasured": 1684719770,
+          "maxSampledOutputBytes": 3145728,
+          "fixtureCodingStarts": 22,
+          "fixtureCodingFinishes": 22,
+          "naturalSampledRendererHeapRangeBytes": [
+            21742188,
+            261993784
+          ],
+          "sourceReceipt": {
+            "file": "cf8-historical-log-89c-replicate-3.json",
+            "sha256": "a051ae78ac2ea2a9533f31c7e35cfcc5fd02b6e21054968a3ca80d8ce4242877",
+            "startedAt": "2026-11-12T09:36:26.905Z",
+            "finishedAt": "2026-11-12T09:37:01.472Z",
+            "state": "observations-complete",
+            "appClose": "returned"
+          }
+        }
+      ]
+    },
+    "current": {
+      "history": [
+        {
+          "replicate": 1,
+          "host": {
+            "cpu": "Apple M5 Max",
+            "cores": 18,
+            "memoryBytes": 137438953472,
+            "release": "27.2.0",
+            "arch": "arm64",
+            "node": "v24.22.0",
+            "loadAverage": [
+              7.2900390625,
+              8.02001953125,
+              9.60498046875
+            ]
+          },
+          "native": {
+            "electron": "44.4.5",
+            "chromium": "152.0.7977.130"
+          },
+          "rendererForcedDetachedBeforeAfterBytes": [
+            14952760,
+            15791412
+          ],
+          "rendererRetainedEndpointDeltaBytes": 838652,
+          "mainNaturalHeapBeforeAfterBytes": [
+            37707428,
+            50931160
+          ],
+          "mainNaturalPrivateBeforeAfterKiB": [
+            90113,
+            120161
+          ],
+          "beforeDOM": {
+            "documents": 1,
+            "nodes": 320,
+            "jsEventListeners": 269
+          },
+          "afterDOM": {
+            "documents": 1,
+            "nodes": 320,
+            "jsEventListeners": 230
+          },
+          "measuredOpens": 63,
+          "warmupOpens": 3,
+          "naturalSampledRendererHeapRangeBytes": [
+            27200848,
+            156610040
+          ],
+          "savedBytes": [
+            2994024,
+            2994024,
+            2994024
+          ],
+          "sourceReceipt": {
+            "file": "cf8-natural-retention-44fb-replicate-1.json",
+            "sha256": "87c7bcdb935e7ed72ba21ca0537e8ab595023eefea7deb9adf5e5a7bfcc4263c",
+            "startedAt": "2026-11-12T08:41:00.503Z",
+            "finishedAt": "2026-11-12T08:41:16.900Z",
+            "state": "observations-complete",
+            "appClose": "returned"
+          }
+        },
+        {
+          "replicate": 2,
+          "host": {
+            "cpu": "Apple M5 Max",
+            "cores": 18,
+            "memoryBytes": 137438953472,
+            "release": "27.2.0",
+            "arch": "arm64",
+            "node": "v24.22.0",
+            "loadAverage": [
+              7.84619140625,
+              8.1015625,
+              9.60498046875
+            ]
+          },
+          "native": {
+            "electron": "44.4.5",
+            "chromium": "152.0.7977.130"
+          },
+          "rendererForcedDetachedBeforeAfterBytes": [
+            14850864,
+            15787868
+          ],
+          "rendererRetainedEndpointDeltaBytes": 937004,
+          "mainNaturalHeapBeforeAfterBytes": [
+            37581204,
+            49643892
+          ],
+          "mainNaturalPrivateBeforeAfterKiB": [
+            90193,
+            119105
+          ],
+          "beforeDOM": {
+            "documents": 1,
+            "nodes": 315,
+            "jsEventListeners": 230
+          },
+          "afterDOM": {
+            "documents": 1,
+            "nodes": 320,
+            "jsEventListeners": 230
+          },
+          "measuredOpens": 63,
+          "warmupOpens": 3,
+          "naturalSampledRendererHeapRangeBytes": [
+            26923300,
+            99632588
+          ],
+          "savedBytes": [
+            2994024,
+            2994024,
+            2994024
+          ],
+          "sourceReceipt": {
+            "file": "cf8-natural-retention-44fb-replicate-2.json",
+            "sha256": "b6da6766c79ecb988a0568dd08895da207a4efb84989755d32e0cb35cd323e7d",
+            "startedAt": "2026-11-12T08:41:16.967Z",
+            "finishedAt": "2026-11-12T08:41:32.494Z",
+            "state": "observations-complete",
+            "appClose": "returned"
+          }
+        },
+        {
+          "replicate": 3,
+          "host": {
+            "cpu": "Apple M5 Max",
+            "cores": 18,
+            "memoryBytes": 137438953472,
+            "release": "27.2.0",
+            "arch": "arm64",
+            "node": "v24.22.0",
+            "loadAverage": [
+              8.03369140625,
+              8.12890625,
+              9.58740234375
+            ]
+          },
+          "native": {
+            "electron": "44.4.5",
+            "chromium": "152.0.7977.130"
+          },
+          "rendererForcedDetachedBeforeAfterBytes": [
+            14842900,
+            15804820
+          ],
+          "rendererRetainedEndpointDeltaBytes": 961920,
+          "mainNaturalHeapBeforeAfterBytes": [
+            37726740,
+            49530228
+          ],
+          "mainNaturalPrivateBeforeAfterKiB": [
+            90737,
+            118529
+          ],
+          "beforeDOM": {
+            "documents": 1,
+            "nodes": 315,
+            "jsEventListeners": 230
+          },
+          "afterDOM": {
+            "documents": 1,
+            "nodes": 320,
+            "jsEventListeners": 230
+          },
+          "measuredOpens": 63,
+          "warmupOpens": 3,
+          "naturalSampledRendererHeapRangeBytes": [
+            27649144,
+            106447948
+          ],
+          "savedBytes": [
+            2994024,
+            2994024,
+            2994024
+          ],
+          "sourceReceipt": {
+            "file": "cf8-natural-retention-44fb-replicate-3.json",
+            "sha256": "afcee7b05ea34cecb8fc3aacf8a87544d34b37aa65bedd6e0505e50499038e62",
+            "startedAt": "2026-11-12T08:41:32.546Z",
+            "finishedAt": "2026-11-12T08:41:48.663Z",
+            "state": "observations-complete",
+            "appClose": "returned"
+          }
+        }
+      ],
+      "stream": [
+        {
+          "replicate": 1,
+          "host": {
+            "cpu": "Apple M5 Max",
+            "cores": 18,
+            "memoryBytes": 137438953472,
+            "release": "27.2.0",
+            "arch": "arm64",
+            "node": "v24.22.0",
+            "loadAverage": [
+              10.048828125,
+              9.97509765625,
+              9.75
+            ]
+          },
+          "native": {
+            "electron": "44.4.5",
+            "chromium": "152.0.7977.130"
+          },
+          "rendererForcedDetachedBeforeAfterBytes": [
+            6011144,
+            9448940
+          ],
+          "rendererRetainedEndpointDeltaBytes": 3437796,
+          "mainNaturalHeapBeforeAfterBytes": [
+            47736696,
+            47230308
+          ],
+          "mainNaturalPrivateBeforeAfterKiB": [
+            148001,
+            162305
+          ],
+          "beforeDOM": {
+            "documents": 1,
+            "nodes": 246,
+            "jsEventListeners": 220
+          },
+          "afterDOM": {
+            "documents": 1,
+            "nodes": 374,
+            "jsEventListeners": 241
+          },
+          "measuredStreams": 21,
+          "warmupStreams": 1,
+          "logicalMeasuredBytes": 66060288,
+          "observedWindowBytesMeasured": 13945579,
+          "maxSampledOutputBytes": 262144,
+          "fixtureCodingStarts": 22,
+          "fixtureCodingFinishes": 22,
+          "naturalSampledRendererHeapRangeBytes": [
+            10984832,
+            29487420
+          ],
+          "sourceReceipt": {
+            "file": "cf8-log-retention-44fb-replicate-1.json",
+            "sha256": "13eb1cdba0c42b3adbb5a5fc01a9b754b4a06237fe27cee5c6527860425d3b2a",
+            "startedAt": "2026-11-12T08:54:24.015Z",
+            "finishedAt": "2026-11-12T08:54:58.034Z",
+            "state": "observations-complete",
+            "appClose": "returned"
+          }
+        },
+        {
+          "replicate": 2,
+          "host": {
+            "cpu": "Apple M5 Max",
+            "cores": 18,
+            "memoryBytes": 137438953472,
+            "release": "27.2.0",
+            "arch": "arm64",
+            "node": "v24.22.0",
+            "loadAverage": [
+              12.4990234375,
+              10.5673828125,
+              9.9716796875
+            ]
+          },
+          "native": {
+            "electron": "44.4.5",
+            "chromium": "152.0.7977.130"
+          },
+          "rendererForcedDetachedBeforeAfterBytes": [
+            6012644,
+            9735108
+          ],
+          "rendererRetainedEndpointDeltaBytes": 3722464,
+          "mainNaturalHeapBeforeAfterBytes": [
+            47740312,
+            58711396
+          ],
+          "mainNaturalPrivateBeforeAfterKiB": [
+            147921,
+            175153
+          ],
+          "beforeDOM": {
+            "documents": 1,
+            "nodes": 246,
+            "jsEventListeners": 220
+          },
+          "afterDOM": {
+            "documents": 1,
+            "nodes": 374,
+            "jsEventListeners": 241
+          },
+          "measuredStreams": 21,
+          "warmupStreams": 1,
+          "logicalMeasuredBytes": 66060288,
+          "observedWindowBytesMeasured": 13945579,
+          "maxSampledOutputBytes": 262144,
+          "fixtureCodingStarts": 22,
+          "fixtureCodingFinishes": 22,
+          "naturalSampledRendererHeapRangeBytes": [
+            6837120,
+            34374320
+          ],
+          "sourceReceipt": {
+            "file": "cf8-log-retention-44fb-replicate-2.json",
+            "sha256": "6dc99960390fe74a31f10150ff97396f9b80eb7bf43b78ec333b19cf342fbe98",
+            "startedAt": "2026-11-12T08:54:58.102Z",
+            "finishedAt": "2026-11-12T08:55:35.009Z",
+            "state": "observations-complete",
+            "appClose": "returned"
+          }
+        },
+        {
+          "replicate": 3,
+          "host": {
+            "cpu": "Apple M5 Max",
+            "cores": 18,
+            "memoryBytes": 137438953472,
+            "release": "27.2.0",
+            "arch": "arm64",
+            "node": "v24.22.0",
+            "loadAverage": [
+              14.150390625,
+              11.15576171875,
+              10.208984375
+            ]
+          },
+          "native": {
+            "electron": "44.4.5",
+            "chromium": "152.0.7977.130"
+          },
+          "rendererForcedDetachedBeforeAfterBytes": [
+            6005948,
+            9207732
+          ],
+          "rendererRetainedEndpointDeltaBytes": 3201784,
+          "mainNaturalHeapBeforeAfterBytes": [
+            47111688,
+            32241836
+          ],
+          "mainNaturalPrivateBeforeAfterKiB": [
+            146289,
+            148866
+          ],
+          "beforeDOM": {
+            "documents": 1,
+            "nodes": 246,
+            "jsEventListeners": 220
+          },
+          "afterDOM": {
+            "documents": 1,
+            "nodes": 374,
+            "jsEventListeners": 241
+          },
+          "measuredStreams": 21,
+          "warmupStreams": 1,
+          "logicalMeasuredBytes": 66060288,
+          "observedWindowBytesMeasured": 13945579,
+          "maxSampledOutputBytes": 262144,
+          "fixtureCodingStarts": 22,
+          "fixtureCodingFinishes": 22,
+          "naturalSampledRendererHeapRangeBytes": [
+            9392824,
+            29843580
+          ],
+          "sourceReceipt": {
+            "file": "cf8-log-retention-44fb-replicate-3.json",
+            "sha256": "6dd03d46aa221e16476255c9600a81bfc8ad6b7c3d8f14dfc0c659fc77e287d2",
+            "startedAt": "2026-11-12T08:55:35.569Z",
+            "finishedAt": "2026-11-12T08:56:19.531Z",
+            "state": "observations-complete",
+            "appClose": "returned"
+          }
+        }
+      ]
+    }
+  },
+  "limits": [
+    "Descriptive sequential source comparison, not randomized or component-causal; timestamps differ but fixed shapes/counts match",
+    "Common current pinned dependencies/runtime, not historical shipped binary; verified old source distinct from parent driver Git HEAD",
+    "Historical-only shallow DOM Text.length observation proves full ASCII output; no ordinary latency comparison",
+    "Each streaming cycle adds legitimate history; uniform all-x data is not a generic log distribution",
+    "Main always naturalGC; renderer forced only matched detached UI phases; no exhaustive async settlement guarantee",
+    "These measurements alone do not establish full S5, arbitrary memory ceilings, leak freedom, native real-provider or human acceptance; see separate literal S5 reconciliation",
+    "Reported PIDabsence/appclose does not prove exhaustive process-tree closure"
+  ],
+  "schemaVersion": 1,
+  "kind": "CF8 named-scope measurement observations; full S5 assessment also checks delivered structural caps and child regressions",
+  "units": {
+    "rendererAndMainNodeMemory": "bytes",
+    "mainNativePrivate": "KiB",
+    "logicalAndWindowOutput": "bytes"
+  },
+  "sourceReceiptDisclosure": "Per-replicate originals, archived drivers, manifests and first setup failures are retained privately. This public aggregate omits local executable/app/userData paths and process IDs; numeric observations are unchanged.",
+  "naturalDetach5s": {
+    "historical": [
+      {
+        "replicate": 1,
+        "naturalDetachedAfter5s": {
+          "documents": 1,
+          "nodes": 77453,
+          "jsEventListeners": 6548
+        },
+        "naturalDetachedHeapAfter5s": 41895184
+      },
+      {
+        "replicate": 2,
+        "naturalDetachedAfter5s": {
+          "documents": 1,
+          "nodes": 16144,
+          "jsEventListeners": 4620
+        },
+        "naturalDetachedHeapAfter5s": 37617744
+      },
+      {
+        "replicate": 3,
+        "naturalDetachedAfter5s": {
+          "documents": 1,
+          "nodes": 16144,
+          "jsEventListeners": 4620
+        },
+        "naturalDetachedHeapAfter5s": 43352336
+      }
+    ],
+    "current": [
+      {
+        "replicate": 1,
+        "naturalDetachedAfter5s": {
+          "documents": 1,
+          "nodes": 68313,
+          "jsEventListeners": 17099
+        },
+        "naturalDetachedHeapAfter5s": 76279220
+      },
+      {
+        "replicate": 2,
+        "naturalDetachedAfter5s": {
+          "documents": 1,
+          "nodes": 51298,
+          "jsEventListeners": 11940
+        },
+        "naturalDetachedHeapAfter5s": 60749228
+      },
+      {
+        "replicate": 3,
+        "naturalDetachedAfter5s": {
+          "documents": 1,
+          "nodes": 51298,
+          "jsEventListeners": 11940
+        },
+        "naturalDetachedHeapAfter5s": 66270116
+      }
+    ]
+  },
+  "reviewProvenance": {
+    "originalComparisonSha256": "7f4ae658f579263f316df5324ab4665f97f474520a80ca189e3f628fc75fd587",
+    "terminalComparisonReviewSha256": "9668574a5e5fb81a565154f34cfd27739acab2d265222b927eddd027dd0f65ce",
+    "correctedReportSha256": "815369f6e46b8a8128467884971719e4afb64ea60c5eb3253b9530f081bb3ac9",
+    "followupReviewSha256": "149d0835868d227afc2f06ecca908370e3b966bb4ef2ae2908cd338df6ff9fe7"
+  },
+  "s5Reconciliation": {
+    "literalS5Supported": true,
+    "main": "558b54f8fa0cb3679852c6ece2b07e23a3b10ffb",
+    "scope": "Named fixture measurement, observed retention and delivered structural/lifecycle bounds plus child regressions; no global heap/RSS guarantee",
+    "independentReviewSha256": "397b156f542b16a899075f98a461fde96833abe30579f0e2b13427d768210312",
+    "publicReceipt": "https://github.com/TypeSafeAI/modex/issues/281#issuecomment-6820945583",
+    "observedIssueChecked": 9,
+    "observedIssueTotal": 27,
+    "onlyCheckboxChanged": "S5",
+    "separateOpenGate": "Reproducible capture/performance acceptance, native/provider/device/human acceptance and remaining dependencies",
+    "retainedDataCaps": {
+      "previewBytes": 262144,
+      "pageBytes": 262144,
+      "perToolRawLogBytes": 10485760
+    },
+    "implementationPaths": [
+      "apps/desktop/src/shared/evidence.ts",
+      "apps/desktop/src/main/engine/tool-logs.ts",
+      "apps/desktop/src/main/engine/backends/codex.ts",
+      "apps/desktop/src/main/engine/runner.ts"
+    ],
+    "queuePassedTests": [
+      "apps/desktop/test/evidence.test.ts",
+      "apps/desktop/test/tool-logs.test.ts",
+      "apps/desktop/e2e/transcript-measure.spec.ts",
+      "apps/desktop/e2e/conversation-fidelity.spec.ts"
+    ]
+  }
+}
