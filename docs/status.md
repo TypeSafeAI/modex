@@ -254,7 +254,7 @@ that fixed each.
 
 ## Next
 
-- **Local-model refresh preservation** (#381), owned `model-refresh-preservation` candidate: promote two reviewed scripted-fixture characterizations into canonical coverage for cross-thread image/raw-draft preservation, edit-form focus, exact-request stale completion and unchanged old revision-bound targets. Both targeted cases pass with before/after selection checks; full candidate qualification and protected delivery are pending. [Plan](superpowers/plans/2026-11-12-local-model-refresh-preservation.md); [evidence and limits](reviews/2026-11-12-local-model-refresh-preservation.md).
+- **Local-model refresh preservation** (#381), owned `model-refresh-preservation` candidate: promote two reviewed scripted-fixture characterizations into canonical coverage for cross-thread image/raw-draft preservation, edit-form focus, exact-request stale completion and unchanged old revision-bound targets. Both targeted cases pass with before/after selection checks. Build/typecheck, 2,478 units with 36 skips, 519 desktop E2E cases with 11 skips and seven site cases pass; final artifacts and terminal results are independently verified. Draft #503 has signed source `16d4fa8`; source-head hosted macOS, iPhone and native-platform jobs pass. Final-head checks and protected delivery are tracked in #503. [Plan](superpowers/plans/2026-11-12-local-model-refresh-preservation.md); [evidence and limits](reviews/2026-11-12-local-model-refresh-preservation.md).
 
 
 Roughly in the order they earn their place; none is scheduled.

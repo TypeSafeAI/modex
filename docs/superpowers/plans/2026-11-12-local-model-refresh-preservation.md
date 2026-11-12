@@ -15,7 +15,7 @@
 - [x] Add `e2e/fixtures/local-model-preservation.mjs`, guarded to disposable scripted homes, with observer-only coding/discovery counters and exact-request stale-completion binding.
 - [x] Run targeted cases with literal selection-range assertions for query, composer and unsaved profile fields. Preserve first failures; repair production only if evidence establishes a defect.
 - [x] Reconcile #502 delivery, dated receipts and status. Clarify existing optional LM-8 scope without changing requirements or approval gates.
-- [ ] Run root build/typecheck/units and full E2E, inspect relevant captures, and independently review the final source and qualification evidence.
+- [x] Run root build/typecheck/units and full E2E, inspect relevant captures, and independently review the final source and qualification evidence.
 - [ ] Sign, push, open a PR, satisfy hosted checks and use the protected queue. Verify actual merged main before advancing any complete criterion.
 
 ## Review focus
