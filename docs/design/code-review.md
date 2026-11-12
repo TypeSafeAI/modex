@@ -534,10 +534,11 @@ replaces (`reader.ts`). The overview's content (#323) and the remote diff and fi
 panes the host lays out. Until then, those panes say so.
 
 **Visibility.** The v0.4 releases hide the rail button in a built app unless `localStorage["modex.codeReview"]`
-is `"on"`. From v0.4.2 the layout's `codeReview` setting replaces that, off by default, with
-Settings → General → "Show Code Review in the rail" as the control; the old switch's value is honoured until the layout
-saves a choice. Development builds default it on. There is no main flag. Val chose on 2026-11-03 to keep it hidden
-until Gate A completes ([v0.4.2 review](../reviews/2026-11-03-v0.4.2-release-review.md)).
+is `"on"`. v0.4.2 replaces that with the layout's `codeReview` setting, off by default, and
+Settings → General → "Show Code Review in the rail" as the control. The v0.5.0 candidate
+([review](../reviews/2026-11-04-v0.5.0-candidate.md)) makes that setting on by default in built and development
+apps; a saved choice to hide it is kept, and the old switch's value is honoured until the layout saves a choice. The
+Store build and the browser demo never show it. There is no main flag. The candidate is a draft that waits for Val.
 
 **Arrangements.** A PR opens with two tabs in the title bar, PR and Changes, starting where the inbox
 ends. They show one pane (R1), or both side by side behind the right-panel button (R4). Each PR keeps
