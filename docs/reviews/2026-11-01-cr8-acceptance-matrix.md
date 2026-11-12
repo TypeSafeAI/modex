@@ -55,7 +55,7 @@ benchmark on real pull requests is recorded and the issue text that names the co
 | C04 | Top-right buttons | shell | deviation D9 (only the split toggle applies) | `code-review-navigation.spec.ts`; journey (split toggle) | `A-322`, `A-main`, `A-main-2` (split) | — | open (VoiceOver) |
 | C05 | PR tab: icon, title, close | #322 | built | `code-review-navigation.spec.ts`; journey; `code-review-a11y.spec.ts` | — | — | open (VoiceOver) |
 | C06 | Changes tab with +/− | #322 | built | `code-review-navigation.spec.ts`; journey (totals from the production overview) | `A-322`, `A-main`, `A-main-2` (overview totals) | — | open (VoiceOver) |
-| C07 | New tab (+) | #322 (decision 6, 2026-11-04: remove) | unavailable; removal not landed yet | `code-review-navigation.spec.ts` (aria-disabled); `code-review-regressions.spec.ts` "hostile content" (double-click, Enter and Space dispatch nothing) | — | — | open (VoiceOver) |
+| C07 | New tab (+) | #322 (decision 6, 2026-11-04: remove) | removed: the control is not rendered | `code-review-navigation.spec.ts` and `code-review-regressions.spec.ts` (`code-review-new-tab` has count 0) | — | — | n/a (no control) |
 | C08 | Code Review rail button | #322 | built | `code-review-navigation.spec.ts`; journey (`aria-current`) | `A-322` | — | open (VoiceOver) |
 | C09 | Other rail icons | shell | unchanged | full `pnpm test:e2e` | — | — | — |
 | C10 | Account monogram | shell | unchanged | full `pnpm test:e2e` | — | — | — |
@@ -113,7 +113,7 @@ benchmark on real pull requests is recorded and the issue text that names the co
 | C62 | Header repeated over Changes | #322 | built; now repeats the live C21 and C27–C29 | `code-review-navigation.spec.ts`; journey (R4); `code-review-a11y.spec.ts` | — | — | open (VoiceOver) |
 | C63 | Changes ⋯ menu and view toggles | #324 | built in part (#404 `e3527f4`): "Wrap lines" and "Highlight changes" toggles. The ⋯ menu and the tree/image/layout toggles are left out, as the inventory allows | on `main` (#484 via #490): `code-review-diff.spec.ts` "wrapping and highlighting change rendered code…" | — | — | open (VoiceOver); open: reference comparison |
 | C64 | File header | #324 | built (#404 `e3527f4`) | `code-review-diff.spec.ts` "grouped diffs, both gutters, hierarchy, filter…"; review-flow (#441) | `A-324` (service: 15/15 files) | — | open (VoiceOver); open: reference comparison |
-| C65 | Viewed toggle | #324 (decision 5, 2026-11-04: local, revision-bound, no GitHub write) | not built yet | — | — | — | — |
+| C65 | Viewed toggle | #324 (decision 5, 2026-11-04: local, revision-bound, no GitHub write) | built: a per-file checkbox and a "viewed" count, stored in this window's local storage per account and shown only at the revision it was marked at; no GitHub request | `code-review-workspace.test.ts` (load, set, revision change, bad stored data); `code-review-diff.spec.ts` (toggle, count, survives reopening, cleared by a new head) | — | — | open (VoiceOver) |
 | C66 | File ⋯ menu (never Discard) | #324 | built (#404 `e3527f4`): Copy path and Open in GitHub only | `code-review-regressions.spec.ts` "local Changes stay local"; `code-review-diff.spec.ts` "…use remote data only". On `main` (#484 via #490): the same file's "file menu copies the remote path…" opens the menu and asserts both items and no Discard | — | — | open (VoiceOver) |
 | C67 | Folded lines, expand | #324 | built (#404 `e3527f4`) | `code-review-diff.spec.ts` "expanding context asks the exact remote revision…", "review: context expands adjacent to both ends…", "context text budget is shared…"; `code-review-diff.test.ts` "context windows reveal both ends…" | `A-main` (context read), `A-324` (base context matched the merge base) | — | open (VoiceOver) |
 | C68 | Line numbers, add/remove rows | #324 | built (#404 `e3527f4`) | `code-review-diff.test.ts` ×9; `code-review-diff.spec.ts` "line anchors have one keyboard entry per file…", "old-line anchors name the merge base…"; review-flow | `A-324` (15/15 patches parsed; anchor) | — | open (VoiceOver) |
@@ -135,8 +135,8 @@ benchmark on real pull requests is recorded and the issue text that names the co
 `A-322` keeps its baseline meaning: CR-3's authenticated navigation smoke on candidate `65e86dd` + `4dd5bb5`.
 Decisions 2–4 (C21, C31, C35, C38, C43's +) were settled by Val on 2026-10-25 and built in #416. Decisions 1
 (C16, C81), 5 (C65), 6 (C07) and 7 (C82) were answered on 2026-11-04, when Val accepted a planning session's
-recommendations; the [design page](../design/code-review.md#open-decisions) records them. Two are not built yet:
-the local Viewed toggle (C65) and the removal of C07.
+recommendations; the [design page](../design/code-review.md#open-decisions) records them. The local Viewed toggle (C65) is built
+and C07 is removed.
 
 ## Acceptance criteria #321–#326
 
@@ -185,7 +185,7 @@ the local Viewed toggle (C65) and the removal of C07.
 | AC | Where it stands on `0a8c513` |
 | --- | --- |
 | AC1 R1–R4 in real Electron | All four reached through real controls over production reads with synthetic `gh` (`F-1101` journey). The original references are gone. On 2026-11-04 Val retired the comparison in favour of a benchmark on real pull requests against GitHub's pages; that benchmark has not run, and this does not tick a box whose text still requires the comparison. |
-| AC2 every visible control has behaviour or an explicit unavailable state | Partial: C07 is not removed yet and C65 is not built yet (decisions 6 and 5). C58 attachment and C59 reasoning effort are approved omissions (Val, 2026-11-04). C07 is to be removed and C65 to be built (decisions 6 and 5). The other controls are mapped above; seven built controls also lack an asserting spec (follow-ups below). |
+| AC2 every visible control has behaviour or an explicit unavailable state | Partial: C07 is removed and C65 is built (decisions 6 and 5). C58 attachment and C59 reasoning effort are approved omissions (Val, 2026-11-04). The other controls are mapped above; seven built controls also lack an asserting spec (follow-ups below). |
 | AC3 isolation, injection, incomplete data, at-most-once | Met at fixture: read regressions, native denial on 2.1.316 (`N`), agent stop/unknown/restart, write at-most-once and reconciliation (`F-1101`). **Open:** the live smoke (#325) and live canary (#326). |
 | AC4 local Changes, navigation, conversation and approvals intact | `S-1101`: unit green; the local E2E had one non-Code-Review failure that passed alone, so it is not counted as green. The hosted required check passed on `c1f74c7`. |
 | AC5 performance, keyboard/contrast; human screen-reader gate | Baseline measurements and contrast stand for `0e674e7`; `F-1101` re-ran measure and a11y green. **Open (Val):** the [VoiceOver checklist](2026-10-22-cr8-voiceover/checklist.md), Result row empty. |
