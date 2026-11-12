@@ -4,6 +4,7 @@ import { activityPages, externalDestination, stackOrder } from "../../shared/cod
 import { bridge } from "../bridge";
 import { Menu, MenuItem } from "../components/ui/Menu";
 import { Markdown } from "../components/Markdown";
+import { readableRemoteText } from "./remote-text.js";
 import { ErrorNotice } from "../components/ui/ErrorNotice";
 import type { OpenPr } from "./model.js";
 import { prUrl } from "./model.js";
@@ -84,7 +85,7 @@ export function PrOverview({ pr, caps, retry, onChanges, onPage, busy, actions =
       <h1>{overview.title}</h1>
       <div className="cr-overview-meta"><strong>{overview.author.login}</strong> opened <time dateTime={overview.createdAt}>{new Date(overview.createdAt).toLocaleString()}</time><br /><code>{overview.headRepo ? `${overview.headRepo}:` : ""}{overview.headRef}</code> → <code>{overview.revision.baseRef}</code>{writes ? <EditPullRequest writes={writes} overview={overview} fallback={caps.edit} onDone={retry} /> : <Action label="Edit pull request" capability={caps.edit} action={actions.edit} />}</div>
       <button type="button" className="cr-changes-summary" onClick={onChanges} aria-label="Open Changes">{overview.totals.files} changed files · <span className="cr-add">{additions(overview.totals.additions)}</span> <span className="cr-del">{deletions(overview.totals.deletions)}</span> · {overview.comments} comments</button>
-      <article data-testid="cr-description" aria-label="Pull request description"><Markdown text={overview.body || "No description provided."} /></article>
+      <article data-testid="cr-description" aria-label="Pull request description"><Markdown text={readableRemoteText(overview.body) || "No description provided."} /></article>
       {agent && writes && <AgentReview agent={agent} overview={overview} writes={writes} fallback={caps.review} />}
       <section data-testid="cr-activity" className="cr-activity" aria-labelledby="cr-activity-heading">
         <div className="cr-section-heading"><h2 id="cr-activity-heading">Activity</h2><label>Show <select aria-label="Activity filter" value={filter} onChange={e => setFilter(e.target.value)}><option value="all">All activity</option><option value="commit">Commits</option><option value="comment">Comments</option><option value="review">Reviews</option><option value="deployment">Deployments</option><option value="event">Events</option></select></label></div>
@@ -111,7 +112,7 @@ function Activity({ row, locator, currentHead, onAsk }: { row: PrActivity; locat
   return <article className={`cr-activity-item cr-activity-${row.kind}`} data-activity-id={`${row.kind}:${row.id}`}>
     <header>{row.kind === "comment" && locator && <CommentMenu row={row} locator={locator} onAsk={onAsk} />}<strong>{row.kind === "deployment" ? row.environment : row.kind === "commit" ? row.author?.login ?? "Git author" : row.actor?.login ?? "GitHub"}</strong><span>{row.kind === "commit" ? "committed" : row.kind === "opened" ? "opened this pull request" : row.kind === "review" ? `reviewed · ${row.verdict}` : row.kind === "event" ? row.event : row.kind === "deployment" ? `provider deployment · ${row.status}` : "issue comment"}</span><time dateTime={row.at}>{new Date(row.at).toLocaleString()}</time></header>
     {row.kind === "commit" && <p><code>{row.sha.slice(0, 8)}</code> {row.headline}</p>}
-    {(row.kind === "comment" || row.kind === "review") && <><p className="cr-evidence">{row.kind === "comment" ? "Comment content · Links and status claims are supplied by the commenter, not verified deployment evidence." : `Submitted review · revision ${row.commit?.slice(0, 8) ?? "unknown"}`}</p><Markdown text={row.body} /></>}
+    {(row.kind === "comment" || row.kind === "review") && <><p className="cr-evidence">{row.kind === "comment" ? "Comment content · Links and status claims are supplied by the commenter, not verified deployment evidence." : `Submitted review · revision ${row.commit?.slice(0, 8) ?? "unknown"}`}</p><Markdown text={readableRemoteText(row.body)} /></>}
     {row.kind === "deployment" && <p>Provider record · revision {row.commit.slice(0, 8)}{currentHead && row.commit !== currentHead ? " · Old revision" : ""} · <External url={row.url}>Open deployment</External></p>}
   </article>;
 }

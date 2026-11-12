@@ -32,6 +32,8 @@ const JSON_TYPE: Accept = "application/vnd.github+json";
 const RAW: Accept = "application/vnd.github.raw";
 const KB = 1024, MB = 1024 * KB;
 const TIMEOUT_MS = 15_000, LONG_TIMEOUT_MS = 30_000;
+/** How long `resolve`'s read of a pull request may stand in for the overview read that follows it. */
+const HANDOFF_MS = 2_000;
 const INBOX_PAGE = 30, PAGE = 100;
 /** GitHub's own limits: search serves 1,000 results, the files list 3,000 files. */
 const SEARCH_CAP = 1000, FILES_CAP = 3000;
@@ -116,18 +118,23 @@ class Lru<K, V> {
   }
 }
 
-/** At most `max` gh processes; a released slot passes straight to the next waiter. */
+/**
+ * At most `max` gh processes; a released slot passes straight to the next waiter. A read for the pull request
+ * the person opened goes ahead of the inbox's background lookups that have not started yet: it never
+ * interrupts one that has, and background reads still run whenever no such read is waiting.
+ */
 class Slots {
   private active = 0;
   private readonly waiting: (() => void)[] = [];
+  private readonly background: (() => void)[] = [];
   constructor(private readonly max: number) {}
-  async run<T>(work: () => Promise<T>): Promise<T> {
+  async run<T>(work: () => Promise<T>, background = false): Promise<T> {
     if (this.active < this.max) this.active++;
-    else await new Promise<void>((resolve) => this.waiting.push(resolve));
+    else await new Promise<void>((resolve) => (background ? this.background : this.waiting).push(resolve));
     try {
       return await work();
     } finally {
-      const next = this.waiting.shift();
+      const next = this.waiting.shift() ?? this.background.shift();
       if (next) next();
       else this.active--;
     }
@@ -135,7 +142,9 @@ class Slots {
 }
 
 /** `stamp`: gh's login state the account was confirmed under when the read began. */
-interface Context { account: string; generation: number; stamp: string | null; signal: AbortSignal; repositories: Set<string>; resources: Set<string>; deniedResources: Set<string>; invalidated: boolean }
+interface Context { account: string; generation: number; stamp: string | null; signal: AbortSignal; repositories: Set<string>; resources: Set<string>; deniedResources: Set<string>; invalidated: boolean;
+  /** An inbox read: its gh calls wait behind those for an opened pull request. */
+  background: boolean; }
 interface Fetched { body: Buffer; headers: Record<string, string> }
 
 const enc = encodeURIComponent;
@@ -165,6 +174,8 @@ export class CodeReviewService {
   private readonly names = new Lru<string, string>(2048);
   private readonly hints = new Lru<string, boolean>(4096);
   private readonly revisions = new Lru<string, PrRevision[]>(1024);
+  /** The pull request `resolve` just read, for the one overview read the renderer sends next. Used once, then gone. */
+  private readonly handoff = new Lru<string, { pull: Pull; at: number; generation: number; account: string }>(8);
   private readonly kept = new Lru<string, { value: unknown; fetchedAt: string; coverage?: Coverage; resources: Set<string> }>(256, 32 * MB, (entry) => size(entry.value) + [...entry.resources].reduce((bytes, key) => bytes + key.length * 2 + 32, 0));
 
   constructor(options: CodeReviewOptions = {}) {
@@ -215,7 +226,8 @@ export class CodeReviewService {
       return this.reply(request, null, this.unavailable(failure));
     }
     if ("key" in request && request.key.account !== account.id) return this.reply(request, account.id, this.unavailable(new ReadFailure("signed-out", DETAIL.otherAccount)));
-    const context: Context = { account: account.id, generation: this.generation, stamp: this.identity!.stamp, signal: entry.controller.signal, repositories: new Set(), resources: new Set(), deniedResources: new Set(), invalidated: false };
+    const context: Context = { account: account.id, generation: this.generation, stamp: this.identity!.stamp, signal: entry.controller.signal, repositories: new Set(), resources: new Set(), deniedResources: new Set(), invalidated: false,
+      background: request.op === "inbox" || request.op === "inbox-page" };
     entry.generation = context.generation;
     this.contexts.add(context);
     try {
@@ -407,7 +419,7 @@ export class CodeReviewService {
   private switchAccount(): void {
     this.generation++;
     for (const entry of this.inflight.values()) if (entry.generation !== null) entry.controller.abort();
-    for (const store of [this.cache, this.repos, this.names, this.hints, this.revisions, this.kept]) store.clear();
+    for (const store of [this.cache, this.repos, this.names, this.hints, this.revisions, this.kept, this.handoff]) store.clear();
     this.blocked.clear();
     this.searches = [];
   }
@@ -451,7 +463,7 @@ export class CodeReviewService {
     const cached = this.cache.get(key);
     // A read cancelled while it waited for a slot never starts gh.
     const answer = await this.slots.run(() => context.signal.aborted ? Promise.resolve<GhAnswer>({ kind: "cancelled" })
-      : this.transport({ endpoint, accept, etag: cached?.etag ?? null, maxBytes: options.maxBytes ?? MB, timeoutMs: options.timeoutMs ?? TIMEOUT_MS, signal: context.signal }));
+      : this.transport({ endpoint, accept, etag: cached?.etag ?? null, maxBytes: options.maxBytes ?? MB, timeoutMs: options.timeoutMs ?? TIMEOUT_MS, signal: context.signal }), context.background);
     if (answer.kind !== "http") {
       if ((answer.kind === "no-cli" || answer.kind === "signed-out") && context.generation === this.generation) this.forget();
       throw this.transportFailure(answer.kind);
@@ -558,6 +570,7 @@ export class CodeReviewService {
     });
     this.revisions.delete(prId(repo.id, number));
     this.hints.delete(prId(repo.id, number));
+    this.handoff.delete(prId(repo.id, number));
     // Commit and contents URLs are shared by PRs. Revalidate the repository's transport
     // representations next time, while preserving unrelated repositories' caches.
     this.cache.deleteWhere((key) => key.includes(`\u0000${repoPath(repo)}/`) || key.startsWith(`${JSON_TYPE}\u0000search/`));
@@ -565,6 +578,8 @@ export class CodeReviewService {
 
   private async pull(context: Context, repoId: string, number: number): Promise<Pull> {
     const repo = this.repoFor({ account: context.account, host: "github.com", repoId, number });
+    // Any newer read of this pull request supersedes what `resolve` left for the overview.
+    this.handoff.delete(prId(repoId, number));
     let fetched: Fetched;
     try {
       fetched = await this.get(context, `${repoPath(repo)}/pulls/${number}`, { maxBytes: 4 * MB });
@@ -595,19 +610,40 @@ export class CodeReviewService {
     return found;
   }
 
+  /**
+   * Opening a link is two requests from the renderer, `resolve` then `overview`, and each read the same pull
+   * request a moment apart. The overview may use `resolve`'s read once, within HANDOFF_MS and under the same
+   * account generation; it then depends on that resource like any read of its own. Every other read, and
+   * every read that guards a revision, still asks GitHub itself.
+   */
+  private handedOff(context: Context, key: PrKey): Pull | null {
+    const id = prId(key.repoId, key.number);
+    const entry = this.handoff.get(id);
+    if (!entry) return null;
+    this.handoff.delete(id);
+    const age = this.now() - entry.at;
+    if (entry.generation !== context.generation || entry.account !== context.account || age < 0 || age > HANDOFF_MS || context.invalidated) return null;
+    const path = repoPath(entry.pull.base);
+    context.repositories.add(path.toLowerCase());
+    context.resources.add(`${JSON_TYPE}\u0000${path}/pulls/${key.number}`);
+    return entry.pull;
+  }
+
   private async resolve(context: Context, input: string): Promise<ReadResult<ResolvedPr>> {
     const locator = parsePrLocator(input);
     if (!locator) throw new ReadFailure("invalid", DETAIL.badLink);
     let repo = await this.repoByName(context, locator.owner, locator.repo);
+    let found: Pull;
     try {
-      await this.pull(context, repo.id, locator.number);
+      found = await this.pull(context, repo.id, locator.number);
     } catch (error) {
       if (!(error instanceof Moved)) throw error;
       // The name main knew now leads elsewhere: read it again for the repository it names today.
       repo = await this.repoByName(context, locator.owner, locator.repo);
-      await this.pull(context, repo.id, locator.number);
+      found = await this.pull(context, repo.id, locator.number);
     }
     const current = this.repos.get(repo.id) ?? repo;
+    if (context.generation === this.generation) this.handoff.set(prId(repo.id, locator.number), { pull: found, at: this.now(), generation: context.generation, account: context.account });
     return { state: "ready", fetchedAt: this.at(), value: {
       locator: { host: "github.com", owner: current.owner, repo: current.name, number: locator.number },
       key: { account: context.account, host: "github.com", repoId: repo.id, number: locator.number },
@@ -615,7 +651,7 @@ export class CodeReviewService {
   }
 
   private async overview(context: Context, key: PrKey): Promise<ReadResult<PrOverview>> {
-    const pr = await this.pull(context, key.repoId, key.number);
+    const pr = this.handedOff(context, key) ?? await this.pull(context, key.repoId, key.number);
     return { state: "ready", fetchedAt: this.at(), value: {
       key, locator: { host: "github.com", owner: pr.base.owner, repo: pr.base.name, number: key.number }, revision: pr.revision,
       title: pr.title, body: pr.body, state: pr.state, author: pr.author, createdAt: pr.createdAt, updatedAt: pr.updatedAt, headRef: pr.headRef,
@@ -757,29 +793,10 @@ export class CodeReviewService {
     let deploymentFailure: Unavailable | "capped" | null = null;
     if (pr) {
       activity.unshift({ kind: "opened", id: `pr-${pr.id}`, at: pr.createdAt, actor: pr.author });
-      // A bounded current-head preview read, independent of arbitrary links in bot comments.
-      // Endpoint strings are built from main's repository and numeric provider IDs only.
-      try {
-        const base = repoPath(this.repoFor(key));
-        const fetchedDeployments = await this.get(context, `${base}/deployments?sha=${pr.revision.headSha}&per_page=20&page=1`, { maxBytes: 2 * MB });
-        const records: unknown = json(fetchedDeployments.body);
-        if (!Array.isArray(records)) throw new ReadFailure("failed", DETAIL.failed);
-        if (hasNext(fetchedDeployments.headers.link)) deploymentFailure = "capped";
-        for (const record of records.slice(0, 20)) {
-          const mapped = deployment(record, null);
-          if (!mapped || mapped.commit !== pr.revision.headSha) { deploymentFailure = "failed"; continue; }
-          const deploymentId = mapped.id.slice("deployment-".length);
-          const statuses = json((await this.get(context, `${base}/deployments/${deploymentId}/statuses?per_page=1&page=1`, { maxBytes: MB })).body);
-          if (!Array.isArray(statuses)) throw new ReadFailure("failed", DETAIL.failed);
-          activity.push(deployment(record, statuses[0])!);
-        }
-        const after = await this.pull(context, key.repoId, key.number);
-        if (!sameRevision(pr.revision, after.revision)) deploymentFailure = "head-changed";
-      } catch (error) {
-        const failure = this.failure(error);
-        if (failure.cancelled || failure.reason === "signed-out") throw error;
-        deploymentFailure = failure.reason;
-      }
+      // Asked only once the timeline has arrived: a failed timeline costs GitHub no further request.
+      const read = await this.deployments(context, key, pr);
+      activity.push(...read.records);
+      deploymentFailure = read.failure;
     }
     const more = hasNext(fetched.headers.link);
     const next = more && number < TIMELINE_PAGES ? `p${number + 1}` : null;
@@ -790,6 +807,38 @@ export class CodeReviewService {
     if (dropped) return { state: "partial", value: activity, fetchedAt, reason: "failed", coverage };
     if (more && !next) return { state: "partial", value: activity, fetchedAt, reason: "capped", coverage };
     return { state: "ready", value: activity, fetchedAt, coverage };
+  }
+
+  /**
+   * A bounded current-head preview read, independent of arbitrary links in bot comments. Endpoint strings are
+   * built from main's repository and numeric provider IDs only. A failure is reported, not thrown, unless the
+   * read was cancelled or the account is gone.
+   */
+  private async deployments(context: Context, key: PrKey, pr: Pull): Promise<{ records: PrActivity[]; failure: Unavailable | "capped" | null }> {
+    const records: PrActivity[] = [];
+    let failure: Unavailable | "capped" | null = null;
+    try {
+      const base = repoPath(this.repoFor(key));
+      const fetchedDeployments = await this.get(context, `${base}/deployments?sha=${pr.revision.headSha}&per_page=20&page=1`, { maxBytes: 2 * MB });
+      const listed: unknown = json(fetchedDeployments.body);
+      if (!Array.isArray(listed)) throw new ReadFailure("failed", DETAIL.failed);
+      if (hasNext(fetchedDeployments.headers.link)) failure = "capped";
+      for (const record of listed.slice(0, 20)) {
+        const mapped = deployment(record, null);
+        if (!mapped || mapped.commit !== pr.revision.headSha) { failure = "failed"; continue; }
+        const deploymentId = mapped.id.slice("deployment-".length);
+        const statuses = json((await this.get(context, `${base}/deployments/${deploymentId}/statuses?per_page=1&page=1`, { maxBytes: MB })).body);
+        if (!Array.isArray(statuses)) throw new ReadFailure("failed", DETAIL.failed);
+        records.push(deployment(record, statuses[0])!);
+      }
+      const after = await this.pull(context, key.repoId, key.number);
+      if (!sameRevision(pr.revision, after.revision)) failure = "head-changed";
+    } catch (error) {
+      const caught = this.failure(error);
+      if (caught.cancelled || caught.reason === "signed-out") throw error;
+      failure = caught.reason;
+    }
+    return { records, failure };
   }
 
   /** Every page of a check list, up to CHECK_PAGES. `limited`: main stopped at its own page limit, not at GitHub's last page. */
@@ -843,9 +892,10 @@ export class CodeReviewService {
     const number = page(cursor, FILES_CAP / PAGE);
     const before = await this.pull(context, key.repoId, key.number);
     if (!sameRevision(before.revision, revision)) throw new ReadFailure("head-changed", DETAIL.headChanged);
-    const diffBaseSha = await this.diffBase(context, key, revision);
-    const listed = json((await this.get(context, `${repoPath(this.repoFor(key))}/pulls/${key.number}/files?per_page=${PAGE}&page=${number}`,
-      { maxBytes: 24 * MB, timeoutMs: LONG_TIMEOUT_MS })).body);
+    // The merge base and the page of files do not depend on each other: both are read between the two reads of the PR.
+    const [diffBaseSha, filesPage] = await Promise.all([this.diffBase(context, key, revision),
+      this.get(context, `${repoPath(this.repoFor(key))}/pulls/${key.number}/files?per_page=${PAGE}&page=${number}`, { maxBytes: 24 * MB, timeoutMs: LONG_TIMEOUT_MS })]);
+    const listed = json(filesPage.body);
     if (!Array.isArray(listed)) throw new ReadFailure("failed", DETAIL.failed);
     const files = listed.map(changedFile);
     if (files.some((file) => file === null)) throw new ReadFailure("failed", DETAIL.failed);

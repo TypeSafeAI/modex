@@ -129,7 +129,9 @@ export type ThreadItem =
    * contract (shared/conversation-events.ts). Items saved before it have none; read them through `itemFacts`.
    * `nativePhase` is the CLI's own phase value, kept verbatim.
    */
-  | { id: string; kind: "assistant"; text: string; at: string; phase?: MessagePhase; nativePhase?: string; outcome?: ExecutionOutcome; origin?: ItemOrigin; evidence?: Evidence[]; asks?: MessageAsk[] }
+  | { id: string; kind: "assistant"; text: string; at: string; phase?: MessagePhase; nativePhase?: string; outcome?: ExecutionOutcome; origin?: ItemOrigin; evidence?: Evidence[]; asks?: MessageAsk[];
+      /** The person's own rating of this reply. Kept with the thread on this Mac; sent to no provider or service. */
+      vote?: "up" | "down" | null }
   /** `ok` is kept for older readers: true only for `succeeded`, false only for `failed` or `denied`. */
   /** `exec`, `exitCode`, `outputBytes` and `outputTruncated` (shared/evidence.ts): the command that ran and its output, bounded. */
   | { id: string; kind: "tool"; name: string; title: string; args: Record<string, unknown>; output?: string; ok?: boolean; status: "running" | "done"; durationMs?: number; at: string; agent?: AgentActivity; outcome?: ExecutionOutcome; origin?: ItemOrigin; exec?: Exec; exitCode?: number | null; outputBytes?: number; outputTruncated?: boolean; search?: NativeWebSearch }
@@ -616,7 +618,10 @@ export interface BridgeCommands extends NativeDraftCommands, ImageCommands, Plug
   "updates:quit": { req: undefined; res: void };
   "updates:recovery-folder": { req: undefined; res: void };
   "state:get": { req: undefined; res: AppState };
-  "project:add": { req: { path?: string } | undefined; res: Project | null };
+  /** `name`: what the project is called; absent, the folder's own name. */
+  "project:add": { req: { path?: string; name?: string } | undefined; res: Project | null };
+  /** Asks for a folder with the system's own dialog and returns its path; nothing is added. */
+  "project:pick-folder": { req: undefined; res: string | null };
   "project:remove": { req: { projectId: string }; res: AppState };
   "thread:create": { req: { projectId: string; worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean }; res: Thread };
   "thread:items": { req: { threadId: string }; res: ThreadItem[] };
@@ -646,6 +651,8 @@ export interface BridgeCommands extends NativeDraftCommands, ImageCommands, Plug
   "analytics:show": { req: { bounds?: BrowserBounds }; res: { error?: string } | null };
   /** Puts a thread away or brings it back. Refused while the thread is working. */
   "thread:archive": { req: { threadId: string; archived: boolean }; res: Thread };
+  /** Rates one reply up or down, or clears the rating (null). Local only: nothing leaves this Mac. */
+  "thread:vote": { req: { threadId: string; itemId: string; vote: "up" | "down" | null }; res: void };
   "routing:status": { req: undefined; res: RoutingStatus };
   "routing:reset": { req: undefined; res: RoutingStatus };
   /** Stores a hand-entered key (or op:// reference) in the OS keychain; never in state.json. */

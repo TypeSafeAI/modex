@@ -143,6 +143,12 @@ test("the rail opens the inbox, and a row opens its PR with the PR and Changes t
   await expect(inbox.getByRole("group", { name: "Authored by me" })).toBeVisible();
   await expect(inbox.getByRole("group", { name: "Needs my review" })).toBeVisible();
   await expect(row(page, "example-org", "lending", 73)).toContainText(R1.overview.title);
+  // The repository and number are drawn on the row, not kept for screen readers only: pull requests from many
+  // repositories share one list (real-use benchmark, F5). The owner completes the accessible name.
+  const rowId = row(page, "example-org", "lending", 73).getByTestId("code-review-row-id");
+  await expect(rowId).toHaveText("lending #73");
+  expect((await rowId.boundingBox())!.width, "drawn at its own width, not clipped to a pixel").toBeGreaterThan(40);
+  await expect(row(page, "example-org", "lending", 73)).toHaveAccessibleName(/example-org\/ ?lending #73 · /);
   await row(page, "example-org", "lending", 73).click();
   await expect(row(page, "example-org", "lending", 73)).toHaveAttribute("aria-current", "true");
   const prTab = tid(page, "code-review-tab-overview");
@@ -387,7 +393,8 @@ test("pin, copy and Open in GitHub use the canonical link, a pasted link opens i
   await settle(page);
   expect((await log(app)).filter((r) => r.requestId !== "settle").length).toBe(asked);
   await expect(tid(page, "code-review-review").first()).toHaveAttribute("aria-disabled", "true");
-  await expect(tid(page, "code-review-new-tab").first()).toHaveAttribute("aria-disabled", "true");
+  // C07 (decision 6, 2026-11-04): this surface has no new-tab control.
+  await expect(tid(page, "code-review-new-tab")).toHaveCount(0);
   // Pins outlive a reload, per account, and open their PR.
   await page.reload();
   await tid(page, "rail-code-review").click();

@@ -64,7 +64,7 @@ test("Save to Notes writes the turn's record into the project's notes, and savin
   expect(saved[0]!.markdown).toContain("Fixed the import.");
   expect(saved[0]!.markdown).toContain(`From modex thread ${threadId}.`);
   expect(saved[0]!.markdown).not.toContain(repo);
-  await expect(save).toHaveText("Update note");
+  await expect(save).toHaveAccessibleName("Update note");
   await save.click();
   await expect(tid(page, "task-note-saved").first()).toContainText("Updated in Notes · Task:");
   expect((await pages()).filter((p) => p.title.startsWith("Task:"))).toHaveLength(1);
