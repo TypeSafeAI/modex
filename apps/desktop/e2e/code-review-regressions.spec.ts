@@ -240,15 +240,8 @@ for (const delayed of [false, true]) test(`dispatch: unavailable actions start n
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog", { name: "Review instructions" })).toHaveCount(0);
   // Merge is CR-7's now (e2e/code-review-actions.spec.ts): opening it reads, and only an explicit preview and confirm writes.
-  for (const id of ["code-review-new-tab"]) {
-    const control = tid(page, id).first();
-    await expect(control, id).toHaveAttribute("aria-disabled", "true");
-    // aria-disabled, not disabled: it stays focusable, so force the pointer through to prove it does nothing.
-    await control.dblclick({ force: true });
-    await control.focus();
-    await page.keyboard.press("Enter");
-    await page.keyboard.press("Space");
-  }
+  // C07 (decision 6, 2026-11-04): the new-tab control is gone from this surface.
+  await expect(tid(page, "code-review-new-tab")).toHaveCount(0);
   await expect(tid(page, "code-review-pr-id").first()).toHaveText("lending #73");
   await settle(page);
   // The settle reads are connection checks; nothing else reached gh, and no provider CLI started.

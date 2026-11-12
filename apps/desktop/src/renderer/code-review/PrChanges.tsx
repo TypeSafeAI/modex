@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { prKeyId, sameKey, sameRevision, type PrFile, type PrOverview, type ReadResult, type PrFiles } from "../../shared/code-review.js";
 import { LineComment } from "./ReviewComposer";
 import type { Writes } from "./writes.js";
@@ -11,6 +11,8 @@ import { Reader } from "./reader.js";
 import { prUrl } from "./model.js";
 import { anchorFor, anchorState, parsePatch, hunkBounds, contextWindow, type LineAnchor, type PatchRow } from "./patch.js";
 import { unavailableText } from "./text.js";
+import { loadViewed, setViewed } from "./viewed.js";
+import { stepFile, typing } from "./keys.js";
 import { highlightRows, REMOTE_TEXT_LIMITS } from "./remote-highlight.js";
 
 let sessionSequence = 0;
@@ -55,6 +57,12 @@ function ChangesSession({ overview, views, stale, bodyRef, treeRef, treeWidth, c
   const [filter, setFilter] = useState(saved?.filter ?? "");
   const [wrap, setWrap] = useState(saved?.wrap ?? true);
   const [highlight, setHighlight] = useState(saved?.highlight ?? true);
+  // C65: local marks for exactly this revision (this component is keyed by it); nothing is sent to GitHub.
+  const [viewed, setViewedPaths] = useState<string[]>(() => loadViewed(localStorage, overview.key, overview.revision));
+  const mark = (path: string, on: boolean) => {
+    setViewedPaths(setViewed(localStorage, overview.key, overview.revision, path, on));
+    if (on) setExpanded(paths => paths.filter(p => p !== path));
+  };
   const sections = useRef(new Map<string, HTMLElement>());
   const alive = useRef(true);
   const lastPage = pages.at(-1);
@@ -100,11 +108,20 @@ function ChangesSession({ overview, views, stale, bodyRef, treeRef, treeWidth, c
   const incomplete = pages.some(p => p.result.state !== "ready") || !!next || files.length < total || (lastData && lastData.state !== "unavailable" && lastData.coverage?.complete === false);
   const missing = files.filter(f => f.patch.kind === "omitted" && f.patch.reason !== "binary").length;
   const matching = files.filter(f => `${f.path}\n${f.previousPath ?? ""}`.toLocaleLowerCase().includes(filter.toLocaleLowerCase()));
-  return <div className="cr-changes-body" data-tree={treeWidth === null ? (filesShown ? "only" : "folded") : "beside"}>
+  // `[` and `]` go to the previous and next file, wherever focus is in the pane, unless text is being typed.
+  const fileKeys = (event: KeyboardEvent) => {
+    if ((event.key !== "[" && event.key !== "]") || event.altKey || event.ctrlKey || event.metaKey || typing(event.target)) return;
+    const to = stepFile(matching.map(f => f.path), selected, event.key === "[");
+    if (to === null) return;
+    event.preventDefault();
+    select(to);
+  };
+  return <div className="cr-changes-body" data-tree={treeWidth === null ? (filesShown ? "only" : "folded") : "beside"} onKeyDown={fileKeys}>
     <div ref={bodyRef} className="cr-diff" data-testid="code-review-diff" tabIndex={-1}>
       <div className="cr-diff-toolbar">
         <button type="button" disabled={busy} onClick={() => void load(null, true)}>Refresh files</button>
         <span>{files.length} of {total} files loaded{incomplete ? " · Incomplete file list" : ""}</span>
+        <span data-testid="cr-viewed-count">{files.filter(f => viewed.includes(f.path)).length} of {files.length} viewed</span>
         <label><input type="checkbox" checked={wrap} onChange={e => setWrap(e.target.checked)} />Wrap lines</label>
         <label><input type="checkbox" checked={highlight} onChange={e => setHighlight(e.target.checked)} />Highlight changes</label>
       </div>
@@ -121,6 +138,7 @@ function ChangesSession({ overview, views, stale, bodyRef, treeRef, treeWidth, c
           </button>
           {file.patch.kind === "omitted" && <span className="cr-patch-state">{file.patch.reason === "binary" ? "No text diff" : "Patch unavailable"}</span>}
           <span className="stat add" aria-label={`${file.additions} additions`}>+{file.additions}</span><span className="stat del" aria-label={`${file.deletions} deletions`}>−{file.deletions}</span>
+          <label className="cr-viewed" title="Kept on this Mac for this revision. Not sent to GitHub."><input type="checkbox" data-testid="cr-viewed" aria-label={`Viewed ${file.path}`} checked={viewed.includes(file.path)} onChange={e => mark(file.path, e.target.checked)} />Viewed</label>
           <details className="cr-file-menu"><summary aria-label={`File options for ${file.path}`}>⋯</summary><div><button onClick={() => void bridge.invoke("clipboard:write", { text: file.path })}>Copy path</button>{prUrl(overview.locator) && <a href={`${prUrl(overview.locator)}/files`} target="_blank" rel="noreferrer">Open in GitHub</a>}</div></details>
         </header>
         {file.previousPath && <p className="cr-previous">Renamed from <bdi dir="ltr">{file.previousPath}</bdi></p>}
@@ -130,20 +148,21 @@ function ChangesSession({ overview, views, stale, bodyRef, treeRef, treeWidth, c
       {!busy && next && !stopped && last?.state === "ready" && files.length < DISPLAY.files && <button onClick={() => void load(next)}>Load next 100 files</button>}
       {stopped && <p role="status">{stopped} <a href={`${prUrl(overview.locator)}/files`} target="_blank" rel="noreferrer">Open in GitHub</a></p>}
       {files.length >= DISPLAY.files && (next || files.length < total) && <p>Display limited to {DISPLAY.files} files. <a href={`${prUrl(overview.locator)}/files`} target="_blank" rel="noreferrer">Open remaining files in GitHub</a></p>}
+      <p className="cr-hint" data-testid="cr-key-hint">Keys: F6 moves between the inbox, the tabs, the diff and the file list; [ and ] move between files.</p>
       <p className="cr-hint">Text patches may be incomplete. Each open file reports its patch coverage. Up to {DISPLAY.open} file bodies are open at once.</p>
     </div>
     {treeWidth !== null && <PanelResizeHandle side="workspace" className="cr-tree-resizer" label="Resize the file tree" width={treeWidth} min={SPLIT.treeMin} max={Math.max(SPLIT.treeMin, changesWidth - 1 - SPLIT.diffMin)} onResize={onTreeResize} onReset={onTreeReset} />}
     <nav ref={treeRef} className="cr-tree" aria-label="Changed files" data-testid="code-review-tree">
       <label className="cr-file-filter">Filter files<input aria-label="Filter remote files" placeholder="Filter files…" value={filter} onChange={e => setFilter(e.target.value)} /></label>
       <p className="cr-hint">{matching.length} matching · {files.length} loaded</p>
-      <FileTree files={matching} selected={selected} onSelect={select} />
+      <FileTree files={matching} selected={selected} viewed={viewed} onSelect={select} />
       {!matching.length && <p className="cr-hint">{files.length ? "No matching files." : "No files loaded yet."}</p>}
     </nav>
   </div>;
 }
 
 interface TreeNode { folders: Map<string, TreeNode>; files: PrFile[] }
-function FileTree({ files, selected, onSelect }: { files: PrFile[]; selected: string | null; onSelect: (path: string) => void }) {
+function FileTree({ files, selected, viewed, onSelect }: { files: PrFile[]; selected: string | null; viewed: string[]; onSelect: (path: string) => void }) {
   const root: TreeNode = { folders: new Map(), files: [] };
   for (const file of files) {
     let node = root;
@@ -155,8 +174,8 @@ function FileTree({ files, selected, onSelect }: { files: PrFile[]; selected: st
   }
   const render = (node: TreeNode, prefix = "") => <>
     {[...node.folders].map(([folder, child]) => <details key={folder} open className="cr-folder"><summary><bdi dir="ltr">{folder}</bdi></summary><div>{render(child, `${prefix}${folder}/`)}</div></details>)}
-    {node.files.map(file => <button type="button" key={file.path} data-testid="cr-tree-file" className="cr-tree-file" title={file.path} aria-label={`View remote diff for ${file.path}`} aria-current={selected === file.path ? "true" : undefined} onClick={() => onSelect(file.path)}>
-      <FileIcon path={file.path} /><bdi dir="ltr">{file.path.slice(prefix.length)}</bdi><span className="stat add">+{file.additions}</span><span className="stat del">−{file.deletions}</span>
+    {node.files.map(file => <button type="button" key={file.path} data-testid="cr-tree-file" className="cr-tree-file" title={file.path} aria-label={`View remote diff for ${file.path}${viewed.includes(file.path) ? ", viewed" : ""}`} aria-current={selected === file.path ? "true" : undefined} data-viewed={viewed.includes(file.path) ? "true" : undefined} onClick={() => onSelect(file.path)}>
+      <FileIcon path={file.path} /><bdi dir="ltr">{file.path.slice(prefix.length)}</bdi>{viewed.includes(file.path) && <span className="cr-tree-viewed" aria-hidden="true">✓</span>}<span className="stat add">+{file.additions}</span><span className="stat del">−{file.deletions}</span>
     </button>)}
   </>;
   return <div onKeyDown={event => {

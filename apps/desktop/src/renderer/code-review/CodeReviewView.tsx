@@ -6,11 +6,11 @@ import type { Layout } from "../../shared/layout";
 import { PanelResizeHandle } from "../components/PanelResizeHandle";
 import { Icon } from "../components/ui/Icon";
 import { IconButton } from "../components/ui/IconButton";
-import { Tooltip } from "../components/ui/Tooltip";
 import { refreshingRead, retainRead } from "../../shared/code-review-overview.js";
 import { Reader, type Ask, type Outcome } from "./reader.js";
 import { back, canBack, canForward, closeChanges, current, DEFAULT_VIEW, EMPTY_HISTORY, fitSplit, fitTree, forward, panesFor, showTab, SPLIT, toggleSplit, visit, type History, type Pane, type PrView } from "./navigation.js";
 import { isPinned, loadPins, togglePin, type Pin } from "./pins.js";
+import { cycleArea } from "./keys.js";
 import { additions, deletions, unavailableText } from "./text.js";
 import { InboxPane } from "./Inbox";
 import { rowsOf, titleOf, type GroupPages, type OpenPr } from "./model.js";
@@ -262,6 +262,20 @@ export default function CodeReviewView({ active, inboxOpen, layout, setLayout, o
 
   const connectionValue: CodeReviewConnection = connection && connection.state !== "unavailable" ? connection.value : { state: "unavailable", detail: connection?.state === "unavailable" ? unavailableText(connection) : "" };
   const caps = capabilities(connectionValue);
+  // F6 and Shift+F6 move between the areas (keys.ts). The pane tabs sit in the title bar, outside this section,
+  // so the key is heard on the document while Code Review is the destination shown, and only when focus is in
+  // one of its areas or nowhere: a dialog or another destination keeps the key.
+  useEffect(() => {
+    if (!active) return;
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "F6" || event.altKey || event.ctrlKey || event.metaKey || event.defaultPrevented) return;
+      const at = document.activeElement;
+      const mine = !at || at === document.body || !!at.closest('[data-testid="code-review"], [data-testid="code-review-tabbar"]');
+      if (mine && !document.querySelector('[role="dialog"], dialog[open]') && cycleArea(document.body, event.shiftKey)) event.preventDefault();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [active]);
   const pinned = selected ? isPinned(pins, selected.key) : false;
   const pin = () => {
     if (!selected || !account) return;
@@ -298,8 +312,6 @@ export default function CodeReviewView({ active, inboxOpen, layout, setLayout, o
           <button type="button" className="workspace-tab-close" data-testid={`code-review-close-${pane}`} aria-label={pane === "overview" ? `Close ${label}` : "Close Changes"} onClick={pane === "overview" ? closePr : closeChangesTab}><Icon name="close" size={13} /></button>
         </div>;
       })}
-      {/* C07: what a new tab opens here is an open decision; until then it is shown and unavailable. */}
-      {(!split || !group.includes("overview")) && <Tooltip label="New tab isn't available here yet"><button type="button" className="icon-btn md cr-new-tab" aria-label="New tab" aria-disabled="true" data-testid="code-review-new-tab"><Icon name="plus" size={16} /></button></Tooltip>}
     </div>
   );
   const singleGroup: Pane[] = view.changes ? ["overview", "changes"] : ["overview"];
