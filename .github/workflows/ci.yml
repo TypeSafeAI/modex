@@ -94,9 +94,10 @@ jobs:
   test:
     name: unit + e2e (macOS)
     runs-on: macos-latest
-    # Green runs on shared runners take 20–29 minutes, the e2e step alone 16–22 (2026-10-18), so 30
-    # cut off slow but passing runs. 45 leaves room without letting a hung run sit for long.
-    timeout-minutes: 45
+    # Shared arm64 runs in PR #509 hit 45 minutes after 6–7 minutes of unit coverage and
+    # 37 minutes of desktop E2E, once at case 532/533 without an assertion failure. Keep
+    # individual test limits intact and leave a bounded window for the full suite and uploads.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
 
