@@ -803,7 +803,11 @@ handle("project:add", async (req) => {
     if (r.canceled || !r.filePaths[0]) return null;
     dir = r.filePaths[0];
   }
-  return store.addProject(dir);
+  return store.addProject(dir, req?.name);
+});
+handle("project:pick-folder", async () => {
+  const r = await dialog.showOpenDialog(win!, { properties: ["openDirectory", "createDirectory"], title: "Choose a project folder" });
+  return r.canceled || !r.filePaths[0] ? null : r.filePaths[0];
 });
 handle("project:remove", async ({ projectId }) => {
   await runner.removeProject(projectId);
@@ -857,6 +861,7 @@ handle("thread:answer", ({ threadId, itemId, answer }, event) => runner.answer(t
 handle("thread:answer-question", ({ threadId, itemId, answers }, event) => runner.answerQuestion(threadId, itemId, answers, answeredFrom(event)));
 handle("thread:update", ({ threadId, patch }, event) => runner.updateThread(threadId, patch, { by: answeredFrom(event) }));
 handle("thread:archive", ({ threadId, archived }) => runner.setArchived(threadId, archived));
+handle("thread:vote", ({ threadId, itemId, vote }) => runner.setVote(threadId, itemId, vote));
 handle("thread:delete", async ({ threadId, removeWorktree }) => {
   await runner.deleteThread(threadId, removeWorktree);
   return store.snapshot();

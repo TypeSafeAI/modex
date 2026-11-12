@@ -1,7 +1,9 @@
 import { CanvasPanel } from "./CanvasPanel";
 import { SecretInput, useStreamerMode } from "../streamer";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import type { ChangesSnapshot, Thread } from "../../shared/types";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Markdown } from "./Markdown";
+import type { ChangesSnapshot, Thread, ThreadItem } from "../../shared/types";
+import { SubagentsPanel, subagentsOf } from "./SubagentsPanel";
 import type { BrowserSnapshot } from "../../shared/browser";
 import { bridge } from "../bridge";
 import { ChangesPanel, FileIcon } from "./ChangesPanel";
@@ -12,16 +14,20 @@ import { BrowserToolsDialog } from "./BrowserToolsDialog";
 import { ErrorNotice } from "./ui/ErrorNotice";
 import "../workspace.css";
 
-type Tab = { id: string; kind: "new" | "review" | "files" | "terminal" | "browser" | "canvas"; title: string; browser?: BrowserSnapshot };
+type Tab = { id: string; kind: "new" | "review" | "files" | "terminal" | "browser" | "canvas" | "subagents"; title: string; browser?: BrowserSnapshot };
 const makeTab = (): Tab => ({ id: crypto.randomUUID(), kind: "new", title: "New tab" });
-const tabIcon = (kind: Tab["kind"]): IconName => kind === "canvas" ? "grid" : kind === "review" ? "review" : kind === "files" ? "folder" : kind === "terminal" ? "terminal-box" : "globe";
+const tabIcon = (kind: Tab["kind"]): IconName => kind === "canvas" ? "grid" : kind === "review" ? "review" : kind === "files" ? "folder" : kind === "terminal" ? "terminal-box" : kind === "subagents" ? "agents" : "globe";
 interface Props {
   thread: Thread; changes: ChangesSnapshot | null; onRefresh: () => void; onRevert: (path: string) => void;
   visible: boolean; onShow: () => void; onHide: () => void; suspended: boolean;
   terminal: ReactNode; onOpenTerminal: () => void; onHideTerminal: () => void; onFocusChat: () => void;
+  /** The thread's transcript, for the Subagents tab. */
+  items: ThreadItem[];
+  /** Changes each time the title bar asks for the Subagents tab. */
+  subagentsSignal: number;
 }
 
-export function Workspace({ thread, changes, onRefresh, onRevert, visible, onShow, onHide, suspended, terminal, onOpenTerminal, onHideTerminal, onFocusChat }: Props) {
+export function Workspace({ thread, changes, onRefresh, onRevert, visible, onShow, onHide, suspended, terminal, onOpenTerminal, onHideTerminal, onFocusChat, items, subagentsSignal }: Props) {
   const streamerMode = useStreamerMode();
   const [tabs, setTabs] = useState<Tab[]>(() => [{ id: "review", kind: "review", title: "Review" }]);
   const [active, setActive] = useState(terminal ? "terminal" : "review");
@@ -64,9 +70,9 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
       if (!moved) addressRef.current?.focus();
     });
   }, [onShow, onHideTerminal]);
-  const openTool = (kind: "review" | "files" | "terminal" | "canvas") => {
+  const openTool = (kind: "review" | "files" | "terminal" | "canvas" | "subagents") => {
     const existing = tabs.find((tab) => tab.kind === kind);
-    const tab: Tab = existing ?? { id: kind === "canvas" ? crypto.randomUUID() : kind, kind, title: kind === "canvas" ? "Canvas" : kind === "review" ? "Review" : kind === "files" ? "Files" : "Terminal" };
+    const tab: Tab = existing ?? { id: kind === "canvas" ? crypto.randomUUID() : kind, kind, title: kind === "canvas" ? "Canvas" : kind === "review" ? "Review" : kind === "files" ? "Files" : kind === "subagents" ? "Subagents" : "Terminal" };
     if (!existing) setTabs((prev) => [...prev, tab]);
     activate(tab); onShow(); setToolsMenu(false);
   };
@@ -114,6 +120,9 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   });
+  // Only a request made while this thread is shown opens the tab; the value it mounted with is not one.
+  const seenSignal = useRef(subagentsSignal);
+  useEffect(() => { if (subagentsSignal !== seenSignal.current) { seenSignal.current = subagentsSignal; openTool("subagents"); } }, [subagentsSignal]);
   useEffect(() => bridge.onWorkspaceShortcut?.((shortcut) => {
     if (suspended || browserTools) return;
     if (shortcut === "new" || shortcut === "full") newTab(shortcut === "full");
@@ -214,8 +223,9 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
       {tabs.some((tab) => tab.kind === "review") && <div className="workspace-tool-pane" hidden={!visible || current.kind !== "review"}>
         <ChangesPanel visible={visible && current.kind === "review"} thread={thread} changes={changes} onRefresh={onRefresh} onRevert={onRevert} />
       </div>}
-      {visible && current.kind === "files" && <FilesPanel key={thread.id} thread={thread} />}
+      {visible && current.kind === "files" && <FilesPanel key={thread.id} thread={thread} onShowChanges={() => openTool("review")} />}
       {visible && current.kind === "terminal" && terminal}
+      {visible && current.kind === "subagents" && <SubagentsPanel items={items} />}
       {browserPage && <>
         <div className="workspace-navigation">
           <div className="workspace-history"><IconButton icon="arrow-left" label="Go back" size="md" disabled={!current.browser?.back} onClick={() => void browserCommand("back")} /><IconButton icon="arrow-right" label="Go forward" size="md" disabled={!current.browser?.forward} onClick={() => void browserCommand("forward")} /><span className="history-separator" /><IconButton icon="restart" label="Reload page" size="md" disabled={current.kind === "new"} onClick={() => void browserCommand("reload")} /></div>
@@ -235,6 +245,7 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
               <button onClick={() => openTool("review")}><Icon name="review" size={16} /><span>Review</span><kbd>⌃⇧G</kbd></button>
               <span className="workspace-menu-anchor workspace-terminal-tool"><button onClick={() => openTool("terminal")}><Icon name="terminal-box" size={16} /><span>Terminal</span><kbd>⌃`</kbd></button><IconButton ref={terminalRef} icon="more" label="Terminal options" aria-haspopup="menu" aria-expanded={terminalMenu} onClick={() => setTerminalMenu(!terminalMenu)} /><Menu open={terminalMenu} anchorRef={terminalRef} onClose={() => setTerminalMenu(false)} label="Terminal options" placement="bottom-end"><MenuItem onClick={() => { setTerminalMenu(false); openTool("terminal"); }}>Open terminal</MenuItem><MenuItem onClick={() => { setTerminalMenu(false); void bridge.invoke("shell:openTerminal", { path: thread.cwd }).catch((e: Error) => setError(e.message)); }}>Open external terminal</MenuItem></Menu></span>
               <button onClick={() => openTool("canvas")}><Icon name="grid" size={16} /><span>Canvas</span></button>
+              {subagentsOf(items).length > 0 && <button data-testid="workspace-open-subagents" onClick={() => openTool("subagents")}><Icon name="agents" size={16} /><span>Subagents</span></button>}
               <button onClick={() => openTool("files")}><Icon name="files" size={16} /><span>Files</span><kbd>⌘P</kbd></button>
               <span className="workspace-menu-anchor"><button ref={toolsRef} aria-haspopup="menu" aria-expanded={toolsMenu} onClick={() => setToolsMenu(!toolsMenu)}><Icon name="grid" size={16} /><span>More tools...</span><Icon name="chevron-down" size={17} /></button><Menu open={toolsMenu} anchorRef={toolsRef} onClose={() => setToolsMenu(false)} label="More tools" placement="bottom-end"><MenuItem onClick={() => { setToolsMenu(false); void bridge.invoke("shell:openPath", { path: thread.cwd }).catch((e: Error) => setError(e.message)); }}>Open project folder</MenuItem><MenuItem onClick={() => { setToolsMenu(false); void bridge.invoke("shell:openTerminal", { path: thread.cwd }).catch((e: Error) => setError(e.message)); }}>Open external terminal</MenuItem></Menu></span>
             </div>
@@ -245,13 +256,58 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
   </aside>;
 }
 
-function FilesPanel({ thread }: { thread: Thread }) {
+/** The folders and files directly inside each folder, built once from the flat listing. "" is the root. */
+type FileIndex = Map<string, { dirs: string[]; files: string[] }>;
+function indexFiles(paths: string[]): FileIndex {
+  const index: FileIndex = new Map([["", { dirs: [], files: [] }]]);
+  const seen = new Set<string>();
+  for (const path of paths) {
+    let parent = "";
+    const parts = path.split("/");
+    for (let i = 0; i < parts.length - 1; i++) {
+      const dir = parent ? `${parent}/${parts[i]}` : parts[i]!;
+      if (!seen.has(dir)) { seen.add(dir); index.get(parent)!.dirs.push(dir); index.set(dir, { dirs: [], files: [] }); }
+      parent = dir;
+    }
+    index.get(parent)!.files.push(path);
+  }
+  return index;
+}
+const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+const ancestors = (path: string) => path.split("/").slice(0, -1).map((_, i, parts) => parts.slice(0, i + 1).join("/"));
+/** Source lines are drawn in blocks the browser can skip while they are off screen. */
+const BLOCK = 200;
+/** Above this size a Markdown file opens as source: rendering it would stall the pane. */
+const RENDER_LIMIT = 400_000;
+
+/** One folder's rows. Only open folders have their children in the page, so a large repository stays cheap. */
+function FileTree({ index, dir, depth, open, onToggle, onOpen, selected, focus }: { index: FileIndex; dir: string; depth: number; open: Set<string>; onToggle(dir: string): void; onOpen(path: string): void; selected: string; focus?: string }) {
+  const node = index.get(dir);
+  if (!node) return null;
+  return <ul className="file-tree" role={depth ? "group" : "tree"} aria-label={depth ? undefined : "Files"}>
+    {node.dirs.map((d) => <li key={d} role="none">
+      <button type="button" role="treeitem" aria-expanded={open.has(d)} className={`file-tree-row${focus === d ? " focus" : ""}`} data-dir={d} style={{ paddingLeft: 8 + depth * 17 }} onClick={() => onToggle(d)}><Icon name={open.has(d) ? "chevron-down" : "chevron-right"} size={12} /><span>{baseName(d)}</span></button>
+      {open.has(d) && <FileTree index={index} dir={d} depth={depth + 1} open={open} onToggle={onToggle} onOpen={onOpen} selected={selected} focus={focus} />}
+    </li>)}
+    {node.files.map((f) => <li key={f} role="none">
+      <button type="button" role="treeitem" className={`file-tree-row file${selected === f ? " selected" : ""}`} aria-label={`Open ${f}`} title={f} style={{ paddingLeft: 8 + depth * 17 }} onClick={() => onOpen(f)}><FileIcon path={f} /><span>{baseName(f)}</span></button>
+    </li>)}
+  </ul>;
+}
+
+function FilesPanel({ thread, onShowChanges }: { thread: Thread; onShowChanges(): void }) {
   const [listing, setListing] = useState<{ paths: string[]; truncated: boolean } | null>(null);
   const [selected, setSelected] = useState("");
   const [filter, setFilter] = useState("");
   const [error, setError] = useState("");
   const [result, setResult] = useState<{ path: string; text: string; error?: string } | null>(null);
   const [revision, setRevision] = useState(0);
+  const [open, setOpen] = useState<Set<string>>(() => new Set());
+  // The crumb whose folder list is showing: "" is the root, otherwise a folder path.
+  const [crumb, setCrumb] = useState<string | null>(null);
+  const [source, setSource] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const pop = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let live = true;
     void bridge.invoke("files:list", { threadId: thread.id }).then((value) => { if (live) { setListing(value); setError(""); } }, (e: Error) => { if (live) setError(e.message); });
@@ -264,17 +320,59 @@ function FilesPanel({ thread }: { thread: Thread }) {
     void bridge.invoke("files:read", { threadId: thread.id, path: selected }).then((text) => { if (live) setResult({ path: selected, text }); }, (e: Error) => { if (live) setResult({ path: selected, text: "", error: e.message }); });
     return () => { live = false; };
   }, [thread.id, selected, revision]);
-  const paths = (listing?.paths ?? []).filter((p) => p.toLowerCase().includes(filter.toLowerCase()));
+  useEffect(() => {
+    if (crumb === null) return;
+    const away = (event: PointerEvent) => { if (!(event.target instanceof Element) || !event.target.closest(".file-crumbs, .file-crumb-pop")) setCrumb(null); };
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); setCrumb(null); } };
+    document.addEventListener("pointerdown", away); document.addEventListener("keydown", key, true);
+    pop.current?.querySelector(".file-tree-row.focus")?.scrollIntoView({ block: "nearest" });
+    return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", key, true); };
+  }, [crumb]);
+  const index = useMemo(() => indexFiles(listing?.paths ?? []), [listing]);
+  const matches = useMemo(() => { const q = filter.trim().toLowerCase(); return q ? (listing?.paths ?? []).filter((p) => p.toLowerCase().includes(q)).slice(0, 300) : null; }, [listing, filter]);
+  const toggle = (dir: string) => setOpen((current) => { const next = new Set(current); if (next.has(dir)) next.delete(dir); else next.add(dir); return next; });
+  const openFile = (path: string) => { setSelected(path); setCrumb(null); setSource(false); setFilter(""); };
+  const showCrumb = (dir: string) => {
+    if (crumb === dir) { setCrumb(null); return; }
+    setOpen((current) => new Set([...current, ...ancestors(`${dir}/x`).filter(Boolean)]));
+    setCrumb(dir);
+  };
+  const markdown = /\.(md|mdx|markdown)$/i.test(selected);
+  const rendered = markdown && !source && Boolean(result) && !result!.error && result!.text.length <= RENDER_LIMIT;
+  const lines = useMemo(() => result && !result.error && !rendered ? result.text.split("\n") : [], [result, rendered]);
+  const copy = () => { if (!result || result.error) return; void bridge.invoke("clipboard:write", { text: result.text }).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1200); }, (e: Error) => setError(e.message)); };
+  const root = baseName(thread.cwd.replace(/[\\/]+$/, "").replace(/\\/g, "/")) || "Project";
+  const dirs = selected ? ancestors(selected) : [];
   return <section className="workspace-files">
-    <header className="review-toolbar"><span>Files</span><span className="spacer" /><IconButton icon="restart" label="Refresh files" onClick={() => setRevision((n) => n + 1)} /></header>
+    <header className="file-bar">
+      <nav className="file-crumbs" aria-label="File path">
+        <button type="button" aria-expanded={crumb === ""} onClick={() => showCrumb("")}>{root}</button>
+        {dirs.map((d) => <span key={d}><Icon name="chevron-right" size={11} /><button type="button" aria-expanded={crumb === d} onClick={() => showCrumb(d)}>{baseName(d)}</button></span>)}
+        {selected && <span><Icon name="chevron-right" size={11} /><strong title={selected}>{baseName(selected)}</strong></span>}
+      </nav>
+      <span className="spacer" />
+      <button type="button" className="file-pill" onClick={onShowChanges}><Icon name="diff-color" size={15} />Show changes</button>
+      {markdown && <button type="button" className="file-pill" data-testid="file-view-source" aria-pressed={source} onClick={() => setSource((value) => !value)}><Icon name="file" size={15} />{source ? "View rendered" : "View source"}</button>}
+      {selected && <button type="button" className="file-pill" onClick={() => void bridge.invoke("shell:openPath", { path: `${thread.cwd}/${selected}` }).catch((e: Error) => setError(e.message))}><Icon name="external" size={15} />Open</button>}
+      {selected && <IconButton icon={copied ? "check" : "copy"} label={copied ? "Copied" : "Copy file contents"} size="md" className="file-round" onClick={copy} />}
+      <IconButton icon="restart" label="Refresh files" size="md" className="file-round" onClick={() => setRevision((n) => n + 1)} />
+      {crumb !== null && <div ref={pop} className="file-crumb-pop" data-testid="file-crumb-pop">
+        <FileTree index={index} dir="" depth={0} open={open} onToggle={toggle} onOpen={openFile} selected={selected} focus={crumb || undefined} />
+      </div>}
+    </header>
     {error && <ErrorNotice className="workspace-error" testId="files-error" where="Files · list" message={error} onRetry={() => setRevision((n) => n + 1)} context={{ threadId: thread.id, cwd: thread.cwd }} />}
-    <div className="review-body">
-      <div className="review-diff"><div className="review-file-heading">{selected || "Select a file"}</div>{selected && (!result ? <p className="hint pad">Loading file…</p> : result.error ? <ErrorNotice className="workspace-error" testId="file-read-error" where="Files · read" message={result.error} onRetry={() => setRevision((n) => n + 1)} context={{ threadId: thread.id, cwd: thread.cwd, path: selected }} /> : <pre className="workspace-file-content" data-testid="workspace-file-content">{result.text.split("\n").map((line, i) => <div key={i}><span className="line-number">{i + 1}</span><code>{line || " "}</code></div>)}</pre>)}</div>
-      <aside className="review-tree"><label className="review-filter"><Icon name="search" size={13} /><SecretInput autoFocus aria-label="Find a file" placeholder="Filter files..." value={filter} onChange={(e) => setFilter(e.target.value)} /></label>
-        {!listing && !error && <p className="hint pad">Loading files…</p>}{listing && !paths.length && <p className="hint pad">No matching files.</p>}
-        {paths.map((p) => <button key={p} className={`review-file-select workspace-file${selected === p ? " selected" : ""}`} aria-label={`Open ${p}`} title={p} onClick={() => setSelected(p)}><FileIcon path={p} /><span>{p}</span></button>)}
+    <div className="file-body">
+      {!selected ? <div className="file-browse">
+        <label className="review-filter"><Icon name="search" size={13} /><SecretInput autoFocus aria-label="Find a file" placeholder="Filter files..." value={filter} onChange={(e) => setFilter(e.target.value)} /></label>
+        {!listing && !error && <p className="hint pad">Loading files…</p>}
+        {matches ? matches.length ? matches.map((p) => <button key={p} className="file-tree-row file" aria-label={`Open ${p}`} title={p} onClick={() => openFile(p)}><FileIcon path={p} /><span>{p}</span></button>) : <p className="hint pad">No matching files.</p>
+          : listing && <FileTree index={index} dir="" depth={0} open={open} onToggle={toggle} onOpen={openFile} selected={selected} />}
         {listing?.truncated && <p className="hint pad">Showing the first 5,000 files.</p>}
-      </aside>
+      </div>
+        : !result ? <p className="hint pad">Loading file…</p>
+        : result.error ? <ErrorNotice className="workspace-error" testId="file-read-error" where="Files · read" message={result.error} onRetry={() => setRevision((n) => n + 1)} context={{ threadId: thread.id, cwd: thread.cwd, path: selected }} />
+        : rendered ? <div className="file-rendered" data-testid="workspace-file-content"><Markdown text={result.text} /></div>
+        : <pre className="workspace-file-content" data-testid="workspace-file-content">{Array.from({ length: Math.ceil(lines.length / BLOCK) }, (_, block) => <div key={block} className="file-block" style={{ containIntrinsicSize: `auto ${Math.min(BLOCK, lines.length - block * BLOCK) * 22}px` }}>{lines.slice(block * BLOCK, (block + 1) * BLOCK).map((line, i) => <div key={i}><span className="line-number">{block * BLOCK + i + 1}</span><code>{line || " "}</code></div>)}</div>)}</pre>}
     </div>
   </section>;
 }

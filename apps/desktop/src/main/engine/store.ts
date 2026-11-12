@@ -277,11 +277,11 @@ export class Store {
     return this.settings;
   }
 
-  addProject(dir: string): Project {
+  addProject(dir: string, name?: string): Project {
     const abs = path.resolve(dir);
     const existing = this.state.projects.find((p) => p.path === abs);
     if (existing) return existing;
-    const project: Project = { id: newId(), name: path.basename(abs), path: abs, addedAt: new Date().toISOString() };
+    const project: Project = { id: newId(), name: (typeof name === "string" && name.trim().slice(0, 80)) || path.basename(abs), path: abs, addedAt: new Date().toISOString() };
     this.state.projects.push(project);
     this.write();
     // Notes never stand in the way of a project: a failure leaves it to be linked the next time notes open.

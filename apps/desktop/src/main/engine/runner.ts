@@ -1211,6 +1211,16 @@ export class ThreadRunner {
    * phone; the transcript stays. A thread that is working cannot be archived, so nothing hidden ever
    * waits for an answer.
    */
+  /** Records the person's rating of a reply with the thread. It is never sent to a CLI, a provider or any service. */
+  setVote(threadId: string, itemId: string, vote: "up" | "down" | null): void {
+    if (vote !== "up" && vote !== "down" && vote !== null) throw new Error("Choose up, down or no rating.");
+    if (!this.o.store.thread(threadId)) throw new Error(`unknown thread ${threadId}`);
+    const item = this.slot(threadId).items.find((i) => i.id === itemId);
+    if (!item || item.kind !== "assistant") throw new Error("Only a reply can be rated.");
+    if ((item.vote ?? null) === vote) return;
+    this.patchItem(threadId, itemId, { vote });
+  }
+
   setArchived(threadId: string, archived: boolean): Thread {
     this.assertNotRestarting();
     if (typeof archived !== "boolean") throw new Error("Choose Archive or Unarchive.");

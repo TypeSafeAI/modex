@@ -113,6 +113,7 @@ export class StoreDemo {
       "notes:open": unavailable,
       "notes:import": unavailable,
       "notes:file:read": unavailable,
+      "project:pick-folder": () => null,
       "project:add": () => {
         const project = { id: this.nextId(), name: "Another demo project", path: "/Demo/Sample", addedAt: stamp() };
         this.state.projects.push(project); return project;
@@ -159,6 +160,12 @@ export class StoreDemo {
         const thread = this.thread(threadId);
         for (const key of ["title", "backend", "model", "mode", "plan", "effort", "auto"] as const) if (patch[key] !== undefined) Object.assign(thread, { [key]: patch[key] });
         this.emit({ type: "thread", threadId, thread }); return thread;
+      },
+      "thread:vote": ({ threadId, itemId, vote }) => {
+        const item = this.transcripts.get(this.thread(threadId).id)?.find((i) => i.id === itemId);
+        if (!item || item.kind !== "assistant") throw new Error("Only a reply can be rated.");
+        item.vote = vote;
+        this.emit({ type: "item_update", threadId, id: itemId, patch: { vote } });
       },
       "thread:archive": ({ threadId, archived }) => {
         const thread = this.thread(threadId);

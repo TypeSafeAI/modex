@@ -6,7 +6,8 @@ import type { AppState, PullRequestSummary, Thread, ThreadContext } from "../../
 import { bridge } from "../bridge";
 import { Icon } from "./ui/Icon";
 import { IconButton } from "./ui/IconButton";
-import { Menu, MenuItem } from "./ui/Menu";
+import { Menu, MenuItem, MenuLabel } from "./ui/Menu";
+import { createPortal } from "react-dom";
 import { ThreadDetails, useThreadDetails } from "./ThreadDetails";
 
 interface Props {
@@ -50,6 +51,13 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
   const [query, setQuery] = useState("");
   const [projectsOpen, setProjectsOpen] = useState(true);
   const [activeOnly, setActiveOnly] = useState(false);
+  // How the list is organized and ordered: this window's choice, kept in local storage.
+  const [organize, setOrganize] = useState<"project" | "list">(() => stored("modex.sidebar.organize", ["project", "list"]));
+  const [sortBy, setSortBy] = useState<"updated" | "created">(() => stored("modex.sidebar.sort", ["updated", "created"]));
+  const [listMenu, setListMenu] = useState(false);
+  const listMenuRef = useRef<HTMLButtonElement>(null);
+  const choose = <T extends string>(key: string, set: (value: T) => void, value: T) => { set(value); try { localStorage.setItem(key, value); } catch { /* This session only. */ } };
+  const byOrder = (a: Thread, b: Thread) => sortBy === "created" ? b.createdAt.localeCompare(a.createdAt) : b.updatedAt.localeCompare(a.updatedAt);
   const q = query.trim().toLowerCase();
 
   const closeSearch = () => {
@@ -66,6 +74,7 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
     // Finished tasks (PR merged, worktree removed) leave the working list; they stay reachable below it.
     const all = working.filter((t) => !t.retired);
     const retired = working.filter((t) => t.retired && matchesQuery(t));
+    if (sortBy === "created") all.sort(byOrder);
     return { project: p, all, retired, archived, matches: q ? all.filter(matchesQuery) : all };
   });
   const noMatches = q && groups.every((g) => g.matches.length === 0 && g.retired.length === 0 && g.archived.length === 0);
@@ -109,9 +118,28 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
       <div className="section-label">
         <button className="projects-toggle" aria-expanded={projectsOpen} onClick={() => setProjectsOpen(value => !value)}>Projects<Icon name={projectsOpen ? "chevron-down" : "chevron-right"} size={12} /></button>
         <span className="spacer" />
-        <IconButton icon="plus" label="Open project…" data-testid="add-project" onClick={onAddProject} />
+        <span className="composer-menu">
+          <IconButton ref={listMenuRef} icon="more" label="Organize and sort" data-testid="sidebar-organize" aria-haspopup="menu" aria-expanded={listMenu} onClick={() => setListMenu(value => !value)} />
+          <Menu open={listMenu} onClose={() => setListMenu(false)} anchorRef={listMenuRef} label="Organize and sort" placement="bottom-start">
+            <MenuLabel>Organize sidebar</MenuLabel>
+            <MenuItem checkable selected={organize === "project"} onClick={() => { choose("modex.sidebar.organize", setOrganize, "project"); setListMenu(false); }}>By project</MenuItem>
+            <MenuItem checkable selected={organize === "list"} data-testid="sidebar-one-list" onClick={() => { choose("modex.sidebar.organize", setOrganize, "list"); setListMenu(false); }}>In one list</MenuItem>
+            <MenuLabel>Sort chats by</MenuLabel>
+            <MenuItem checkable selected={sortBy === "updated"} onClick={() => { choose("modex.sidebar.sort", setSortBy, "updated"); setListMenu(false); }}>Last updated</MenuItem>
+            <MenuItem checkable selected={sortBy === "created"} onClick={() => { choose("modex.sidebar.sort", setSortBy, "created"); setListMenu(false); }}>Date created</MenuItem>
+          </Menu>
+        </span>
+        <IconButton icon="plus" label="Create project…" data-testid="add-project" onClick={onAddProject} />
       </div>
-      <nav className="projects" aria-label="Projects" hidden={!projectsOpen}>
+      {organize === "list" && projectsOpen && <nav className="projects one-list" aria-label="Chats" data-testid="sidebar-recents">
+        <ul className="threads">
+          {groups.flatMap(g => g.matches.map(t => ({ t, name: g.project.name }))).sort((a, b) => byOrder(a.t, b.t)).map(({ t, name }) => <ThreadRow key={t.id} thread={t} projectName={name} compact={state.settings.theme === "graphite"} selected={t.id === selected} unsent={Boolean(unsent?.[t.id])}
+            onSelect={() => onSelect(t.id)} onDelete={() => onDeleteThread(t)} onArchive={() => onArchiveThread(t, true)} />)}
+        </ul>
+        {state.projects.length === 0 && <p className="side-hint">No projects</p>}
+        {noMatches && <p className="side-hint" data-testid="search-empty">No threads match “{query.trim()}”.</p>}
+      </nav>}
+      <nav className="projects" aria-label="Projects" hidden={!projectsOpen || organize === "list"}>
         {activeOnly && groups.every(group => !group.matches.length) && <p className="side-hint">No active chats.</p>}
         {state.projects.length === 0 && <p className="side-hint">No projects yet. Open a folder to start a thread.</p>}
         {noMatches && <p className="side-hint" data-testid="search-empty">No threads match “{query.trim()}”.</p>}
@@ -144,23 +172,24 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
           const busy = all.some((t) => t.status === "running" || t.status === "waiting");
           return (
             <section key={p.id} className="project" data-testid="project" data-project-id={p.id}>
-              <div className={`side-row project-row${p.id === draftProjectId ? " selected" : ""}`} title={p.path} data-draft={p.id === draftProjectId ? "true" : undefined}>
+              <ProjectRowShell className={`side-row project-row${p.id === draftProjectId ? " selected" : ""}`} draft={p.id === draftProjectId} name={p.name} path={p.path} projectId={p.id} chats={all.length} compact={state.settings.theme === "graphite"}>
                 <button className="project-toggle" data-testid="project-toggle" aria-expanded={!isCollapsed} onClick={() => setCollapsed((c) => ({ ...c, [p.id]: !c[p.id] }))}>
                   <Icon name="folder-open" className="side-row-icon" />
                   <span className="side-row-label" data-testid="project-name">{p.name}</span>
                 </button>
                 {isCollapsed && busy && <span className="row-status running" title="A thread in this project is working" />}
                 <span className="row-actions">
-                  <IconButton icon="plus" label="New chat" shortcut="⌘N" reveal data-testid="project-new-thread" onClick={() => onNewThread(p.id)} />
                   <IconButton icon="branch" label="New chat in a git worktree" shortcut="⇧⌘N" reveal data-testid="project-new-worktree-thread" onClick={() => onNewThread(p.id, true)} />
                   <RowMenu label="Project actions" testId="project-menu">
-                    {onOpenNotes && <MenuItem data-testid="project-notes" onClick={() => onOpenNotes(p.id)}>Open notes</MenuItem>}
+                    <MenuItem data-testid="project-reveal" onClick={() => void bridge.invoke("shell:openPath", { path: p.path }).catch(() => {})}><Icon name="folder-open" />{bridge.platform === "darwin" ? "Reveal in Finder" : "Open folder"}</MenuItem>
+                    {onOpenNotes && <MenuItem data-testid="project-notes" onClick={() => onOpenNotes(p.id)}><Icon name="page" />Open notes</MenuItem>}
                     {grouped && onMoveToWorkspace && ordered.filter(w => w.id !== homeOf(p.id)?.id).map(w => <MenuItem key={w.id} onClick={() => onMoveToWorkspace(p.id, w.id)}>Move to {w.name}</MenuItem>)}
                     {onMoveToNewWorkspace && <MenuItem data-testid="project-new-workspace" onClick={() => setNaming({ projectId: p.id, value: "" })}>Move to new workspace…</MenuItem>}
-                    <MenuItem data-testid="project-remove" className="danger" onClick={() => onRemoveProject(p.id)}>Remove project</MenuItem>
+                    <MenuItem data-testid="project-remove" className="danger" onClick={() => onRemoveProject(p.id)}><Icon name="close" />Remove project</MenuItem>
                   </RowMenu>
+                  <IconButton icon="compose" label="New chat" shortcut="⌘N" reveal data-testid="project-new-thread" onClick={() => onNewThread(p.id)} />
                 </span>
-              </div>
+              </ProjectRowShell>
               {naming?.projectId === p.id && (
                 <div className="sidebar-search workspace-name">
                   <Icon name="grid" size={14} />
@@ -225,6 +254,43 @@ export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProjec
             </section>
           );
   }
+}
+
+function stored<T extends string>(key: string, allowed: readonly T[]): T {
+  try { const value = localStorage.getItem(key); if (value && (allowed as readonly string[]).includes(value)) return value as T; } catch { /* Blocked storage: the default. */ }
+  return allowed[0]!;
+}
+
+/** A project's row, with a card beside it on hover: its name, how many chats, its branch and its folder. */
+function ProjectRowShell({ className, draft, name, path, projectId, chats, compact, children }: { className: string; draft: boolean; name: string; path: string; projectId: string; chats: number; compact: boolean; children: ReactNode }) {
+  const anchor = useRef<HTMLDivElement>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [at, setAt] = useState<{ left: number; top: number } | null>(null);
+  const [branch, setBranch] = useState<string | null>(null);
+  const close = () => { clearTimeout(timer.current); setAt(null); };
+  const leave = () => { clearTimeout(timer.current); timer.current = setTimeout(() => setAt(null), 140); };
+  const show = () => {
+    if (!compact) return;
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      const bounds = anchor.current?.getBoundingClientRect();
+      if (!bounds) return;
+      setAt({ left: Math.max(8, Math.min(bounds.right + 3, innerWidth - 328)), top: Math.max(8, Math.min(bounds.top, innerHeight - 190)) });
+      void bridge.invoke("project:branch", { projectId }).then(setBranch).catch(() => setBranch(null));
+    }, 400);
+  };
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const home = path.replace(/^\/(?:Users|home)\/[^/]+/, "~");
+  return <div ref={anchor} className={className} data-draft={draft ? "true" : undefined} onPointerEnter={show} onPointerLeave={leave} onPointerDown={close}>
+    {children}
+    {at && createPortal(<div className="thread-details project-details" role="tooltip" data-testid="project-card" style={at} onPointerEnter={() => clearTimeout(timer.current)} onPointerLeave={leave}>
+      <div className="project-details-line strong"><Icon name="folder" size={15} /><span>{name}</span></div>
+      <div className="project-details-line"><Icon name="comment" size={15} /><span>{chats} {chats === 1 ? "chat" : "chats"}</span></div>
+      <hr />
+      {branch && <div className="project-details-line"><Icon name="branch" size={15} /><span>{branch}</span></div>}
+      <div className="project-details-line wrap"><Icon name="folder" size={15} /><span>{home}</span></div>
+    </div>, document.body)}
+  </div>;
 }
 
 function ThreadRow({ thread: t, projectName, compact, selected, unsent, onSelect, onDelete, onArchive }: {

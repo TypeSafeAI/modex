@@ -416,3 +416,30 @@
 .notes-file-body img { max-width: 100%; max-height: 70vh; object-fit: contain; }
 .notes-file-body pre { place-self: stretch; margin: 0; padding: 12px; white-space: pre-wrap; font-size: 12.5px; background: var(--bg-main); border-radius: 8px; }
 .notes-file-none { color: var(--text-3); }
+
+/* Space, second pass: a quieter title, Create, Recents above the tree, and template cards that preview the page. */
+.space-sidebar-title { font-size: 15px; color: var(--text-1); }
+.space-sidebar-title strong { letter-spacing: 0; }
+.space-new-page { height: 36px; margin: 1px 8px 12px; color: var(--text-1); }
+.space-recents { display: grid; margin-bottom: 18px; }
+.space-recents .space-tree-page span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.space-recents .space-recents-more { color: var(--text-3); }
+.space-tree-label { color: var(--text-2); font-size: 13px; }
+.space-overview-new { padding: 9px 18px; font-size: 13.5px; font-weight: 500; gap: 8px; }
+.space-template-heading h2 { font-size: 16px; }
+.space-templates { gap: 18px; }
+.space-templates button, .space-templates .space-template-guide { flex: 0 0 274px; flex-direction: column; align-items: center; height: auto; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; text-align: center; }
+.space-templates button:hover { background: none; }
+.space-templates button .space-template-preview { position: static; clip-path: none; display: block; width: 100%; height: 152px; margin-bottom: 14px; padding: 22px 26px 0; overflow: hidden; border: 1px solid var(--border-pane); border-radius: 16px; background: var(--bg-main); transition: border-color 120ms; }
+.space-templates button:hover .space-template-preview { border-color: var(--border-strong); }
+.space-templates .space-template-guide .space-template-preview { border-color: color-mix(in srgb, var(--accent) 50%, var(--border-pane)); }
+.space-templates button .space-template-sheet { position: static; display: flex; flex-direction: column; gap: 5px; width: auto; height: 100%; margin: 0; padding: 16px 16px 0; clip-path: none; overflow: hidden; border: 1px solid var(--border-pane); border-bottom: 0; border-radius: 6px 6px 0 0; background: var(--bg-composer); text-align: left; }
+.space-templates button .space-template-sheet > svg { display: block; flex: none; width: 18px; height: 18px; margin: 0 0 6px; color: #5aa7f0; }
+.space-templates button:nth-child(2) .space-template-sheet > svg { color: #dc7854; }
+.space-templates button:nth-child(3) .space-template-sheet > svg { color: #78bda7; }
+.space-templates button:nth-child(4) .space-template-sheet > svg { color: #d68aad; }
+.space-template-sheet i { overflow: hidden; flex: none; color: var(--text-3); font-size: 6.5px; font-style: normal; line-height: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.space-template-sheet i.h { color: var(--text-1); font-weight: 600; }
+.space-template-sheet i.c::before { content: ""; display: inline-block; width: 5px; height: 5px; margin-right: 4px; border: 1px solid var(--text-4); border-radius: 1px; }
+.space-templates button strong { font-size: 14.5px; font-weight: 400; }
+.space-templates button small { margin-top: 3px; color: var(--text-3); font-size: 12.5px; }

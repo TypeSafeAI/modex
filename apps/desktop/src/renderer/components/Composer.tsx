@@ -153,7 +153,7 @@ export function Composer({ text, onText: setText, attachments, attachmentActions
           {canSuggest && (
             <button type="button" className="followup" data-testid="followup" data-source={suggestion?.source} aria-label={`Use suggested follow-up: ${suggestion?.text}`} title={suggestion?.source === "jev" ? "Suggested by Jev · Tab to use" : "Suggested follow-up · Tab to use"} onClick={fillSuggestion}>
               <span className="followup-text" data-testid="followup-text">{suggestion?.text}</span>
-              <Kbd>⇥</Kbd>
+              <span className="followup-hint" data-testid="followup-hint">Press Tab to accept</span>
             </button>
           )}
           <SecretTextarea

@@ -189,3 +189,59 @@
   .review-body.tree-hidden > .review-diff { grid-row: 1; }
 }
 @media (hover: none) { .review-revert { opacity: 1; } }
+
+/* Subagents tab: the delegated tasks a CLI reported for this thread. */
+.subagents { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
+.subagent-list { width: 100%; max-width: 720px; margin: 0 auto; padding: 14px 24px 24px; }
+.subagent-list h3 { margin: 14px 8px 8px; font-size: var(--text-sm); font-weight: var(--weight-regular, 400); color: var(--text-3); }
+.subagent-list .hint { margin: 4px 8px 18px; color: var(--text-3); font-size: var(--text-sm); }
+.subagent-row { width: 100%; display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 8px; border: 0; border-radius: 10px; background: transparent; color: var(--text-1); font: inherit; font-size: var(--text-md); text-align: left; cursor: pointer; }
+.subagent-row:hover { background: var(--bg-row-hover); }
+.subagent-row:focus-visible, .subagent-more:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.subagent-name { flex: 1 1 60%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subagent-when { flex: none; color: var(--text-3); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.subagent-state { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-size: var(--text-sm); }
+.subagent-state[data-state="failed"] { color: var(--danger, #e5484d); }
+.subagent-more { margin: 4px 0 0 40px; padding: 6px 0; border: 0; background: transparent; color: var(--text-3); font: inherit; font-size: var(--text-sm); cursor: pointer; }
+.subagent-more:hover { color: var(--text-1); }
+.agent-mark { flex: none; }
+.subagent-head { flex: none; display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px 0 8px; border-bottom: 1px solid var(--border-pane); }
+.subagent-head .subagent-state { flex: none; }
+.subagent-head h2 { min-width: 0; margin: 0; font-size: var(--text-md); font-weight: var(--weight-medium, 500); color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subagent-body { width: 100%; max-width: 720px; margin: 0 auto; padding: 18px 24px 28px; }
+.subagent-worked { margin: 0 0 14px; padding-bottom: 10px; border-bottom: 1px solid var(--border-pane); color: var(--text-3); font-size: var(--text-sm); }
+.subagent-detail-line { color: var(--text-2); }
+.titlebar-actions .icon-btn.md.subagents-toggle { display: inline-flex; flex-direction: row; align-items: center; width: auto; gap: 6px; padding: 0 8px; white-space: nowrap; }
+.subagents-count { font-size: var(--text-sm); color: var(--text-3); white-space: nowrap; }
+.subagents-toggle.on .subagents-count { color: var(--accent); }
+
+/* Files: a breadcrumb whose crumbs open the folder tree, actions on the right, and the file below. */
+.file-bar { position: relative; flex: none; display: flex; align-items: center; gap: 6px; height: 50px; padding: 0 8px; border-bottom: 1px solid var(--border-pane); }
+.file-crumbs { display: flex; align-items: center; min-width: 0; height: 32px; padding: 0 12px; border-radius: 16px; background: var(--bg-composer); font-size: 13.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; }
+.file-crumbs > span { display: inline-flex; align-items: center; min-width: 0; }
+.file-crumbs svg { flex: none; margin: 0 8px; color: var(--text-4); }
+.workspace-files .file-crumbs button { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.workspace-files .file-crumbs button:hover, .workspace-files .file-crumbs button[aria-expanded="true"] { color: var(--text-1); }
+.file-crumbs strong { overflow: hidden; text-overflow: ellipsis; color: var(--text-1); font-weight: 500; }
+.workspace-files .file-pill { flex: none; display: inline-flex; align-items: center; gap: 9px; height: 32px; padding: 0 13px; border: 0; border-radius: 16px; background: var(--bg-composer); color: var(--text-1); font: inherit; font-size: 13.5px; cursor: pointer; white-space: nowrap; }
+.workspace-files .file-pill:hover { background: var(--bg-row-hover); }
+.workspace-files .file-round { flex: none; width: 32px; height: 32px; border: 0; border-radius: 50%; background: var(--bg-composer); color: var(--text-2); }
+.file-crumb-pop { position: absolute; z-index: 30; top: 46px; left: 8px; width: min(384px, calc(100% - 16px)); max-height: min(320px, 60vh); overflow: auto; padding: 5px; border: 1px solid var(--border-pane); border-radius: 14px; background: var(--bg-elevated); box-shadow: 0 12px 34px rgba(0, 0, 0, .4); overscroll-behavior: contain; }
+.file-tree { list-style: none; margin: 0; padding: 0; }
+.file-tree .file-tree { position: relative; }
+.file-tree .file-tree::before { content: ""; position: absolute; top: 0; bottom: 0; left: 13px; width: 1px; background: var(--border-pane); }
+.file-tree .file-tree .file-tree::before { left: 30px; }
+.workspace-files .file-tree-row { display: flex; align-items: center; gap: 10px; width: 100%; height: 28px; padding: 0 8px; border: 1px solid transparent; border-radius: 7px; background: none; color: var(--text-1); font: inherit; font-size: 13.5px; text-align: left; cursor: pointer; }
+.file-tree-row > svg { flex: none; color: var(--text-3); }
+.file-tree-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-files .file-tree-row:hover, .workspace-files .file-tree-row.selected { background: var(--bg-row-hover); }
+.workspace-files .file-tree-row.focus { border-color: var(--accent); }
+.file-body { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--border-pane) transparent; }
+.file-browse { max-width: 560px; padding: 8px; }
+.file-rendered { max-width: 860px; padding: 6px 22px 40px; font-size: 14.5px; line-height: 1.65; }
+.file-rendered h1 { font-size: 22px; font-weight: 500; }
+.workspace-files .workspace-file-content { padding: 8px 0 24px; }
+.file-block { content-visibility: auto; }
+.workspace-files { container-type: inline-size; }
+.file-crumbs { flex: 0 1 auto; }
+@container (max-width: 620px) { .workspace-files .file-pill { gap: 0; padding: 0 9px; font-size: 0; } .file-crumbs > span:not(:last-child), .file-crumbs > button { display: none; } .file-crumbs > span:last-child > svg { display: none; } }

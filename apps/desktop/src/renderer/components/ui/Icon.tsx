@@ -67,12 +67,33 @@ const PATHS = {
   pin: "M6 2.5h4M7 2.5v4L4.5 9h7L9 6.5v-4M8 9v4.5",
   external: "M9.5 2.5h4v4M13.5 2.5L8 8M12 9.5v3a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3",
   stack: "M8 2.5l5.5 2.75L8 8 2.5 5.25zM2.5 8L8 10.75 13.5 8M2.5 10.75L8 13.5l5.5-2.75",
+  copy: "M5.5 5.5h7a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1zM2.5 10.5v-7a1 1 0 0 1 1-1h7",
+  "thumb-up": "M5.5 7l2.5-4.5a1.3 1.3 0 0 1 1.5 1.5L9 6.5h3.2a1.2 1.2 0 0 1 1.2 1.5l-1 4a1.5 1.5 0 0 1-1.4 1H5.5zM5.5 7h-3v6h3",
+  "thumb-down": "M5.5 9l2.5 4.5a1.3 1.3 0 0 0 1.5-1.5L9 9.5h3.2a1.2 1.2 0 0 0 1.2-1.5l-1-4a1.5 1.5 0 0 0-1.4-1H5.5zM5.5 9h-3V3h3",
+  agents: "M3.5 5.5h9a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1zM8 5.5V3M6 8.5v1M10 8.5v1",
 } as const;
+
+/**
+ * Filled forms for the icons that mark a selected destination (the rail) or a chosen rating. `fill` is the
+ * solid shape; `cut` is detail drawn back over it in the surface colour behind the icon (`--icon-cut`).
+ */
+const SOLID: Partial<Record<keyof typeof PATHS, { fill: string; cut?: string }>> = {
+  home: { fill: "M2.5 7.25L8 2.75l5.5 4.5v5.75a.5.5 0 0 1-.5.5H3a.5.5 0 0 1-.5-.5z", cut: "M8 13.4v-2.9" },
+  space: { fill: "M5 2h7a1 1 0 0 1 1 1v8M3 4h6a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z", cut: "M10.9 5v8.5M4.5 7h3M4.5 9.5h2" },
+  analytics: { fill: "M2.5 13.5h11M3.6 8h1.8v3.4H3.6zM7.1 4.5h1.8v6.9H7.1zM10.6 6.5h1.8v4.9h-1.8z" },
+  image: { fill: "M3 2.5h10a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1z", cut: "M2.6 10.4l2.4-2.4 6.4 5.4M10 5.4h.01" },
+  history: { fill: "M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2z", cut: "M8 4.5V8l-2 2" },
+  shapes: { fill: PATHS.shapes },
+  "pull-request": { fill: PATHS["pull-request"] },
+  "thumb-up": { fill: PATHS["thumb-up"], cut: "M5.5 7.4v5.2" },
+  "thumb-down": { fill: PATHS["thumb-down"], cut: "M5.5 3.4v5.2" },
+};
 
 export type IconName = keyof typeof PATHS;
 export const ICON_NAMES = Object.keys(PATHS) as IconName[];
 
-export function Icon({ name, size = 16, className }: { name: IconName; size?: number; className?: string }) {
+export function Icon({ name, size = 16, className, solid }: { name: IconName; size?: number; className?: string; solid?: boolean }) {
+  const filled = solid ? SOLID[name] : undefined;
   return (
     <svg
       className={className ? `icon-svg ${className}` : "icon-svg"}
@@ -87,8 +108,9 @@ export function Icon({ name, size = 16, className }: { name: IconName; size?: nu
       aria-hidden="true"
       focusable="false"
       data-icon={name}
+      data-solid={filled ? "true" : undefined}
     >
-      <path d={PATHS[name]} />
+      {filled ? <><path d={filled.fill} fill="currentColor" />{filled.cut && <path d={filled.cut} stroke="var(--icon-cut, var(--bg-window))" />}</> : <path d={PATHS[name]} />}
     </svg>
   );
 }
