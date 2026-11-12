@@ -53,8 +53,11 @@ const TerminalPanel = lazy(() => import("./components/TerminalPanel").then((m) =
 const ImagesView = lazy(() => import("./images/ImagesView").then(m => ({ default: m.ImagesView })));
 const RoutinesView = lazy(() => import("./routines/RoutinesView").then(m => ({ default: m.RoutinesView })));
 const PluginsCatalog = lazy(() => import("./plugins/PluginsCatalog").then(m => ({ default: m.PluginsCatalog })));
-/** The browser version has no plugin host yet: it shows the catalog as a preview with every action unavailable. */
-const WEB = !window.modex;
+/**
+ * The browser versions: a tab on the development server (no bridge is injected), and the demo workspace at
+ * app.modex.codes. Neither has a plugin host, so Plugins is a preview with every action unavailable.
+ */
+const WEB = !window.modex || window.modex.platform === "demo";
 const PluginSurface = lazy(() => import("./plugins/PluginSurface").then(m => ({ default: m.PluginSurface })));
 const SpaceView = lazy(() => import("./space/SpaceView").then(m => ({ default: m.SpaceView })));
 const CodeReviewView = lazy(() => import("./code-review/CodeReviewView"));
@@ -662,7 +665,8 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
 
   /** Projects are made in the Create project dialog: a name and the folder it works in. */
   const [creatingProject, setCreatingProject] = useState(false);
-  const addProject = () => setCreatingProject(true);
+  // The demo workspace has no folders on this computer: it adds its own sample project, with no dialog.
+  const addProject = () => { if (bridge.platform === "demo") void act(async () => { if (await bridge.invoke("project:add", undefined)) await refresh(); }); else setCreatingProject(true); };
   const createProject = async (folder: string, name: string) => {
     const p = await bridge.invoke("project:add", { path: folder, ...(name ? { name } : {}) });
     if (p) await refresh();
