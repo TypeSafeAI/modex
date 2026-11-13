@@ -82,6 +82,85 @@ function fakeServer(proc: FakeProcess, opts: { threadId?: string; turnId?: strin
   return { seen, threadId, turnId };
 }
 
+test("Codex refuses credential-altered approval requests before the approval or delivery broker", async () => {
+  const secret = "synthetic-codex-approval-credential-123456", proc = new FakeProcess(), { threadId, turnId } = fakeServer(proc);
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn, { args: [], env: {}, redact: text => text.split(secret).join("[redacted]") });
+  const collected = collectSink(Array(20).fill("always")); let deliveries = 0;
+  const run = backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "" }, { ...collected.sink, deliverRequest: async (_native, write) => { deliveries++; await write(); } }, new AbortController().signal);
+  try {
+    await proc.waitFor(line => line.includes('"turn/start"'));
+    const requests = [
+      { id: "command", method: "item/commandExecution/requestApproval", params: { command: `echo ${secret}`, cwd: "/repo" } },
+      { id: "cwd", method: "item/commandExecution/requestApproval", params: { command: "pwd", cwd: `/repo/${secret}` } },
+      { id: secret, method: "item/commandExecution/requestApproval", params: { command: "pwd", cwd: "/repo" } },
+      { id: "key", method: "item/commandExecution/requestApproval", params: { command: "pwd", cwd: "/repo", extra: { [secret]: true } } },
+    ];
+    const replies: unknown[] = [];
+    for (const request of requests) {
+      proc.emitLine({ ...request, params: { threadId, turnId, itemId: "native-action", ...request.params } });
+      const reply = JSON.parse(await proc.waitFor(line => { const msg = JSON.parse(line); return (msg.id === request.id || msg.id === request.id.split(secret).join("[redacted]")) && (msg.error || msg.result); }));
+      replies.push({ id: reply.id, error: reply.error?.code, result: reply.result });
+    }
+    assert.deepEqual(replies, requests.map(request => ({ id: request.id, error: -32602, result: undefined })), "changed actions must be refused with their exact transport ID, even when the broker would answer Always");
+    assert.equal(collected.requests.length, 0); assert.equal(deliveries, 0);
+    assert.equal(JSON.stringify(collected).includes(secret), false);
+    proc.emitLine({ id: "public", method: "item/commandExecution/requestApproval", params: { threadId, turnId, itemId: "public-action", command: "echo '[redacted]'", cwd: "/repo" } });
+    const publicReply = JSON.parse(await proc.waitFor(line => { const msg = JSON.parse(line); return msg.id === "public" && msg.result; }));
+    assert.equal(publicReply.result.decision, "acceptForSession"); assert.equal(collected.requests.length, 1); assert.equal(deliveries, 1);
+  } finally { proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } }); await run; await backend.dispose(); }
+});
+
+test("Codex refuses an altered native thread identity instead of saving a masked session handle", async () => {
+  const secret = "synthetic-codex-thread-identity-123456", proc = new FakeProcess(); fakeServer(proc, { threadId: secret });
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn, { args: [], env: {}, redact: text => text.split(secret).join("[redacted]") }), collected = collectSink();
+  try {
+    const run = backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "" }, collected.sink, new AbortController().signal);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    if (proc.sent(message => message.method === "turn/start").length > 0) proc.emitLine({ method: "turn/completed", params: { threadId: secret, turn: { id: "turn-1", status: "completed" } } });
+    const result = await run;
+    assert.equal(result.status, "failed"); assert.equal(collected.events.some(event => event.startsWith("session:")), false);
+    assert.equal(JSON.stringify(result).includes(secret), false);
+  } finally { await backend.dispose(); }
+});
+
+for (const changed of ["path", "diff"] as const) test(`Codex refuses a file-change approval whose cached ${changed} contained a credential`, async () => {
+  const secret = "synthetic-codex-patch-credential-123456", proc = new FakeProcess(), { threadId, turnId } = fakeServer(proc);
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn, { args: [], env: {}, redact: text => text.split(secret).join("[redacted]") });
+  const collected = collectSink(["always"]), run = backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "" }, collected.sink, new AbortController().signal);
+  try {
+    await proc.waitFor(line => line.includes('"turn/start"'));
+    const item = { id: "patch", type: "fileChange", changes: [{ path: changed === "path" ? `src/${secret}.ts` : "src/public.ts", kind: { type: "update" }, diff: changed === "diff" ? `+${secret}` : "+public" }] };
+    proc.emitLine({ method: "item/started", params: { threadId, turnId, item } });
+    for (const [index, completed] of [false, true].entries()) {
+      if (completed) proc.emitLine({ method: "item/completed", params: { threadId, turnId, item: { ...item, status: "completed" } } });
+      const id = `approval-${index}`;
+      proc.emitLine({ id, method: "item/fileChange/requestApproval", params: { threadId, turnId, itemId: "patch" } });
+      const reply = JSON.parse(await proc.waitFor(line => { const msg = JSON.parse(line); return msg.id === id && (msg.error || msg.result); }));
+      assert.equal(reply.error?.code, -32602); assert.equal(reply.result, undefined);
+    }
+    assert.equal(collected.requests.length, 0);
+  } finally { proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } }); await run; await backend.dispose(); }
+});
+
+test("Codex omits credential-altered native identities and preserves an actual literal marker identity", async () => {
+  const secret = "synthetic-codex-native-id-123456", proc = new FakeProcess(), { threadId, turnId } = fakeServer(proc);
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn, { args: [], env: {}, redact: text => text.split(secret).join("[redacted]") });
+  const collected = collectSink(), run = backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "" }, collected.sink, new AbortController().signal);
+  try {
+    await proc.waitFor(line => line.includes('"turn/start"'));
+    for (const id of [secret, "[redacted]"]) {
+      const item = { id, type: "commandExecution", command: "cat README.md", cwd: "/repo", commandActions: [{ type: "read", path: "README.md" }] };
+      proc.emitLine({ method: "item/started", params: { threadId, turnId, item } });
+      proc.emitLine({ method: "item/commandExecution/outputDelta", params: { threadId, turnId, itemId: id, delta: "public" } });
+      proc.emitLine({ method: "item/completed", params: { threadId, turnId, item: { ...item, status: "completed", exitCode: 0 } } });
+    }
+    proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } }); await run;
+    assert.equal(collected.observations.filter(event => event.type === "tool.start").length, 1);
+    assert.equal(collected.observations.filter(event => event.type === "tool.done").length, 1);
+    assert.equal(JSON.stringify(collected).includes(secret), false);
+  } finally { await backend.dispose(); }
+});
+
 test("Codex metadata connections rotate on a loaded resume and removed channels are explicitly disabled", async () => {
   const proc = new FakeProcess(), { threadId, turnId, seen } = fakeServer(proc), backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
   try {

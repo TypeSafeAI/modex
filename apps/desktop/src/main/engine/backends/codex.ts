@@ -45,7 +45,7 @@ export class CodexBackend implements Backend {
   /** The model Codex chose for each loaded thread, from thread/start or thread/resume: a Plan turn's collaboration mode needs one. */
   private readonly threadModels = new Map<string, string>();
   /** File paths of in-flight file changes, keyed `threadId:itemId`, so an approval can name them without the patch. */
-  private readonly changePaths = new Map<string, string[]>();
+  private readonly changePaths = new Map<string, { paths: string[]; protected: boolean }>();
   /** From the `initialize` reply: which codex build the server is. Kept for failure reports. */
   private userAgent: string | null = null;
   /** Opaque id of the running app-server process; native thread, turn and item ids are unique only within it. */
@@ -125,6 +125,7 @@ export class CodexBackend implements Backend {
     this.ready = null;
     this.loaded.clear();
     this.metadataConnections.clear();
+    this.changePaths.clear();
     this.threadModels.clear();
     for (const request of this.openRequests.values()) request.controller.abort();
     this.openRequests.clear();
@@ -136,30 +137,66 @@ export class CodexBackend implements Backend {
   private dispatch(line: string): void {
     let msg: RpcMessage;
     try {
-      const fields = this.redactedInputs, redact = this.configuration?.redact;
+      const fields = this.redactedInputs, protectedValues = this.protectedValues, rawIds = this.protectedTransportIds, redact = this.configuration?.redact;
       msg = JSON.parse(line, function(this: object, key, value: unknown) {
-        if (typeof value !== "string") return value;
-        const safe = redact?.(value) ?? value;
-        if (safe !== value) { const changed = fields.get(this) ?? new Set<string>(); changed.add(key); fields.set(this, changed); }
-        return safe;
+        if (redact && redact(key) !== key) protectedValues.add(this);
+        if (typeof value === "string") {
+          const safe = redact?.(value) ?? value;
+          if (safe !== value) {
+            const changed = fields.get(this) ?? new Set<string>(); changed.add(key); fields.set(this, changed); protectedValues.add(this);
+            // Exact protected RPC ids are retained only to send a fixed refusal back to their owner.
+            if (key === "id") rawIds.set(this, value);
+          }
+          return safe;
+        }
+        if (value && typeof value === "object") {
+          const object = value as Record<string, unknown>;
+          if (!Array.isArray(value) && redact && Object.keys(object).some(name => redact(name) !== name)) {
+            const safe = Object.fromEntries(Object.entries(object).map(([name, item]) => [redact(name), item]));
+            if (fields.has(object)) fields.set(safe, fields.get(object)!);
+            if (rawIds.has(object)) rawIds.set(safe, rawIds.get(object)!);
+            protectedValues.add(safe); value = safe;
+          }
+          if (protectedValues.has(value as object)) protectedValues.add(this);
+        }
+        return value;
       }) as RpcMessage;
     } catch {
       return;
+    }
+    if (msg.method && msg.id !== undefined) {
+      const p = msg.params as Record<string, unknown> | undefined;
+      const patch = msg.method === "item/fileChange/requestApproval" ? this.changePaths.get(`${String(p?.threadId ?? "")}:${String(p?.itemId ?? "")}`) : undefined;
+      if (this.protectedValues.has(msg) || patch?.protected) {
+        this.send({ id: this.protectedTransportIds.get(msg) ?? msg.id, error: { code: -32602, message: "Modex refused this request because it contains protected credential data." } });
+        return;
+      }
     }
     if (typeof msg.id === "number" && !msg.method) {
       const p = this.pending.get(msg.id);
       if (p) {
         this.pending.delete(msg.id);
         if (msg.error) p.reject(new CodexError(msg.error.message ?? "codex error", { method: p.method, rpcCode: msg.error.code, rpcData: msg.error.data }));
+        else if (this.unavailableIdentity(msg.result, "thread") || this.unavailableIdentity(msg.result, "turn")) p.reject(new CodexError("Codex returned an unavailable protected protocol identity.", { method: p.method }));
         else p.resolve(msg.result);
       }
       return;
     }
+    const params = msg.params as Record<string, unknown> | undefined;
+    if (this.redactedInputs.get(msg)?.has("method") || (params && (["threadId", "turnId", "itemId"].some(key => this.redactedInputs.get(params)?.has(key))
+      || ["thread", "turn", "item"].some(key => this.unavailableIdentity(params, key))))) return;
     for (const s of this.subscribers) s(msg);
   }
 
   /** Object-local field names only: raw credentials and values are never retained here. */
   private readonly redactedInputs = new WeakMap<object, Set<string>>();
+  private readonly protectedValues = new WeakSet<object>();
+  private readonly protectedTransportIds = new WeakMap<object, string>();
+  private unavailableIdentity(value: unknown, key: string): boolean {
+    if (!value || typeof value !== "object") return false;
+    const identity = (value as Record<string, unknown>)[key];
+    return !!identity && typeof identity === "object" && this.redactedInputs.get(identity)?.has("id") === true;
+  }
   private inputAvailability(item: CodexItem): { displayOnlyInputs?: true; unavailableInputs?: UnavailableNativeInput[] } {
     const fields: UnavailableNativeInput[] = [], changed = (object: object | undefined, key: string) => object !== undefined && this.redactedInputs.get(object)?.has(key);
     if (changed(item, "command")) fields.push("exec.command");
@@ -471,6 +508,7 @@ export class CodexBackend implements Backend {
       const finish = (r: TurnResult) => {
         if (done) return;
         done = true;
+        for (const key of this.changePaths.keys()) if (key.startsWith(`${tid}:`)) this.changePaths.delete(key);
         agents.finish(signal.aborted || r.status === "interrupted");
         this.subscribers.delete(onMsg);
         this.disconnects.delete(onDisconnect);
@@ -594,7 +632,7 @@ export class CodexBackend implements Backend {
             } else if (item.type === "fileChange") {
               tools.set(item.id, { started: Date.now(), output: "", bytes: 0 });
               const files = (item.changes ?? []).map((c) => c.path);
-              this.changePaths.set(`${tid}:${item.id}`, files);
+              this.changePaths.set(`${tid}:${item.id}`, { paths: files, protected: this.protectedValues.has(item) });
               sink.observe({ type: "tool.start", native: native(item.id), tool: { name: "apply_patch", title: `edit ${files.join(", ")}`, args: { patch: (item.changes ?? []).map((c) => c.diff).join("\n"), files: (item.changes ?? []).map(patchFile) }, ...this.inputAvailability(item) } });
             } else if (item.type === "mcpToolCall" || item.type === "dynamicToolCall" || item.type === "webSearch") {
               tools.set(item.id, { started: Date.now(), output: "", bytes: 0 });
@@ -637,7 +675,12 @@ export class CodexBackend implements Backend {
           case "item/completed": {
             const item = p.item as CodexItem;
             commands.delete(item.id);
-            if (item.type === "fileChange") this.changePaths.delete(`${tid}:${item.id}`);
+            if (item.type === "fileChange") {
+              const key = `${tid}:${item.id}`;
+              // Keep a body-free refusal fence until this turn ends, including late approval requests.
+              if (this.changePaths.get(key)?.protected || this.protectedValues.has(item)) this.changePaths.set(key, { paths: [], protected: true });
+              else this.changePaths.delete(key);
+            }
             if (item.type === "agentMessage") {
               // A message that completes without streaming is kept, commentary included: its phase says what it is.
               const evidence = memoryEvidence(item.memoryCitation);
@@ -775,7 +818,7 @@ export class CodexBackend implements Backend {
   /** Paths of a file change the approval refers to (from its item/started), consumed once. */
   private takeChangePaths(p: Record<string, unknown>): string[] {
     const key = `${String(p.threadId ?? "")}:${String(p.itemId ?? "")}`;
-    const paths = this.changePaths.get(key) ?? [];
+    const paths = this.changePaths.get(key)?.paths ?? [];
     this.changePaths.delete(key);
     return paths;
   }

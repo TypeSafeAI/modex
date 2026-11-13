@@ -15,8 +15,8 @@ export function claudeSecretSink(sink: TurnSink, secret: string): { sink: TurnSi
     const tail = pending.get(key);
     if (!tail) return;
     pending.delete(key);
-    // The stream is closed: a proper prefix cannot complete a key, so preserve ordinary text.
-    sink.observe(redact({ ...tail.event, text: tail.text, ...(tail.event.source ? { source: `${tail.event.source}:redaction-tail` } : {}) }));
+    // Preserve ordinary short words; a long unfinished credential prefix is still private.
+    sink.observe(redact({ ...tail.event, text: tail.text.length >= 9 ? "[redacted]" : tail.text, ...(tail.event.source ? { source: `${tail.event.source}:redaction-tail` } : {}) }));
   };
   return {
     redact,
@@ -24,6 +24,8 @@ export function claudeSecretSink(sink: TurnSink, secret: string): { sink: TurnSi
     sink: {
       ...sink,
       observe(event) {
+        // A native identity is exact or unavailable; masking must never create another identity.
+        if (contains(event.native) || (event.source && event.source.includes(secret))) return;
         // Redaction changes display text, not the identity of the file the native tool used.
         // Preserve static unavailable-field receipts before discarding the original value.
         const args = event.type === "tool.start" ? event.tool.args : event.type === "tool.update" || event.type === "tool.done" ? event.progress?.args : undefined;
@@ -62,6 +64,12 @@ export function claudeSecretSink(sink: TurnSink, secret: string): { sink: TurnSi
         sink.notice("warn", "Claude requested an action containing the gateway credential. Modex denied it without displaying the credential.");
         return "no";
       },
+      ...(sink.question ? { question: async (request, withdrawn) => {
+        if (!contains(request)) return sink.question!(request, withdrawn);
+        if (request.native) denied.add(JSON.stringify(request.native));
+        sink.notice("warn", "Claude asked a question containing the gateway credential. Modex withdrew it without displaying the credential.");
+        return { withdrawn: "ended" as const };
+      } } : {}),
       refusedByRule(request) { return contains(request) ? "The action contains a protected gateway credential." : sink.refusedByRule?.(request); },
       async deliverRequest(native, write) {
         // A local secret refusal has no human request in the broker; only its fixed denial is written.

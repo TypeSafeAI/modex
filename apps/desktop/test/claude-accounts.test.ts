@@ -337,6 +337,38 @@ test("gateway redaction preserves an ordinary trailing key-prefix character", as
   assert.equal(text, "ordinary words");
 });
 
+test("gateway redaction omits altered native and source identities instead of renaming them", async () => {
+  const { claudeSecretSink } = await import("../src/main/engine/backends/claude-secret-sink.js");
+  const collected = collectSink(), protectedSink = claudeSecretSink(collected.sink, KEY);
+  for (const identity of [{ native: { runtime: "r", item: KEY } }, { native: { runtime: "r", item: "public" }, source: KEY }]) {
+    protectedSink.sink.observe({ type: "message.start", ...identity, phase: "final" });
+    protectedSink.sink.observe({ type: "message.delta", ...identity, text: "unavailable identity" });
+    protectedSink.sink.observe({ type: "message.done", ...identity });
+  }
+  const native = { runtime: "r", item: "[redacted]" };
+  protectedSink.sink.observe({ type: "message.done", native, text: "real literal identity" }); protectedSink.finish();
+  assert.deepEqual(collected.observations, [{ type: "message.done", native, text: "real literal identity" }]);
+});
+
+test("gateway credential questions are withdrawn before publication and write only their fixed refusal", async () => {
+  const { claudeSecretSink } = await import("../src/main/engine/backends/claude-secret-sink.js");
+  const collected = collectSink(); let questions = 0, brokerDeliveries = 0, writes = 0;
+  const protectedSink = claudeSecretSink({ ...collected.sink, question: async () => { questions++; return { answers: { q: ["yes"] } }; }, deliverRequest: async (_native, write) => { brokerDeliveries++; await write(); } }, KEY);
+  const native = { runtime: "r", request: "q" };
+  const result = await protectedSink.sink.question!({ native, blocking: true, questions: [{ id: "q", header: "Choose", text: `Use ${KEY}?`, options: null, allowOther: true, secret: false }] });
+  assert.deepEqual(result, { withdrawn: "ended" }); assert.equal(questions, 0);
+  await protectedSink.sink.deliverRequest!(native, async () => { writes++; });
+  assert.equal(writes, 1); assert.equal(brokerDeliveries, 0); assert.equal(JSON.stringify(collected).includes(KEY), false);
+});
+
+test("gateway terminal output suppresses a long incomplete credential prefix", async () => {
+  const { claudeSecretSink } = await import("../src/main/engine/backends/claude-secret-sink.js");
+  const collected = collectSink(), protectedSink = claudeSecretSink(collected.sink, KEY);
+  protectedSink.sink.observe({ type: "message.delta", native: { runtime: "r", item: "m" }, text: `prefix ${KEY.slice(0, -1)}` }); protectedSink.finish();
+  const text = collected.observations.filter(event => event.type === "message.delta").map(event => event.text).join("");
+  assert.equal(text, "prefix [redacted]");
+});
+
 test("gateway redaction handles every key split independently for message and reasoning streams", async () => {
   const { claudeSecretSink } = await import("../src/main/engine/backends/claude-secret-sink.js");
   for (let split = 1; split < KEY.length; split++) {
