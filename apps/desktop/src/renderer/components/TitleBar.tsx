@@ -104,7 +104,13 @@ function ThreadTitle({ title, onRename, renameSignal }: { title: string; onRenam
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(title);
   const input = useRef<HTMLInputElement>(null);
-  useEffect(() => { if (renameSignal > 0) setEditing(true); }, [renameSignal]);
+  // A menu command applies to the mounted title, never to a later thread.
+  const seenRenameSignal = useRef(renameSignal);
+  useEffect(() => {
+    if (renameSignal === seenRenameSignal.current) return;
+    seenRenameSignal.current = renameSignal;
+    setEditing(true);
+  }, [renameSignal]);
   useEffect(() => { if (!editing) setDraft(title); }, [title, editing]);
   useEffect(() => { if (editing) { input.current?.focus(); input.current?.select(); } }, [editing]);
 

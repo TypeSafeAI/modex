@@ -5,7 +5,7 @@ import path from "node:path";
 import { tid } from "./support.js";
 import { baseWorld, FIELD_GUIDE, fitWindow, launchWithGh, LENDING, prRow, READ_ENDPOINT, settle, type Harness } from "./code-review-support.js";
 import { ghFile, ghPull, ghRepo, ghRow, sha } from "../test/fixtures/code-review-gh-world.js";
-import type { CodeReviewReply, CodeReviewRequest, Inbox, PrKey, PrOverview } from "../src/shared/code-review.js";
+import type { CodeReviewReply, CodeReviewRequest, Inbox, PrKey, PrOverview, PrRevision } from "../src/shared/code-review.js";
 
 /**
  * CR-8 (#327) cross-slice regressions: the CR-3 renderer over CR-2's production read service, in real Electron,
@@ -163,6 +163,121 @@ test("incomplete data: a timed-out search, a hidden repository, a short files li
   // gh's diagnostics never cross into the renderer.
   expect(await page.content()).not.toContain("SENTINEL");
   expect(JSON.stringify(files)).not.toContain("SENTINEL");
+});
+
+function revocationWorld() {
+  const world = baseWorld();
+  world.routes["repos/example-org/lending/pulls/73"] = ghPull(LENDING, 73, "Private review", { body: "CR_REVOKED_PRIVATE_BODY", files: 1 });
+  world.routes["repos/example-org/lending/pulls/73/files"] = [ghFile("src/private.ts", "@@ -1 +1 @@\n-before\n+CR_REVOKED_PATCH", 1, 1)];
+  world.routes["repos/example-org/lending/contents/src/private.ts"] = { status: 200, raw: "CR_REVOKED_CONTEXT\n" };
+  world.routes["repos/example-org/lending/issues/73/timeline"] = [];
+  world.routes["repos/example-org/lending/deployments"] = [];
+  world.routes[`repos/example-org/lending/commits/${sha("c")}/check-runs`] = { total_count: 0, check_runs: [] };
+  world.routes[`repos/example-org/lending/commits/${sha("c")}/status`] = { total_count: 0, statuses: [] };
+  return world;
+}
+
+function revocationReads(key: PrKey, revision: PrRevision): CodeReviewRequest[] {
+  return [
+    { op: "overview", requestId: "revoke-overview", key },
+    { op: "resolve", requestId: "revoke-resolve", input: "https://github.com/example-org/lending/pull/73" },
+    { op: "context", requestId: "revoke-context", key, revision, side: "head", path: "src/private.ts", start: 1, end: 1 },
+    { op: "activity", requestId: "revoke-activity", key, cursor: null },
+    { op: "checks", requestId: "revoke-checks", key, revision },
+    { op: "files", requestId: "revoke-files", key, revision, cursor: null },
+  ];
+}
+
+for (const status of [403, 404, 410]) test(`revoked access ${status}: an accessible PR never returns kept private reads after denial and a network failure`, async () => {
+  h = await launchWithGh(revocationWorld());
+  const { page } = h;
+  await tid(page, "rail-code-review").click();
+  await prRow(page, "example-org/lending#73").click();
+  await expect(tid(page, "code-review-overview-body")).toContainText("CR_REVOKED_PRIVATE_BODY");
+  const key = await keyOf("example-org/lending#73");
+  const overview = await invoke({ op: "overview", requestId: "revoke-initial", key });
+  if (overview.result.state !== "ready") throw new Error("accessible overview not ready");
+  const revision = (overview.result.value as PrOverview).revision;
+  const reads = revocationReads(key, revision);
+  for (const request of reads) expect((await invoke(request)).result.state, request.op).toBe("ready");
+  const other = await keyOf("example-org/field-guide#73");
+  const otherRead: CodeReviewRequest = { op: "overview", requestId: "revoke-unrelated", key: other };
+  expect((await invoke(otherRead)).result.state).toBe("ready");
+  // Positive control: a failed network read really reaches main's same-account kept-answer path.
+  h.world((w) => { w.offline = true; });
+  expect((await invoke(otherRead)).result).toMatchObject({ state: "stale", reason: "offline" });
+  h.world((w) => {
+    w.offline = false;
+    w.routes["repos/example-org/lending/pulls/73"] = { status, body: { message: "No longer accessible" }, stderr: "gh: ghp_REVOKED_DIAGNOSTIC_SENTINEL denied\n" };
+  });
+  await tid(page, "code-review-inbox-menu").click();
+  await tid(page, "code-review-refresh").click();
+  await expect(tid(page, "code-review-overview-error")).toBeVisible();
+  await expect(tid(page, "code-review-overview-body")).not.toContainText("CR_REVOKED_PRIVATE_BODY");
+  expect(await page.content()).not.toContain("REVOKED_DIAGNOSTIC_SENTINEL");
+  const denial = await invoke({ op: "overview", requestId: `revoke-denial-${status}`, key });
+  expect(denial.result).toMatchObject({ state: "unavailable", reason: status === 403 ? "denied" : "not-found" });
+  expect(JSON.stringify(denial)).not.toMatch(/CR_REVOKED_(PRIVATE_BODY|CONTEXT|PATCH)|REVOKED_DIAGNOSTIC_SENTINEL/);
+  h.world((w) => { w.offline = true; });
+  for (const request of reads) {
+    const denied = await invoke(request);
+    expect(denied.result.state, request.op).toBe("unavailable");
+    expect(JSON.stringify(denied), request.op).not.toMatch(/CR_REVOKED_(PRIVATE_BODY|CONTEXT|PATCH)|REVOKED_DIAGNOSTIC_SENTINEL/);
+  }
+  expect((await invoke(otherRead)).result).toMatchObject({ state: "stale", reason: "offline" });
+  await tid(page, "code-review-overview-error").getByRole("button", { name: "Retry" }).click();
+  await expect(tid(page, "code-review-overview-error")).toContainText("Check the network connection");
+  await expect(tid(page, "code-review-overview-body")).not.toContainText("CR_REVOKED_PRIVATE_BODY");
+  expect(await page.content()).not.toContain("REVOKED_DIAGNOSTIC_SENTINEL");
+  expect(h.providerStarts()).toEqual([]);
+  expect(h.posts()).toEqual([]);
+  expect(h.calls().filter((call) => /^(POST|PUT|PATCH|DELETE) /.test(call))).toEqual([]);
+});
+
+test("revoked access: a held private context response cannot return after the accessible PR is denied", async () => {
+  h = await launchWithGh(revocationWorld());
+  const key = await keyOf("example-org/lending#73");
+  const overview = await invoke({ op: "overview", requestId: "held-revoke-overview", key });
+  if (overview.result.state !== "ready") throw new Error("accessible overview not ready");
+  const revision = (overview.result.value as PrOverview).revision;
+  const request: CodeReviewRequest = { op: "context", requestId: "held-revoke-context", key, revision, side: "head", path: "src/private.ts", start: 1, end: 1 };
+  const content = "repos/example-org/lending/contents/src/private.ts";
+  h.world((w) => { w.holds = { [content]: "private-context" }; });
+  const during = invoke(request);
+  await expect.poll(() => h.calls().filter((call) => call.startsWith(content + "?")).length).toBe(1);
+  h.world((w) => { w.routes["repos/example-org/lending/pulls/73"] = { status: 403, body: { message: "No longer accessible" }, stderr: "gh: ghp_REVOKED_DIAGNOSTIC_SENTINEL denied\n" }; });
+  const denial = await invoke({ op: "overview", requestId: "held-revoke-denial", key });
+  expect(denial.result).toMatchObject({ state: "unavailable", reason: "denied" });
+  h.release("private-context");
+  const late = await during;
+  expect(late.result).toMatchObject({ state: "unavailable", reason: "denied" });
+  expect(JSON.stringify([denial, late])).not.toMatch(/CR_REVOKED_(PRIVATE_BODY|CONTEXT)|REVOKED_DIAGNOSTIC_SENTINEL/);
+  h.world((w) => { w.offline = true; });
+  const after = await invoke({ ...request, requestId: "held-revoke-offline" });
+  expect(after.result.state).toBe("unavailable");
+  expect(JSON.stringify(after)).not.toContain("CR_REVOKED_CONTEXT");
+  expect(await h.page.content()).not.toContain("REVOKED_DIAGNOSTIC_SENTINEL");
+  expect(h.providerStarts()).toEqual([]);
+  expect(h.posts()).toEqual([]);
+  expect(h.calls().filter((call) => /^(POST|PUT|PATCH|DELETE) /.test(call))).toEqual([]);
+});
+
+test("unsafe context paths: Electron IPC refuses traversal and disguised paths before starting a GitHub read", async () => {
+  h = await launchWithGh(revocationWorld());
+  const key = await keyOf("example-org/lending#73");
+  const overview = await invoke({ op: "overview", requestId: "unsafe-path-overview", key });
+  if (overview.result.state !== "ready") throw new Error("accessible overview not ready");
+  const revision = (overview.result.value as PrOverview).revision;
+  // A valid context proves the real handler is active before testing its input boundary.
+  const request: CodeReviewRequest = { op: "context", requestId: "unsafe-path-context", key, revision, side: "head", path: "src/private.ts", start: 1, end: 1 };
+  expect((await invoke(request)).result).toMatchObject({ state: "ready", value: { lines: ["CR_REVOKED_CONTEXT"] } });
+  const before = h.calls();
+  for (const path of ["/etc/passwd", "docs/../../secrets", "./src/private.ts", "src//private.ts", "src/a\u0000b", "src/\u202eprivate.ts", "src/pri\u200dvate.ts", "src/\ud800.ts"]) {
+    await expect(invoke({ ...request, path })).rejects.toThrow(/Invalid Code Review request/);
+  }
+  expect(h.calls()).toEqual(before);
+  expect(h.providerStarts()).toEqual([]);
+  expect(h.posts()).toEqual([]);
 });
 
 test("hostile content: PR text renders inert, and unsafe or look-alike links never resolve, open or navigate", async () => {

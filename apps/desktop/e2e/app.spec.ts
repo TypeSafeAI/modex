@@ -785,11 +785,20 @@ test("accessibility: information text meets AA contrast, keyboard focus is visib
 
   // Truncated titles and shortcut-bearing rows explain themselves on hover.
   const rowTitle = await tid(currentRow(page), "thread-row-title").innerText();
-  await expect(currentRow(page).getByRole("button").first()).toHaveAccessibleName(rowTitle);
-  await currentRow(page).getByRole("button").first().focus();
+  const rowButton = currentRow(page).getByRole("button").first();
+  await expect(rowButton).toHaveAccessibleName(rowTitle);
+  await rowButton.focus();
   await page.keyboard.press("ArrowRight");
-  await expect(page.getByRole("dialog", { name: "Chat details" })).toContainText(rowTitle);
+  // The pointer can still inspect another row: follow this keyboard control's actual association.
+  await expect(rowButton).toHaveAttribute("aria-controls", /\S/);
+  const details = page.locator(`[id=${JSON.stringify(await rowButton.getAttribute("aria-controls"))}]`);
+  await expect(details).toHaveRole("dialog");
+  await expect(details).toHaveAccessibleName("Chat details");
+  await expect(details).toContainText(rowTitle);
+  await expect(details.locator("summary")).toBeFocused();
   await page.keyboard.press("Escape");
+  await expect(details).toHaveCount(0);
+  await expect(rowButton).toBeFocused();
   await expect(tid(page, "new-chat")).toHaveAttribute("title", /⌘N/);
 
   // Spinners and the thinking shimmer stop when the OS asks for reduced motion.
@@ -798,4 +807,78 @@ test("accessibility: information text meets AA contrast, keyboard focus is visib
   await page.emulateMedia({ reducedMotion: "reduce" });
   expect(await spin()).toBe("none");
   await page.emulateMedia({ reducedMotion: "no-preference" });
+});
+
+test("a menu rename belongs to that chat and never opens editing on a later chat", async () => {
+  await createThread(page, "Rename intent seed");
+  await tid(page, "thread-menu-toggle").click();
+  await tid(page, "action-rename").click();
+  const title = tid(page, "thread-title");
+  await expect(title).not.toHaveAttribute("readonly", "");
+  await title.fill("Explicitly renamed seed");
+  await title.press("Enter");
+  await expect(title).toHaveAttribute("readonly", "");
+  await expect(tid(currentRow(page), "thread-row-title")).toHaveText("Explicitly renamed seed");
+  const later = await createThread(page, "Later chat fixture");
+  await expect(title).toHaveAttribute("readonly", "");
+  const readLater = () => page.evaluate(async (id) => (await window.modex!.invoke("state:get", undefined)).threads.find(x => x.id === id), later);
+  const beforeBlur = await readLater();
+  expect(beforeBlur).toBeDefined();
+  expect(beforeBlur!.titleSource, "a later chat was not manually renamed").not.toBe("manual");
+  await expect(title).toHaveValue(beforeBlur!.title);
+  await tid(page, "composer-input").focus();
+  expect(await readLater()).toMatchObject({ id: later, title: beforeBlur!.title, titleSource: beforeBlur!.titleSource });
+
+  // A later mount still accepts new edit commands through every entry point.
+  await tid(page, "thread-menu-toggle").click();
+  await tid(page, "action-rename").click();
+  await expect(title).not.toHaveAttribute("readonly", "");
+  await title.fill("Later explicitly renamed");
+  await title.press("Enter");
+  await expect(title).toHaveAttribute("readonly", "");
+  await expect(title).toHaveValue("Later explicitly renamed");
+  await title.dblclick();
+  await expect(title).not.toHaveAttribute("readonly", "");
+  await title.fill("Cancelled later title");
+  await title.press("Escape");
+  await expect(title).toHaveAttribute("readonly", "");
+  await expect(title).toHaveValue("Later explicitly renamed");
+  await title.focus();
+  await title.press("Enter");
+  await expect(title).not.toHaveAttribute("readonly", "");
+  await title.fill("Later keyboard renamed");
+  await title.press("Enter");
+  await expect(title).toHaveAttribute("readonly", "");
+  await expect(title).toHaveValue("Later keyboard renamed");
+  expect(await readLater()).toMatchObject({ id: later, title: "Later keyboard renamed", titleSource: "manual" });
+});
+
+test("keyboard chat details follows its associated card while another chat is hovered", async () => {
+  await page.mouse.move(0, 0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Chat details" })).toHaveCount(0);
+  const pointerId = await createThread(page, "Pointer details fixture");
+  const keyboardId = await createThread(page, "Keyboard details fixture");
+  // Other cases may change automatic naming; these two identities are fixture inputs, not title tests.
+  await page.evaluate(async ([pointerId, keyboardId]) => {
+    await window.modex!.invoke("thread:update", { threadId: pointerId!, patch: { title: "Pointer details fixture" } });
+    await window.modex!.invoke("thread:update", { threadId: keyboardId!, patch: { title: "Keyboard details fixture" } });
+  }, [pointerId, keyboardId]);
+  const pointer = page.locator(`[data-testid="thread-row"][data-thread-id="${pointerId}"]`);
+  const keyboard = page.locator(`[data-testid="thread-row"][data-thread-id="${keyboardId}"]`).getByRole("button").first();
+  await expect(keyboard).toHaveAccessibleName("Keyboard details fixture");
+  await pointer.hover();
+  await expect(page.getByRole("dialog", { name: "Chat details" })).toHaveCount(1);
+  await keyboard.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(keyboard).toHaveAttribute("aria-controls", /\S/);
+  const details = page.locator(`[id=${JSON.stringify(await keyboard.getAttribute("aria-controls"))}]`);
+  await expect(details).toHaveRole("dialog");
+  await expect(details).toHaveAccessibleName("Chat details");
+  await expect(details).toContainText("Keyboard details fixture");
+  await expect(details).not.toContainText("Pointer details fixture");
+  await expect(details.locator("summary")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(details).toHaveCount(0);
+  await expect(keyboard).toBeFocused();
 });

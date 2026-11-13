@@ -175,6 +175,8 @@ for (const moveFocus of [false, true]) test(`a native question preserves the exi
     const transcript = JSON.parse(fs.readFileSync(path.join(home, "app/threads", `${threadId}.json`), "utf8"));
     expect(transcript.filter((item: { kind: string }) => item.kind === "user").map((item: { text: string }) => item.text)).toEqual(["deploy it"]);
     expect(replies(logs)).toHaveLength(1);
+    await app.close();
+    app = undefined;
     expect(everything(path.join(home, "app"))).not.toContain("question-only-secret");
   } finally { await app?.close(); fs.rmSync(logs, { recursive: true, force: true }); }
 });
@@ -242,6 +244,8 @@ test("Codex questions: the card answers by its schema, the CLI hears once, the s
     await expect.poll(() => replies(logs).length).toBe(2);
     expect(replies(logs)[1]).toMatchObject({ request: 902, error: { code: -32000 } });
 
+    await app.close();
+    app = undefined;
     // Nothing Modex saved (threads, journal, state) holds the secret.
     expect(everything(path.join(home, "app")).includes("s3cr3t-token")).toBe(false);
   } finally {
