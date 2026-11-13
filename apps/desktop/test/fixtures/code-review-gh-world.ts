@@ -54,14 +54,20 @@ const postsFile = process.env.FAKE_GH_POSTS;
 const posts = () => postsFile && fs.existsSync(postsFile) ? fs.readFileSync(postsFile, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
 const reason = { 200: "OK", 403: "Forbidden", 404: "Not Found", 405: "Method Not Allowed", 409: "Conflict", 410: "Gone" };
 const mergedAs = (pullRoute) => posts().find((p) => p.endpoint === pullRoute + "/merge");
+let pagingHeaders = {};
 function send(status, body, headers) {
-  const all = { "Content-Type": "application/json; charset=utf-8", "X-Ratelimit-Remaining": "4999", ...(headers || {}) };
+  const all = { "Content-Type": "application/json; charset=utf-8", "X-Ratelimit-Remaining": "4999", ...pagingHeaders, ...(headers || {}) };
   process.stdout.write("HTTP/2.0 " + status + " " + (reason[status] || "Error") + "\n" + Object.entries(all).map(([k, v]) => k + ": " + v).join("\r\n") + "\r\n\r\n"
     + (typeof body === "string" ? body : JSON.stringify(body)));
   if (status >= 300) process.exitCode = 1;
 }
 function paged(list) {
   const per = Number(params.get("per_page") || 30), page = Number(params.get("page") || 1);
+  if (page * per < list.length) {
+    const next = new URLSearchParams(params);
+    next.set("page", String(page + 1));
+    pagingHeaders = { Link: '<https://api.github.com/' + route + '?' + next + '>; rel="next"' };
+  }
   return list.slice((page - 1) * per, page * per);
 }
 // Recorded changes to a PR, applied in order to what the world says about it.

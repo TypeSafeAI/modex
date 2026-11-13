@@ -79,6 +79,44 @@ const runs = () => h.providerStarts().filter((line) => line.startsWith("claude -
 const panel = (p: Page) => tid(p, "cr-agent-panel");
 const section = (p: Page) => tid(p, "cr-agent");
 
+test("closing header review and merge panels returns keyboard focus to their own opener", async () => {
+  h = await launchWithGh(baseWorld());
+  const page = await openLending();
+  await tid(page, "code-review-split-toggle").click();
+  await expect(tid(page, "code-review-workspace")).toHaveAttribute("data-panes", "overview changes");
+  for (const pane of ["overview", "changes"] as const) {
+    const root = tid(page, `code-review-pane-${pane}`);
+    for (const [buttonId, panelId] of [["code-review-review", "cr-agent-panel"], ["code-review-merge", "cr-merge"]] as const) {
+      const opener = root.getByTestId(buttonId);
+      await expect(opener).not.toHaveAttribute("aria-disabled", "true");
+      await opener.focus();
+      await page.keyboard.press("Enter");
+      const surface = root.getByTestId(panelId);
+      await expect(surface).toBeVisible();
+      const close = surface.getByRole("button", { name: "Close", exact: true });
+      await close.focus();
+      await page.keyboard.press("Enter");
+      await expect(surface).toHaveCount(0);
+      await expect(opener).toBeFocused();
+      await page.keyboard.press("Enter");
+      await expect(surface).toBeVisible();
+      // The header's instructions popover owns its own Escape; it must not close the underlying panel.
+      const gear = root.getByTestId("code-review-instructions");
+      await gear.click();
+      await expect(page.getByRole("dialog", { name: "Review instructions" })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(surface).toBeVisible();
+      await expect(gear).toBeFocused();
+      await surface.getByRole("button", { name: "Close", exact: true }).focus();
+      await page.keyboard.press("Escape");
+      await expect(surface).toHaveCount(0);
+      await expect(opener).toBeFocused();
+    }
+  }
+  expect(runs()).toEqual([]);
+  expect(h.posts()).toEqual([]);
+});
+
 test("the instructions popover states its scope, saves a version on this Mac only, survives a reload, and starts nothing", async () => {
   h = await launchWithGh(baseWorld());
   installClaude("reply");
