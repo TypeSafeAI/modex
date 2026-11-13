@@ -89,8 +89,8 @@ try {
     const url = fs.readFileSync(path.join(home, "pages-url"), "utf8");
     await expect.poll(async () => {
       const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 99, method: "tools/call", params: { name: "search", arguments: { query: "" } } }) });
-      return (await r.json()).result?.isError;
-    }).toBe(true);
+      return r.status;
+    }).toBe(404);
     await app.close(); ({ app, page } = await launch(home));
     await expect(page.getByRole("button", { name: "Open note CLI note", exact: true }).last()).toBeVisible();
     await page.getByRole("button", { name: "Open note CLI note", exact: true }).last().click();

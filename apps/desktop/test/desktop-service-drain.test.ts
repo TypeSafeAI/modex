@@ -10,7 +10,7 @@ function harness() {
   assert.ok(start >= 0 && end > start, "normal Quit and update restart must share service disposal");
   const calls: string[] = [];
   const service = (name: string) => ({ dispose: async () => { calls.push(name); } });
-  const context: any = { media: service("media"), servicesTouched: false, pagesAgents: service("pages"), knowledgeAgents: service("knowledge-agents"), knowledge: service("knowledge"),
+  const context: any = { media: service("media"), servicesTouched: false, pagesAgents: service("pages"), taskContextAgents: service("task-context"), knowledgeAgents: service("knowledge-agents"), knowledge: service("knowledge"),
     desktopHost: service("desktop-host"), companion: service("companion"), terminals: service("terminals"), runner: service("runner"), codeReviewAgent: service("code-review-agent"),
     modexAccount: { cancel: () => calls.push("cancel-modex"), dispose: () => calls.push("dispose-modex") },
     chatgpt: { cancel: () => calls.push("cancel-chatgpt"), dispose: () => calls.push("dispose-chatgpt") },
@@ -27,7 +27,7 @@ test("main service drain coalesces update and Quit callers and does not repeat c
   await Promise.resolve(); finish(); await first;
   assert.equal(h.context.drained(), true);
   const before = [...h.calls]; await h.context.drain(); assert.deepEqual(h.calls, before);
-  for (const name of ["media", "pages", "knowledge-agents", "knowledge", "desktop-host", "companion", "terminals", "runner", "code-review-agent"]) assert.equal(h.calls.filter(x => x === name).length, 1);
+  for (const name of ["media", "pages", "task-context", "knowledge-agents", "knowledge", "desktop-host", "companion", "terminals", "runner", "code-review-agent"]) assert.equal(h.calls.filter(x => x === name).length, 1);
 });
 
 for (const synchronous of [false, true]) test(`main service drain preserves ${synchronous ? "synchronous" : "asynchronous"} failure and permits a shutdown retry`, async () => {
@@ -40,7 +40,7 @@ for (const synchronous of [false, true]) test(`main service drain preserves ${sy
   await assert.rejects(h.context.drain(), /pages failed/);
   assert.equal(h.context.servicesTouched, true, "partial disposal cannot resume ordinary services");
   assert.equal(h.context.drained(), false);
-  for (const name of ["knowledge", "desktop-host", "companion", "terminals", "runner"]) assert.ok(h.calls.includes(name), `${name} still drains`);
+  for (const name of ["task-context", "knowledge", "desktop-host", "companion", "terminals", "runner"]) assert.ok(h.calls.includes(name), `${name} still drains`);
   fail = false; await h.context.drain(); assert.equal(h.context.drained(), true);
   assert.equal(h.calls.filter(x => x === "pages").length, 2);
 });

@@ -22,6 +22,7 @@ import { CANVAS_SCHEME } from "../shared/canvas.js";
 import { KnowledgeService } from "./engine/knowledge.js";
 import { PagesAgents } from "./engine/pages-agents.js";
 import { TaskContextCapture } from "./engine/task-context-capture.js";
+import { TaskContextAgents } from "./engine/task-context-agents.js";
 import { KnowledgeAgents } from "./engine/knowledge-agents.js";
 import { UsageLedger } from "./engine/usage-ledger.js";
 import { ANALYTICS_SCHEME, WorkspaceAnalytics } from "./workspace-analytics.js";
@@ -138,6 +139,7 @@ const knowledgeAgents = new KnowledgeAgents({
   },
 });
 const contextCapture = new TaskContextCapture();
+const taskContextAgents = new TaskContextAgents({ store });
 const pagesAgents = new PagesAgents({
   capture: contextCapture,
   space: store.space, notes: store.space, enabled: id => store.project(id)?.pagesMaintenance === true,
@@ -248,7 +250,7 @@ const attachments = new AttachmentStore(path.join(home, "attachments"), {
 // before startup inspection can update the installed-version receipt.
 attachments.setRecoveryRetention(null);
 const usageLedger = new UsageLedger(store.dir);
-const runner = new ThreadRunner({ contextCapture, beforeSend: thread => { if (thread.localTarget === undefined) media?.beforeSend(thread); }, imageOutcome: (id, status) => media?.jobs.outcome(id, status), ...((demo || process.env.MODEX_E2E) ? { imageBackend: imageFixtureBackend } : {}), images: { prepare: (thread, signal) => { if (media) return media.jobs.prepare(thread, signal); return Promise.resolve(undefined); } }, home, store, emit, secrets, knowledge: knowledgeAgents, pages: pagesAgents, usage: usageLedger, backends: { codex: accountCodex, claude: accountClaude }, claudeAccounts, attachments, beforeDeleteThread: (id) => terminals.close(id), withOwnerRemoval });
+const runner = new ThreadRunner({ contextCapture, taskContext: taskContextAgents, beforeSend: thread => { if (thread.localTarget === undefined) media?.beforeSend(thread); }, imageOutcome: (id, status) => media?.jobs.outcome(id, status), ...((demo || process.env.MODEX_E2E) ? { imageBackend: imageFixtureBackend } : {}), images: { prepare: (thread, signal) => { if (media) return media.jobs.prepare(thread, signal); return Promise.resolve(undefined); } }, home, store, emit, secrets, knowledge: knowledgeAgents, pages: pagesAgents, usage: usageLedger, backends: { codex: accountCodex, claude: accountClaude }, claudeAccounts, attachments, beforeDeleteThread: (id) => terminals.close(id), withOwnerRemoval });
 let mediaInitializationError: string | undefined;
 try { media = new Media({ home, store, runner: () => runner, window: () => win, pathReady, offline: Boolean(demo || process.env.MODEX_E2E), changed: kind => {
   if (win && !win.isDestroyed()) win.webContents.send("media:event", { kind });
@@ -563,7 +565,7 @@ function drainServices(): Promise<void> {
   modexAccount.cancel(); chatgpt.cancel(); claudeLogin.cancel(); retirer.stop();
   drainingServices = (async () => {
     // Start every disposer even if another throws before returning its promise.
-    const operations = [() => media?.dispose(), () => pagesAgents.dispose(), () => knowledgeAgents.dispose().then(() => knowledge.dispose()),
+    const operations = [() => media?.dispose(), () => pagesAgents.dispose(), () => taskContextAgents.dispose(), () => knowledgeAgents.dispose().then(() => knowledge.dispose()),
       () => desktopHost?.dispose(), () => companion.dispose(), () => terminals.dispose(), () => runner.dispose(), () => codeReviewAgent.dispose()];
     const results = await Promise.allSettled(operations.map(dispose => Promise.resolve().then(dispose)));
     modexAccount.dispose(); chatgpt.dispose();
