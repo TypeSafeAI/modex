@@ -17,6 +17,13 @@ function setup(capture = new TaskContextCapture()) {
   return { store, project, other, runner, service, owner };
 }
 
+function admit(f: ReturnType<typeof setup>, binding: Parameters<TaskContextService["prepareContextDraft"]>[0], threadId: string, turnId: string) {
+  const prepared = f.service.prepareContextDraft(binding, threadId, turnId);
+  assert.throws(() => prepared.commit(), /recovery/, "a selection cannot be retired before its destination is durable");
+  f.store.saveItems(threadId, [...f.store.items(threadId), { kind: "user", id: turnId, text: "Check", at: new Date().toISOString(), contextEvidence: prepared.context }]);
+  prepared.commit(); return prepared.context;
+}
+
 test("explicit draft selection stays main-bound and an admitted first thread consumes it once", async t => {
   const f = setup(); t.after(() => f.runner.dispose());
   const before = f.store.space.list().length;
@@ -28,7 +35,7 @@ test("explicit draft selection stays main-bound and an admitted first thread con
   const thread = await f.runner.createThread(f.project.id, { backend: "mock", auto: false });
   assert.throws(() => f.service.consumeContextDraft(selected.binding, thread.id, "U"), /created|bound/);
   f.service.bindCreatedThread(selected.binding, thread.id);
-  const record = f.service.consumeContextDraft(selected.binding, thread.id, "U");
+  const record = admit(f, selected.binding, thread.id, "U");
   assert.deepEqual(record, selected.context);
   assert.deepEqual(f.service.consumeContextDraft(selected.binding, thread.id, "U"), record);
   assert.throws(() => f.service.consumeContextDraft(selected.binding, thread.id, "U2"), /consumed|request/);
@@ -124,7 +131,7 @@ test("a first-send worktree keeps original selection provenance and marks its ne
   const thread = await f.runner.createThread(f.project.id, { backend: "mock", auto: false, worktree: true });
   assert.notEqual(thread.cwd, f.project.path);
   f.service.bindCreatedThread(selected.binding, thread.id);
-  const consumed = f.service.consumeContextDraft(selected.binding, thread.id, "U");
+  const consumed = admit(f, selected.binding, thread.id, "U");
   assert.equal(consumed.captures.length, 2);
   assert.deepEqual(consumed.captures[0]!.revision, selected.context.captures[0]!.revision);
   assert.deepEqual(consumed.captures[1]!.workspace, { kind: "thread", projectId: f.project.id, threadId: thread.id });
@@ -158,7 +165,7 @@ test("after transfer, repeated reads use the authoritative stored turn and never
   const selected = await f.service.selectTaskContext(f.service.openContextDraft(f.owner), [{ kind: "file", path: "README.md" }]);
   const thread = await f.runner.createThread(f.project.id, { backend: "mock", auto: false });
   f.service.bindCreatedThread(selected.binding, thread.id);
-  const admitted = f.service.consumeContextDraft(selected.binding, thread.id, "U");
+  const admitted = admit(f, selected.binding, thread.id, "U");
   const stored = structuredClone(admitted); stored.revision++;
   const user = { kind: "user" as const, id: "U", text: "Check", at: new Date().toISOString(), contextEvidence: stored };
   f.store.saveItems(thread.id, [user]);

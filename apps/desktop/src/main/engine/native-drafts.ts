@@ -253,9 +253,15 @@ export class NativeDrafts {
       if (this.current(session) !== document || !this.ownerExists(record.source)) return false;
       for (const other of this.records()) if (key(other.owner) === key(record.source)
         || other.files.some(file => record.files.some(selected => selected.id === file.id))) return false;
-      return record.files.every(file => this.documents.validate(document, record.source, file));
+      if (!record.files.every(file => this.documents.validate(document, record.source, file))) return false;
+      if (input.contextDraft !== undefined) {
+        const threadId = record.creation?.threadId ?? existing?.id, at = record.creation?.createdAt ?? existing?.createdAt;
+        if (!threadId || !at) throw fail();
+        this.options.runner.preparePendingTaskContext(input.contextDraft, record.id, threadId, at);
+      }
+      return true;
     }, this.execution(destination), context);
-    if (input.contextDraft !== undefined) this.options.runner.closeContextDraft(input.contextDraft);
+    if (input.contextDraft !== undefined) this.options.runner.pendingTaskContextPersisted(input.contextDraft, pending.value!.id);
     if (!this.documents.refreshRetention()) throw fail();
     return { id: pending.value!.id };
   }

@@ -1,4 +1,4 @@
-import { isContextDraftBinding, isPendingTaskContext, taskContextBelongsTo, type PendingTaskContext } from "../../shared/task-context-evidence.js";
+import { sameContextDraftOwner, isContextDraftBinding, isPendingTaskContext, taskContextBelongsTo, type PendingTaskContext } from "../../shared/task-context-evidence.js";
 import { threadTarget } from "../../shared/local-models.js";
 import { isBackendId } from "../../shared/types.js";
 import type { PendingExecutionBinding } from "../../shared/native-drafts.js";
@@ -99,10 +99,10 @@ function validateRecord(value: unknown): asserts value is PendingSendRecord {
     if (value.target && (value.target.threadId !== value.creation.threadId || value.target.createdAt !== value.creation.createdAt
       || value.target.projectId !== value.source.projectId)) throw fail();
   } else if (value.creation !== null || (value.target && value.target.threadId !== value.source.threadId)) throw fail();
-  if (!equal(value.owner, value.source) && (value.owner.kind !== "thread" || !value.target || value.owner.threadId !== value.target.threadId)) throw fail();
+  if (!sameContextDraftOwner(value.owner, value.source) && (value.owner.kind !== "thread" || !value.target || value.owner.threadId !== value.target.threadId)) throw fail();
   if (value.context) {
     const context = value.context as PendingTaskContext;
-    if (!equal(context.owner, value.source) || (value.source.kind === "project" && context.projectId !== value.source.projectId)
+    if (!sameContextDraftOwner(context.owner, value.source) || (value.source.kind === "project" && context.projectId !== value.source.projectId)
       || (value.target && context.projectId !== value.target.projectId)) throw fail();
     const threadId = value.target?.threadId ?? value.creation?.threadId ?? (value.source.kind === "thread" ? value.source.threadId : "");
     if (!taskContextBelongsTo(context.evidence, threadId as string, value.id as string, context.projectId)) throw fail();
@@ -183,7 +183,7 @@ export class PendingSends {
       shape(copied, keys); owner(copied.source);
       const provided = Object.hasOwn(copied, "contextDraft");
       if (provided ? !isContextDraftBinding(copied.contextDraft) || !context : context !== undefined) throw fail();
-      if (context && (!isPendingTaskContext(context) || !equal(context.owner, copied.source) || !equal((copied.contextDraft as { owner: unknown }).owner, copied.source))) throw fail();
+      if (context && (!isPendingTaskContext(context) || !sameContextDraftOwner(context.owner, copied.source) || !sameContextDraftOwner((copied.contextDraft as { owner: unknown }).owner, copied.source))) throw fail();
       const { contextDraft: _editable, ...message } = copied;
       recoveryJSON(message, PENDING_BASE_BYTES);
       const id = randomUUID(), createdAt = new Date().toISOString();

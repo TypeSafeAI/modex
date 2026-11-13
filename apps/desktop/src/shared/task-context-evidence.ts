@@ -85,6 +85,14 @@ export function isContextDraftOwner(v: unknown): v is ContextDraftOwner {
 export function isContextDraftBinding(v: unknown): v is ContextDraftBinding {
   return shape(v, ["owner", "nonce", "revision"]) && typeof v.nonce === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(v.nonce) && integer(v.revision) && isContextDraftOwner(v.owner);
 }
+/** Ownership uses typed identities, independent of an object's JSON key order. */
+export function contextDraftOwnerKey(owner: ContextDraftOwner): string {
+  if (!isContextDraftOwner(owner)) throw new Error("Invalid task context owner.");
+  return JSON.stringify(owner.kind === "thread" ? ["thread", owner.threadId] : ["project", owner.projectId, owner.key]);
+}
+export function sameContextDraftOwner(left: unknown, right: unknown): boolean {
+  return isContextDraftOwner(left) && isContextDraftOwner(right) && contextDraftOwnerKey(left) === contextDraftOwnerKey(right);
+}
 export function isPendingTaskContext(v: unknown): v is PendingTaskContext {
   return shape(v, ["owner", "projectId", "evidence"]) && isContextDraftOwner(v.owner) && identity(v.projectId) && isTaskContextEvidence(v.evidence)
     && v.evidence.checks.length === 0

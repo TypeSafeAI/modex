@@ -304,6 +304,7 @@ async function withOwnerRemoval(scope: DraftRemovalScope, operation: () => Promi
   return ownerRemoval.run(scope, operation);
 }
 function invalidateNativeDocument(): void {
+  runner.invalidateContextDocument();
   ownerRemoval.invalidate();
   rendererPreflight.invalidate();
   recoveryQuitPreflight.invalidate(); recoveryQuitOperation = undefined;

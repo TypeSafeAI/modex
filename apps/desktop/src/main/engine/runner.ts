@@ -353,10 +353,11 @@ export class ThreadRunner {
       if (pending.projectId !== projectId || JSON.stringify(pending.binding) !== JSON.stringify(binding)) throw new Error("Context creation identity changed.");
       return pending.promise;
     }
+    const reserved = this.contextDrafts.reserveCreation(binding, opts.worktree === true);
     let resolve!: (thread: Thread) => void, reject!: (error: unknown) => void;
     const promise = new Promise<Thread>((yes, no) => { resolve = yes; reject = no; });
     this.contextCreations.set(binding.nonce, { projectId, binding, promise });
-    void this.trackCreation(projectId, opts).then(thread => { this.contextDrafts.bindCreatedThread(binding, thread.id); return thread; }).then(thread => {
+    void this.trackCreation(projectId, opts, reserved).then(thread => { this.contextDrafts.bindCreatedThread(binding, thread.id); return thread; }).then(thread => {
       this.contextCreations.delete(binding.nonce); resolve(thread);
     }, error => {
       // A failed worktree script may have made evidence. Never run it again from this nonce.
@@ -411,6 +412,7 @@ export class ThreadRunner {
     return this.background.run(() => this.contextDrafts.selectTaskContext(binding, targets));
   }
   closeContextDraft(binding: ContextDraftBinding): void { this.contextDrafts.closeContextDraft(binding); }
+  invalidateContextDocument(): void { this.contextDrafts.invalidateDocument(); this.contextCreations.clear(); }
   taskContextCandidates(binding: ContextDraftBinding): ReturnType<TaskContextService["candidates"]> {
     this.assertContextEditing(binding?.owner);
     return this.background.run(() => this.contextDrafts.candidates(binding));
@@ -418,6 +420,10 @@ export class ThreadRunner {
   snapshotContextForPending(binding: ContextDraftBinding, owner: ContextDraftOwner): PendingTaskContext {
     this.assertContextEditing(owner); return this.contextDrafts.snapshotForPending(binding, owner);
   }
+  preparePendingTaskContext(binding: ContextDraftBinding, turnId: string, threadId: string, threadCreatedAt: string): void {
+    this.contextDrafts.preparePending(binding, { kind: "pending", turnId, threadId, threadCreatedAt });
+  }
+  pendingTaskContextPersisted(binding: ContextDraftBinding, turnId: string): void { this.contextDrafts.pendingPersisted(binding, turnId); }
   pendingContextForThread(context: PendingTaskContext, threadId: string): PendingTaskContext { return this.contextDrafts.pendingForThread(context, threadId); }
 
 
@@ -1198,6 +1204,7 @@ export class ThreadRunner {
   }
 
   stop(threadId: string): void {
+    this.contextDrafts.cancelThreadCaptures(threadId);
     const l = this.live.get(threadId);
     if (!l) return;
     l.followUp?.abort.abort();
