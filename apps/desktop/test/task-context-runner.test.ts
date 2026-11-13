@@ -55,6 +55,19 @@ test("accepted native read intent precedes success; duplicate completion records
   assert.equal(JSON.stringify(context).includes("private-file-body-f621"), false); assert.equal(context.refs[0]!.relations.some(r => r.kind === "relevant"), false);
 });
 
+test("native path identity survives transcript argument preview truncation", async t => {
+  const relative = Array.from({ length: 223 }, (_, i) => `d${String(i).padStart(3, "0")}${"x".repeat(13)}`).join("/");
+  const capture = new TaskContextCapture({ reader: async () => ({ state: "unavailable", reason: "missing" }) });
+  const h = setup(t, async (_text, opts, sink) => {
+    assert.ok(path.join(opts.cwd, relative).length > 4000);
+    start(sink, path.join(opts.cwd, relative)); sink.observe({ type: "tool.done", native, outcome: "succeeded" }); return { status: "completed" };
+  }, capture);
+  const thread = await h.runner.createThread(h.project.id, { backend: "claude", auto: false }); await h.runner.send(thread.id, "Check");
+  const context = user(h.home, thread.id).contextEvidence!;
+  assert.deepEqual(context.refs.map(r => r.target), [{ kind: "file", path: relative }]);
+  assert.deepEqual(context.captures[0]!.target, { kind: "file", path: relative });
+});
+
 test("successful Claude changes and structured searches retain separate operation relations without parsing output", async t => {
   const h = setup(t, async (_text, opts, sink) => {
     for (const [name, args] of [["Write", { file_path: path.join(opts.cwd, "created.ts") }], ["Edit", { file_path: "created.ts" }], ["Grep", { path: "created.ts", pattern: "x" }], ["Bash", { command: "cat invented.ts" }], ["Read", { file_path: "../private.txt" }]] as const) {

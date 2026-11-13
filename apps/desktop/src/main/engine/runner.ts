@@ -1555,7 +1555,7 @@ export class ThreadRunner {
         if (seen.has(observation.source)) return;
         seen.add(observation.source);
       }
-      this.project(threadId, l, stamp(redactObservation(observation)));
+      this.project(threadId, l, stamp(redactObservation(observation)), observation.type === "tool.start" ? observation.tool.args : observation.type === "tool.done" ? observation.progress?.args : undefined);
     });
     this.project(threadId, l, stamp({ type: "attempt.start" }));
     return { sink, end: (outcome) => {
@@ -1565,7 +1565,7 @@ export class ThreadRunner {
   }
 
   /** Applies one event to the turn's conversation and emits what changed as item events. */
-  private project(threadId: string, l: Live, event: ConversationEvent): void {
+  private project(threadId: string, l: Live, event: ConversationEvent, nativeArgs?: Record<string, unknown>): void {
     const before = l.conversation;
     const after = applyConversationEvent(before, event);
     if (after === before) return;
@@ -1582,7 +1582,7 @@ export class ThreadRunner {
     if (event.type === "tool.start" || event.type === "tool.done") {
       const id = toolItemId(after, event.turn, event.native);
       const item = id ? l.items.find(item => item.id === id) : undefined;
-      if (item?.kind === "tool") this.contextAttempts.get(event.turn.attempt)?.accepted(event, item);
+      if (item?.kind === "tool") this.contextAttempts.get(event.turn.attempt)?.accepted(event, item, nativeArgs);
     }
   }
 

@@ -7,6 +7,7 @@ import type { TaskContextCapture } from "./task-context-capture.js";
 import type { PagesReadReceipt } from "./pages-agents.js";
 
 type Tool = Extract<ThreadItem, { kind: "tool" }>;
+type Operation = { target: ContextTarget; kind: "read" | "changed" | "searched" };
 const sameTurn = (a: TurnRef, b: TurnRef) => a.thread === b.thread && a.turn === b.turn && a.attempt === b.attempt && a.backend === b.backend && a.account === b.account;
 
 /** One real runtime attempt. Async observations may only update its still-authoritative user item. */
@@ -14,6 +15,8 @@ export class TaskContextAttempt {
   private readonly abort = new AbortController();
   readonly signal: AbortSignal;
   private readonly native = new Set<string>();
+  /** Normalized targets only, never retained raw arguments or tool bodies. */
+  private readonly requested = new Map<string, Operation[]>();
   private readonly notes = new Map<string, string>();
   private readonly pending = new Set<Promise<void>>();
   private readonly errors: unknown[] = [];
@@ -41,9 +44,9 @@ export class TaskContextAttempt {
     if (!ref.relations.some(existing => JSON.stringify(existing) === JSON.stringify(relation))) ref.relations.push(relation);
     return ref;
   }
-  private operations(item: Tool): { target: ContextTarget; kind: "read" | "changed" | "searched" }[] {
+  private operations(item: Tool): Operation[] {
     // Only structured native arguments/actions count. Never parse model prose or shell output.
-    const operations: { target: ContextTarget; kind: "read" | "changed" | "searched" }[] = [];
+    const operations: Operation[] = [];
     const add = (value: unknown, kind: "read" | "changed" | "searched", cwd?: string) => {
       if (typeof value !== "string" || !value || /[\u0000-\u001f\u007f\\]/.test(value) || (!path.isAbsolute(value) && !cwd)) return;
       const relative = path.relative(this.o.cwd, path.resolve(cwd ?? this.o.cwd, value));
@@ -68,11 +71,14 @@ export class TaskContextAttempt {
     }
     return operations;
   }
-  accepted(event: ConversationEvent, item: Tool): void {
+  accepted(event: ConversationEvent, item: Tool, nativeArgs?: Record<string, unknown>): void {
     if (!this.current() || !item.origin || !sameTurn(item.origin, this.o.turn) || (event.type !== "tool.start" && event.type !== "tool.done")) return;
     const key = JSON.stringify([item.id, event.type]);
     if (this.native.has(key)) return;
-    const operations = this.operations(item);
+    // Display previews may truncate strings; derive identities from accepted native arguments instead.
+    const operations = event.type === "tool.done" && nativeArgs === undefined
+      ? this.requested.get(item.id) ?? this.operations(item)
+      : this.operations(nativeArgs === undefined ? item : { ...item, args: nativeArgs });
     if (!operations.length) return;
     const targets = [...new Map(operations.map(op => [contextRefId(op.target), op.target])).values()];
     const source = { kind: "native" as const, itemId: item.id, origin: item.origin };
@@ -95,6 +101,7 @@ export class TaskContextAttempt {
       }
     });
     this.native.add(key);
+    if (event.type === "tool.start") this.requested.set(item.id, operations);
     if (!succeeded) return;
     const pending = this.o.capture.capture(this.o.cwd, targets, source, "after-native-result", this.signal).then(captures => {
       if (!this.current()) return;
