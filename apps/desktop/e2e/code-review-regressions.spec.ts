@@ -409,6 +409,8 @@ test("real use (F3): comments on lines of the diff are shown in Activity with th
     { id: 801, user: who, created_at: "2026-10-18T20:31:00Z", body: "Should this keep the position when the branch is closed?\n\n<script>window.__pwned=true</script>", path: "src/holds/move.ts", line: 41, side: "RIGHT" },
     { id: 802, user: who, created_at: "2026-10-18T20:32:00Z", body: "It does; see the closure test.", path: "src/holds/move.ts", line: 41, side: "RIGHT", in_reply_to_id: 801 },
     { id: 803, user: who, created_at: "2026-10-18T20:33:00Z", body: "This helper is gone now.", path: "src/holds/queue.ts", line: null, side: "LEFT" },
+    { id: 804, user: who, created_at: "2026-10-18T20:34:00Z", body: "Whole file feedback.", path: "src/holds/move.ts", subject_type: "file", line: null, side: null },
+    { id: 805, user: who, created_at: "2026-10-18T20:35:00Z", body: "Before-side feedback.", path: "src/holds/move.ts", subject_type: "line", line: 9, side: "LEFT" },
   ];
   h = await launchWithGh(world);
   const { page } = h;
@@ -419,9 +421,13 @@ test("real use (F3): comments on lines of the diff are shown in Activity with th
   await expect(item(801)).toContainText("commented on src/holds/move.ts · line 41");
   await expect(item(801)).toContainText("Should this keep the position when the branch is closed?");
   await expect(item(802)).toContainText("replied on src/holds/move.ts · line 41");
-  await expect(item(803)).toContainText("commented on src/holds/queue.ts · line no longer in the diff");
+  await expect(item(803)).toContainText("commented on src/holds/queue.ts · current line unavailable");
+  await expect(item(804)).toContainText("commented on src/holds/move.ts · file");
+  await expect(item(804)).toContainText("Comment on a file");
+  await expect(item(804)).not.toContainText("line no longer");
+  await expect(item(805)).toContainText("commented on src/holds/move.ts · line 9 (before)");
   await page.getByLabel("Activity filter").selectOption("comment");
-  await expect(activity.locator('[data-activity-id^="line-comment:"]')).toHaveCount(3);
+  await expect(activity.locator('[data-activity-id^="line-comment:"]')).toHaveCount(5);
   await expect(activity.locator('[data-activity-id^="commit:"]')).toHaveCount(0);
   expect(await page.evaluate(() => (window as unknown as { __pwned?: boolean }).__pwned)).toBeUndefined();
   expect(h.calls().filter((c) => c.startsWith("repos/example-org/lending/pulls/73/comments"))).toEqual(["repos/example-org/lending/pulls/73/comments?per_page=100&page=1"]);

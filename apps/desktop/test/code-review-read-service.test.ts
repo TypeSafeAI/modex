@@ -1262,3 +1262,33 @@ test("inline comment integration: a held old-account comment is refused and neve
   assert.equal(reason(replacement), "signed-out");
   assert.ok(!JSON.stringify(replacement).includes("INLINE_PRIVATE_ACCOUNT_SENTINEL"));
 });
+
+
+test("inline comment metadata: file subjects and unavailable line positions retain their distinct provenance", async () => {
+  const { github, read, prime } = setup();
+  await prime();
+  github.lineComments.set("7301#73", [lineCommentRow(901, { subject_type: "file", line: null, side: null }), lineCommentRow(902, { subject_type: "line", side: "LEFT" }), lineCommentRow(903, { line: null, side: null })]);
+  const reply = await read({ op: "activity", key: keyOf(LENDING, 73), cursor: null });
+  assert.equal(reply.result.state, "ready");
+  const rows = value<import("../src/shared/code-review.js").PrActivity[]>(reply).filter(r => r.kind === "line-comment");
+  assert.deepEqual(rows.map(row => ({ ...row })), [
+    { kind: "line-comment", id: "901", at: "2026-10-19T09:00:00Z", actor: { id: "5", login: "bea-fixture", bot: false }, body: "Should this be `>=`?", path: "policy/schema.ts", subject: "file", line: null, side: null, replyTo: null },
+    { kind: "line-comment", id: "902", at: "2026-10-19T09:00:00Z", actor: { id: "5", login: "bea-fixture", bot: false }, body: "Should this be `>=`?", path: "policy/schema.ts", subject: "line", line: 41, side: "LEFT", replyTo: null },
+    { kind: "line-comment", id: "903", at: "2026-10-19T09:00:00Z", actor: { id: "5", login: "bea-fixture", bot: false }, body: "Should this be `>=`?", path: "policy/schema.ts", subject: "line", line: null, side: null, replyTo: null },
+  ]);
+});
+
+test("inline comment metadata: malformed locations make coverage partial and never become an inferred current side", async () => {
+  const bad = [{ line: "41" }, { line: -1 }, { line: 0 }, { line: 1.5 }, { line: undefined }, { side: "MIDDLE" }, { side: undefined }, { subject_type: "unknown" }];
+  for (const patch of bad) {
+    const { github, read, prime } = setup();
+    await prime();
+    github.lineComments.set("7301#73", [lineCommentRow(901), lineCommentRow(902, patch)]);
+    const reply = await read({ op: "activity", key: keyOf(LENDING, 73), cursor: null });
+    assert.equal(reply.result.state, "partial", JSON.stringify(patch));
+    assert(reply.result.state === "partial");
+    assert.equal(reply.result.reason, "failed");
+    assert.equal(reply.result.coverage.complete, false);
+    assert.deepEqual(value<import("../src/shared/code-review.js").PrActivity[]>(reply).filter(r => r.kind === "line-comment").map(r => r.id), ["901"]);
+  }
+});

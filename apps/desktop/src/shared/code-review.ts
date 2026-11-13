@@ -116,7 +116,7 @@ export type PrActivity =
   | { kind: "opened"; id: string; at: string; actor: PrActor }
   | { kind: "comment"; id: string; at: string; actor: PrActor; /** Untrusted Markdown, like `PrOverview.body`. */ body: string }
   /** A comment on a line of the diff (GitHub's review comment). `line` is null once the line is no longer in the diff. `replyTo` is the comment it answers. Whether its thread is resolved is not read. */
-  | { kind: "line-comment"; id: string; at: string; actor: PrActor; body: string; path: string; line: number | null; side: "LEFT" | "RIGHT"; replyTo: string | null }
+  | { kind: "line-comment"; id: string; at: string; actor: PrActor; body: string; path: string; subject: "line" | "file"; line: number | null; side: "LEFT" | "RIGHT" | null; replyTo: string | null }
   | { kind: "review"; id: string; at: string; actor: PrActor; verdict: "approved" | "changes-requested" | "commented" | "dismissed"; body: string; commit: string | null }
   | { kind: "event"; id: string; at: string; actor: PrActor | null; event: string }
   | { kind: "deployment"; id: string; at: string; environment: string; status: "success" | "pending" | "failure" | "inactive" | "unknown"; url: string | null; commit: string };

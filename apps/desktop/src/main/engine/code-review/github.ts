@@ -196,9 +196,19 @@ export function lineComment(value: unknown): Extract<PrActivity, { kind: "line-c
   const item = object(value);
   const commentId = id(item?.id), at = time(item?.created_at), who = actor(item?.user);
   if (!item || !commentId || !at || !who || typeof item.path !== "string" || !item.path || item.path.length > 4096) return null;
-  const line = count(item.line) || null;
-  return { kind: "line-comment", id: commentId, at, actor: who, body: text(item.body, 262_144), path: item.path, line,
-    side: item.side === "LEFT" ? "LEFT" : "RIGHT", replyTo: id(item.in_reply_to_id) };
+  const subject = item.subject_type === undefined ? "line" : item.subject_type;
+  if (subject !== "line" && subject !== "file") return null;
+  // File-level comments have no line or side. Legacy line comments can explicitly lose either,
+  // but malformed/missing location data must not become an invented current RIGHT-side position.
+  if (subject === "file") {
+    if (item.line != null || item.side != null) return null;
+    return { kind: "line-comment", id: commentId, at, actor: who, body: text(item.body, 262_144), path: item.path,
+      subject, line: null, side: null, replyTo: id(item.in_reply_to_id) };
+  }
+  if (item.line !== null && (typeof item.line !== "number" || !Number.isSafeInteger(item.line) || item.line < 1)) return null;
+  if (item.side !== null && item.side !== "LEFT" && item.side !== "RIGHT") return null;
+  return { kind: "line-comment", id: commentId, at, actor: who, body: text(item.body, 262_144), path: item.path,
+    subject, line: item.line, side: item.side, replyTo: id(item.in_reply_to_id) };
 }
 
 /** Provider deployment + its latest status; a comment URL never enters this mapping. */

@@ -101,11 +101,16 @@ export function PrOverview({ pr, caps, retry, onChanges, onPage, busy, writes, a
     </aside>
   </div>;
 }
+function commentLocation(row: Extract<PrActivity, { kind: "line-comment" }>): string {
+  if (row.subject === "file") return "file";
+  if (row.line === null) return "current line unavailable";
+  return `line ${row.line}${row.side === "LEFT" ? " (before)" : row.side === null ? " (side unavailable)" : ""}`;
+}
 function Activity({ row, locator, currentHead, onAsk }: { row: PrActivity; locator?: PrLocator; currentHead?: string; onAsk?: (text: string) => void }) {
   return <article className={`cr-activity-item cr-activity-${row.kind}`} data-activity-id={`${row.kind}:${row.id}`}>
-    <header>{row.kind === "comment" && locator && <CommentMenu row={row} locator={locator} onAsk={onAsk} />}<strong>{row.kind === "deployment" ? row.environment : row.kind === "commit" ? row.author?.login ?? "Git author" : row.actor?.login ?? "GitHub"}</strong><span>{row.kind === "commit" ? "committed" : row.kind === "opened" ? "opened this pull request" : row.kind === "line-comment" ? `${row.replyTo ? "replied" : "commented"} on ${row.path}${row.line ? ` · line ${row.line}${row.side === "LEFT" ? " (before)" : ""}` : " · line no longer in the diff"}` : row.kind === "review" ? `reviewed · ${row.verdict}` : row.kind === "event" ? row.event : row.kind === "deployment" ? `provider deployment · ${row.status}` : "issue comment"}</span><time dateTime={row.at}>{new Date(row.at).toLocaleString()}</time></header>
+    <header>{row.kind === "comment" && locator && <CommentMenu row={row} locator={locator} onAsk={onAsk} />}<strong>{row.kind === "deployment" ? row.environment : row.kind === "commit" ? row.author?.login ?? "Git author" : row.actor?.login ?? "GitHub"}</strong><span>{row.kind === "commit" ? "committed" : row.kind === "opened" ? "opened this pull request" : row.kind === "line-comment" ? `${row.replyTo ? "replied" : "commented"} on ${row.path} · ${commentLocation(row)}` : row.kind === "review" ? `reviewed · ${row.verdict}` : row.kind === "event" ? row.event : row.kind === "deployment" ? `provider deployment · ${row.status}` : "issue comment"}</span><time dateTime={row.at}>{new Date(row.at).toLocaleString()}</time></header>
     {row.kind === "commit" && <p><code>{row.sha.slice(0, 8)}</code> {row.headline}</p>}
-    {row.kind === "line-comment" && <><p className="cr-evidence">Comment on a line · Whether its thread is resolved is not shown.</p><Markdown text={readableRemoteText(row.body)} /></>}
+    {row.kind === "line-comment" && <><p className="cr-evidence">{row.subject === "file" ? "Comment on a file" : "Comment on a line"} · Whether its thread is resolved is not shown.</p><Markdown text={readableRemoteText(row.body)} /></>}
     {(row.kind === "comment" || row.kind === "review") && <><p className="cr-evidence">{row.kind === "comment" ? "Comment content · Links and status claims are supplied by the commenter, not verified deployment evidence." : `Submitted review · revision ${row.commit?.slice(0, 8) ?? "unknown"}`}</p><Markdown text={readableRemoteText(row.body)} /></>}
     {row.kind === "deployment" && <p>Provider record · revision {row.commit.slice(0, 8)}{currentHead && row.commit !== currentHead ? " · Old revision" : ""} · <External url={row.url}>Open deployment</External></p>}
   </article>;
