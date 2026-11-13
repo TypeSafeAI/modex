@@ -166,6 +166,7 @@ export class LocalExecution {
       if (opts.model !== target.model.id || opts.cwd !== thread.cwd || opts.account) throw new Error("The local target changed. Select it again to start a fresh conversation.");
       if (opts.plan || opts.images || opts.pages || opts.knowledge || opts.attachments?.some(file => file.kind === "image")) throw new Error("Plan, images and Modex's note and knowledge tools are not qualified for local models yet.");
       const connection = this.connections.resolve(target.model.connection)!;
+      if (connection.token) sink.protectCredential?.(connection.token);
       sink = redactingSink(sink, connection.token);
       // Every loopback alias of a port is the same server; separate servers sharing a port also wait on each other.
       let queuedForCapacity = false;

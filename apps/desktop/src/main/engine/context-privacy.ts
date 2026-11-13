@@ -9,7 +9,7 @@ const PRIVATE_PREFIX = 9;
 type Delta = Extract<Observation, { type: "message.delta" | "reasoning.delta" }>;
 interface Pending { text: string; emit(text: string): void }
 
-/** Literal main-owned connection values only. Shared history is bounded and never persisted. */
+/** Literal main-owned connections and already-loaded credentials. Bounded history, never persisted. */
 export class ContextPrivacy {
   private readonly pending = new Map<string, Pending>();
   private readonly originals = new WeakMap<Observation, NativeContextInput>();
@@ -24,6 +24,14 @@ export class ContextPrivacy {
   addConnection(url: string): void {
     const values = [url];
     try { const token = new URL(url).pathname.split("/").at(-1); if (token && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(token)) values.push(token); } catch { /* An exact opaque fixture URL is still protected. */ }
+    this.add(values);
+  }
+  addCredential(value: string): void {
+    if (typeof value !== "string" || !value) throw new Error("Invalid protected credential registration.");
+    this.add([value]);
+  }
+  private add(values: string[]): void {
+    if (this.closed) return;
     const fresh = values.filter(value => value && !this.known.has(value));
     const bytes = fresh.reduce((sum, value) => sum + Buffer.byteLength(value) + 64, 0);
     if (this.bytes + bytes > 2 * 1024 * 1024) throw new Error("This thread's private connection registry is full. Restart Modex before continuing.");

@@ -30,6 +30,16 @@ test("ordinary trailing prefix characters and unrelated URLs remain exact", () =
   assert.equal(f.events.flatMap(event => event.type === "message.delta" ? [event.text] : []).join(""), text);
 });
 
+test("already-loaded credentials share the bounded private history across rotations", () => {
+  const known = new Set<string>(), first = new ContextPrivacy(known), old = "sk-orca-old-synthetic-key", current = "sk-orca-new-synthetic-key";
+  first.addCredential(old); first.finish();
+  const next = new ContextPrivacy(known); next.addCredential(current);
+  for (const value of [old, current]) { assert.equal(next.contains({ path: `src/${value}.ts` }), true); assert.equal(next.text(`echo ${value}`).includes(value), false); }
+  for (let i = 0; i < 1000; i++) next.addCredential(current);
+  assert.throws(() => next.addCredential("x".repeat(2 * 1024 * 1024)), /registry is full/);
+  assert.equal(known.has("x".repeat(2 * 1024 * 1024)), false, "a refused registration must not mutate the shared guard");
+});
+
 test("an ordinary hex digest ending in eight matching characters is not a private UUID", () => {
   const f = fixture(), digest = "a".repeat(56) + token.slice(0, 8);
   assert.equal(f.privacy.contains({ digest }), false);

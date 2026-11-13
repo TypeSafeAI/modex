@@ -100,6 +100,59 @@ test("a real Claude adapter init callback handles capability persistence failure
   assert.deepEqual(capabilities(h.home, thread.id)?.map(c => c.capability), [{ state: "unavailable", reason: "configuration-not-bound" }]);
 });
 
+test("an independent proposal persistence fault stops its attempt and reports the original storage error", async t => {
+  let h!: ReturnType<typeof setup>, wasAborted = false, accepted = false;
+  h = setup(t, async (_text, opts, _sink, signal) => {
+    const save = h.store.saveItems.bind(h.store);
+    h.store.saveItems = (id, items) => { if (items.some(item => item.kind === "user" && item.contextEvidence?.refs.length)) throw new Error("Synthetic independent proposal write failure"); save(id, items); };
+    try {
+      const response = await fetch(opts.taskContext!.url, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: "proposal", method: "tools/call", params: { name: "propose_refs", arguments: { refs: [{ target: { kind: "file", path: "README.md" }, role: "file" }] } } }) });
+      const body = await response.json() as { result?: { isError?: boolean } }; accepted = body.result !== undefined && body.result.isError !== true;
+    } catch { /* Revoking the failed attempt may close its response before an error envelope is delivered. */ }
+    finally { h.store.saveItems = save; wasAborted = signal.aborted; }
+    return { status: "completed" };
+  });
+  const thread = await h.runner.createThread(h.project.id, { backend: "claude", auto: false }); await h.runner.send(thread.id, "Check");
+  assert.equal(wasAborted, true); assert.equal(accepted, false);
+  assert.deepEqual(user(h.home, thread.id).contextEvidence?.refs, []);
+  assert.ok(h.runner.items(thread.id).some(item => item.kind === "notice" && item.level === "error" && item.failure?.message.includes("Synthetic independent proposal write failure")));
+});
+
+for (const terminalEnds of [true, false]) test(`a native observation write failure preserves a concurrent neighbor and ${terminalEnds ? "confirmed" : "unconfirmed"} command diagnostics`, async t => {
+  const proc = new FakeProcess(), backend = new CodexBackend("codex", fakeSpawn(proc).spawn), opened: string[] = [], interrupted: string[] = []; let failingNative: string | undefined;
+  proc.stdin.on("data", (chunk: Buffer) => { for (const line of chunk.toString().split("\n")) {
+    if (!line.trim()) continue; const message = JSON.parse(line) as { id?: number; method?: string; params?: Record<string, unknown> };
+    const reply = (result: unknown) => proc.emitLine({ id: message.id, result });
+    if (message.method === "initialize") reply({ userAgent: "fixture" });
+    else if (message.method === "thread/start") { const id = `native-${opened.length}`; opened.push(id); reply({ thread: { id } }); }
+    else if (message.method === "turn/start") { const threadId = String(message.params!.threadId); reply({ turn: { id: `turn-${threadId}` } }); proc.emitLine({ method: "turn/started", params: { threadId, turn: { id: `turn-${threadId}` } } }); }
+    else if (message.method === "turn/interrupt") { const threadId = String(message.params!.threadId); interrupted.push(threadId); reply({}); proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: message.params!.turnId, status: "interrupted" } } }); }
+    else if (message.method === "thread/backgroundTerminals/list") reply({ data: !terminalEnds && message.params?.threadId === failingNative ? [{ itemId: "read", processId: "fixture-terminal" }] : [] });
+    else if (message.method === "thread/backgroundTerminals/terminate") reply({});
+  } });
+  const h = setup(t, (text, opts, sink, signal) => backend.runTurn(text, opts, sink, signal), undefined, "codex");
+  const first = await h.runner.createThread(h.project.id, { backend: "codex", auto: false }), second = await h.runner.createThread(h.project.id, { backend: "codex", auto: false });
+  const a = h.runner.send(first.id, "Check"), b = h.runner.send(second.id, "Check"); const save = h.store.saveItems.bind(h.store);
+  try {
+    await proc.waitFor(() => proc.sent(message => message.method === "turn/start").length === 2);
+    const nativeFirst = h.store.thread(first.id)!.sessionHandle!, nativeSecond = h.store.thread(second.id)!.sessionHandle!; failingNative = nativeFirst;
+    h.store.saveItems = (id, items) => { if (id === first.id && items.some(item => item.kind === "user" && item.contextEvidence?.refs.length)) throw new Error("Synthetic native observation write failure"); save(id, items); };
+    const read = { id: "read", type: "commandExecution", command: "cat README.md", cwd: h.project.path, commandActions: [{ type: "read", path: "README.md" }] };
+    assert.doesNotThrow(() => proc.emitLine({ method: "item/started", params: { threadId: nativeFirst, turnId: `turn-${nativeFirst}`, item: read } }));
+    h.store.saveItems = save;
+    proc.emitLine({ method: "item/started", params: { threadId: nativeSecond, turnId: `turn-${nativeSecond}`, item: read } });
+    proc.emitLine({ method: "item/completed", params: { threadId: nativeSecond, turnId: `turn-${nativeSecond}`, item: { ...read, status: "completed", exitCode: 0 } } });
+    proc.emitLine({ method: "turn/completed", params: { threadId: nativeSecond, turn: { id: `turn-${nativeSecond}`, status: "completed" } } });
+    await Promise.all([a, b]);
+    assert.deepEqual(interrupted, [nativeFirst]);
+    if (!terminalEnds) assert.ok(h.runner.items(first.id).some(item => item.kind === "notice" && item.level === "warn" && item.text.includes("may still be running")), "native command uncertainty must remain visible after the publication failure");
+    assert.ok(h.runner.items(first.id).some(item => item.kind === "notice" && item.level === "error" && item.failure?.message.includes("Synthetic native observation write failure")));
+    assert.deepEqual(user(h.home, first.id).contextEvidence?.refs, []);
+    assert.deepEqual(user(h.home, second.id).contextEvidence?.refs.map(ref => ref.target), [{ kind: "file", path: "README.md" }]);
+    assert.equal(h.runner.items(second.id).some(item => item.kind === "notice" && item.level === "error"), false);
+  } finally { h.store.saveItems = save; proc.close(1); await Promise.allSettled([a, b]); await backend.dispose(); }
+});
+
 for (const [name, field] of [["Read", "file_path"], ["Write", "file_path"], ["NotebookEdit", "notebook_path"], ["Grep", "path"]] as const) {
   test(`credential redaction cannot turn a ${name} target into an observed decoy file`, async t => {
     const { claudeSecretSink } = await import("../src/main/engine/backends/claude-secret-sink.js");
@@ -495,7 +548,8 @@ test("a metadata persistence failure cannot mutate live context or publish a fal
   install = () => { before = structuredClone(user(h.home, thread.id).contextEvidence); eventCount = h.events.length; h.store.saveItems = (id, items) => { if (items.some(item => item.kind === "user" && item.contextEvidence)) throw new Error("Synthetic metadata persistence failure"); save(id, items); }; };
   restore = () => { h.store.saveItems = save; }; t.after(restore);
   const thread = await h.runner.createThread(h.project.id, { backend: "claude", auto: false }); await h.runner.send(thread.id, "Check");
-  assert.ok(caught instanceof Error && /metadata persistence/.test(caught.message));
+  assert.equal(caught, undefined, "native callbacks must not receive the publication exception");
+  assert.ok(h.runner.items(thread.id).some(item => item.kind === "notice" && item.level === "error" && item.failure?.message.includes("Synthetic metadata persistence failure")));
   assert.deepEqual(user(h.home, thread.id).contextEvidence, before);
   assert.deepEqual(h.runner.items(thread.id).find(item => item.kind === "user")?.contextEvidence, before);
   assert.equal(h.events.slice(eventCount).some(event => event.type === "item_update" && "contextEvidence" in event.patch), false);

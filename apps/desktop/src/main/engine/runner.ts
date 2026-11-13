@@ -95,7 +95,7 @@ interface Live {
   followUp?: { key: string; abort: AbortController; result: Promise<FollowUp | null> };
   /** Processes a Stop asked to end that never confirmed their exit; their thread's files stay while one lives. */
   unconfirmed?: Set<number>;
-  /** Known context capabilities survive retries/turns while this live thread exists; never serialized. */
+  /** Known context capabilities and loaded credentials survive retries/turns in main memory; never serialized. */
   privateConnections?: Set<string>;
 }
 
@@ -976,6 +976,7 @@ export class ThreadRunner {
       void knowledge?.close().catch(() => {});
     };
     abort.signal.addEventListener("abort", revokeConnections, { once: true });
+    let publicationAborted = false;
     try {
       this.o.beforeSend?.(thread);
       if (thread.imageJobId && this.o.images) images = await this.o.images.prepare(thread, abort.signal);
@@ -993,7 +994,23 @@ export class ThreadRunner {
         const codingCwd = ran.cwd, projectId = ran.projectId;
         const actualTurn: TurnRef = { thread: threadId, turn: turnId, attempt: newId(), backend: ran.backend, ...(accountFor(ran) ? { account: accountFor(ran) } : {}) };
         const privacy = new ContextPrivacy(l.privateConnections ??= new Set());
-        const attempt = this.beginAttempt(threadId, l, actualTurn, privacy);
+        let publicationFailure: { error: Error; stage: string } | undefined;
+        const shutdownNotices: { level: "info" | "warn" | "error"; text: string }[] = [];
+        let shutdownBytes = 0, shutdownTruncated = false, nativeSettled = false;
+        const retainShutdownNotice = (level: "info" | "warn" | "error", text: string) => {
+          const safe = privacy.text(text), bytes = Buffer.byteLength(safe);
+          if (shutdownNotices.length >= 20 || shutdownBytes + bytes > 64 * 1024) { shutdownTruncated = true; return; }
+          shutdownNotices.push({ level, text: safe }); shutdownBytes += bytes;
+        };
+        const failPublication = (error: unknown, stage: string) => {
+          publicationFailure ??= { error: privacy.error(error), stage };
+          publicationAborted = true;
+          this.contextAttempts.get(actualTurn.attempt)?.seal();
+          try { privacy.finish(); }
+          catch (cleanup) { retainShutdownNotice("warn", privacy.error(cleanup).message); }
+          finally { abort.abort(); }
+        };
+        const attempt = this.beginAttempt(threadId, l, actualTurn, privacy, error => failPublication(error, "publish native observation"));
         const context = new TaskContextAttempt({ turn: actualTurn, cwd: codingCwd, projectId, signal: abort.signal, capture: this.contextCapture,
           privateValue: value => privacy.contains(value),
           current: () => {
@@ -1003,14 +1020,14 @@ export class ThreadRunner {
               && !this.deleting.has(threadId) && !this.removingProjects.has(projectId);
           },
           update: change => this.updateTaskContext(threadId, l, actualTurn, projectId, change),
+          publicationFailed: error => failPublication(error, "persist task context metadata"),
         });
         this.contextAttempts.set(actualTurn.attempt, context);
         const ceiling = local ? "local-execution-unqualified" : ran.backend !== "claude" && ran.backend !== "codex" ? "unsupported-adapter" : undefined;
-        let capabilityFailure: Error | undefined;
         const reportCapability: NonNullable<TurnSink["taskContextCapability"]> = value => {
           if (!context.accepting()) return;
           try { context.capability(ceiling ? { state: "unavailable", reason: ceiling } : value.state === "available" && !taskContext ? { state: "unavailable", reason: "configuration-not-bound" } : value); }
-          catch (error) { capabilityFailure ??= privacy.error(error); abort.abort(); }
+          catch (error) { failPublication(error, "persist task context capability"); }
         };
         let failed = false, failure: unknown;
         try {
@@ -1045,17 +1062,30 @@ export class ThreadRunner {
               addDirs: turnFiles.some((f) => f.kind === "file") ? [path.join(this.attachments.root, threadId)] : [],
               ...(turnFiles.length ? { attachments: turnFiles } : {}), ...(knowledge ? { knowledge: knowledge.connection } : {}), ...(pages ? { pages: pages.connection } : {}), ...(taskContext ? { taskContext: taskContext.connection } : {}), ...(images ? { images: images.connection } : {}),
             },
-            { ...attempt.sink, taskContextCapability: reportCapability },
+            { ...attempt.sink, taskContextCapability: reportCapability, protectCredential: value => { if (context.accepting()) privacy.addCredential(value); }, notice: (level, text) => {
+              if (nativeSettled) return;
+              if (publicationFailure) { retainShutdownNotice(level, text); return; }
+              try { attempt.sink.notice(level, text); } catch (error) { failPublication(error, "publish native notice"); }
+            } },
             abort.signal,
           ));
-          if (!capabilityFailure && result.taskContextCapability) reportCapability(result.taskContextCapability);
-          if (capabilityFailure) result = { ...result, status: "failed", error: capabilityFailure.message, detail: { ...result.detail, stage: "persist task context capability" }, taskContextCapability: { state: "unavailable", reason: "configuration-not-bound" } };
+          nativeSettled = true;
+          // Preserve this independently of later persistence: a failed journal cannot prove exit.
+          if (result.stop?.outcome === "unconfirmed" && result.stop.pid) (l.unconfirmed ??= new Set()).add(result.stop.pid);
+          if (!publicationFailure && result.taskContextCapability) reportCapability(result.taskContextCapability);
+          if (publicationFailure) {
+            failed = true; failure = publicationFailure.error;
+            result = { ...result, status: "failed", error: publicationFailure.error.message, detail: { ...result.detail, stage: publicationFailure.stage, shutdownNotices: shutdownNotices.map(notice => ({ ...notice })), ...(shutdownTruncated ? { shutdownTruncated: true } : {}) }, taskContextCapability: { state: "unavailable", reason: "configuration-not-bound" } };
+          }
           context.seal(); privacy.finish();
-          attempt.end(capabilityFailure ? "failed" : abort.signal.aborted ? "interrupted" : ATTEMPT_OUTCOME[result.status]);
+          attempt.end(publicationFailure ? "failed" : abort.signal.aborted ? "interrupted" : ATTEMPT_OUTCOME[result.status]);
+          for (const notice of shutdownNotices) this.addItem(threadId, { id: newId(), kind: "notice", ...notice, at: new Date().toISOString() });
+          if (shutdownTruncated) this.addItem(threadId, { id: newId(), kind: "notice", level: "warn", text: "Some native shutdown diagnostics could not be retained.", at: new Date().toISOString() });
           if (taskContext) { const closing = taskContext; taskContext = undefined; await closing.close(); }
           if (pages) { const closing = pages; pages = undefined; await closing.close(); }
           const drain = context.flush();
           if (drain) await drain;
+          if (publicationFailure) result = { ...result, status: "failed", error: publicationFailure.error.message, detail: { ...result.detail, stage: publicationFailure.stage }, taskContextCapability: { state: "unavailable", reason: "configuration-not-bound" } };
           return result;
         } catch (err) {
           failed = true; failure = err;
@@ -1063,6 +1093,7 @@ export class ThreadRunner {
           attempt.end(abort.signal.aborted ? "interrupted" : "failed");
           throw privacy.error(err);
         } finally {
+          nativeSettled = true;
           context.seal(); privacy.finish();
           context.close();
           this.contextAttempts.delete(actualTurn.attempt);
@@ -1171,7 +1202,7 @@ export class ThreadRunner {
         this.setStatus(threadId, "idle");
       }
     } catch (err) {
-      if (abort.signal.aborted) {
+      if (abort.signal.aborted && !publicationAborted) {
         sink.notice("info", "Stopped.");
         this.setStatus(threadId, "idle");
       } else {
@@ -1574,7 +1605,7 @@ export class ThreadRunner {
    * with an id, its ingress order and time, and projects it into transcript items. Starting an
    * attempt makes every earlier attempt's sink inert.
    */
-  private beginAttempt(threadId: string, l: Live, turn: TurnRef, privacy?: ContextPrivacy): { sink: TurnSink; end: (outcome: SettledOutcome) => void } {
+  private beginAttempt(threadId: string, l: Live, turn: TurnRef, privacy?: ContextPrivacy, publicationFailed?: (error: unknown) => void): { sink: TurnSink; end: (outcome: SettledOutcome) => void } {
     l.attempt = turn.attempt;
     let seq = 0;
     const seen = new Set<string>();
@@ -1590,7 +1621,8 @@ export class ThreadRunner {
         seen.add(observation.source);
       }
       const original = privacy?.original(observation);
-      this.project(threadId, l, stamp(redactObservation(observation)), original?.args ?? (observation.type === "tool.start" ? observation.tool.args : observation.type === "tool.done" ? observation.progress?.args : undefined), original?.exec);
+      try { this.project(threadId, l, stamp(redactObservation(observation)), original?.args ?? (observation.type === "tool.start" ? observation.tool.args : observation.type === "tool.done" ? observation.progress?.args : undefined), original?.exec); }
+      catch (error) { if (publicationFailed) publicationFailed(error); else throw error; }
     });
     this.project(threadId, l, stamp({ type: "attempt.start" }));
     return { sink: privacy ? privacy.wrap(sink) : sink, end: (outcome) => {

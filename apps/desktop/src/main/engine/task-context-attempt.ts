@@ -31,6 +31,7 @@ export class TaskContextAttempt {
     privateValue?(value: unknown): boolean;
     current(): boolean;
     update(change: (context: TaskContextEvidence) => void): void;
+    publicationFailed?(error: unknown): void;
   }) { this.signal = AbortSignal.any([o.signal, this.abort.signal]); }
 
   current(): boolean { return !this.signal.aborted && this.o.current(); }
@@ -56,7 +57,8 @@ export class TaskContextAttempt {
 
   private change(change: (context: TaskContextEvidence) => void): void {
     if (!this.current()) return;
-    this.o.update(context => { change(context); context.revision++; });
+    try { this.o.update(context => { change(context); context.revision++; }); }
+    catch (error) { this.o.publicationFailed?.(error); throw error; }
   }
   private ref(context: TaskContextEvidence, target: ContextTarget, relation: ContextRelation) {
     let ref = context.refs.find(ref => contextRefId(ref.target) === contextRefId(target));

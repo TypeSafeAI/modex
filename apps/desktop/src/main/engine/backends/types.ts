@@ -81,6 +81,8 @@ export type QuestionReply = { answers: Record<string, string[]> } | { withdrawn:
 
 /** Callbacks a backend uses to report one turn to the ThreadRunner. */
 export interface TurnSink {
+  /** Trusted adapter, main memory only: protect an already-loaded credential before native execution. */
+  protectCredential?(value: string): void;
   /** Main-only adapter report. It grants no execution or Notes authority and contains no route/token. */
   taskContextCapability?(capability: import("../../../shared/task-context-tools.js").TaskContextCapability): void;
   /**
