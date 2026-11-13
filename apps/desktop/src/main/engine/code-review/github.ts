@@ -191,6 +191,23 @@ export function hasNext(header: string | undefined): boolean {
   return typeof header === "string" && /<[^>]+>;\s*rel="next"/.test(header);
 }
 
+/** One comment on a line of the diff, from `pulls/{n}/comments`. Null when malformed. */
+export function lineComment(value: unknown): Extract<PrActivity, { kind: "line-comment" }> | null {
+  const item = object(value);
+  const commentId = id(item?.id), at = time(item?.created_at), who = actor(item?.user);
+  if (!item || !commentId || !at || !who || typeof item.path !== "string" || !item.path || item.path.length > 4096) return null;
+  const subject = item.subject_type === undefined ? "line" : item.subject_type;
+  if (subject !== "line" && subject !== "file") return null;
+  // File subjects may carry valid line/side metadata too; the subject, not nullness,
+  // determines their target. Only file subjects may omit those location fields.
+  const line = subject === "file" && item.line === undefined ? null : item.line;
+  const side = subject === "file" && item.side === undefined ? null : item.side;
+  if (line !== null && (typeof line !== "number" || !Number.isSafeInteger(line) || line < 1)) return null;
+  if (side !== null && side !== "LEFT" && side !== "RIGHT") return null;
+  return { kind: "line-comment", id: commentId, at, actor: who, body: text(item.body, 262_144), path: item.path,
+    subject, line, side, replyTo: id(item.in_reply_to_id) };
+}
+
 /** Provider deployment + its latest status; a comment URL never enters this mapping. */
 export function deployment(value: unknown, latest: unknown): Extract<PrActivity, { kind: "deployment" }> | null {
   const record = object(value), status = object(latest);

@@ -34,7 +34,7 @@ interface Props {
   contextBusy: ReadonlySet<string>;
   onTreeResize: (width: number) => void;
   onTreeReset: () => void;
-  writes?: Writes;
+  writes: Writes;
   agent?: Agent;
 }
 
