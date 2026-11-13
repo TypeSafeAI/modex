@@ -198,17 +198,14 @@ export function lineComment(value: unknown): Extract<PrActivity, { kind: "line-c
   if (!item || !commentId || !at || !who || typeof item.path !== "string" || !item.path || item.path.length > 4096) return null;
   const subject = item.subject_type === undefined ? "line" : item.subject_type;
   if (subject !== "line" && subject !== "file") return null;
-  // File-level comments have no line or side. Legacy line comments can explicitly lose either,
-  // but malformed/missing location data must not become an invented current RIGHT-side position.
-  if (subject === "file") {
-    if (item.line != null || item.side != null) return null;
-    return { kind: "line-comment", id: commentId, at, actor: who, body: text(item.body, 262_144), path: item.path,
-      subject, line: null, side: null, replyTo: id(item.in_reply_to_id) };
-  }
-  if (item.line !== null && (typeof item.line !== "number" || !Number.isSafeInteger(item.line) || item.line < 1)) return null;
-  if (item.side !== null && item.side !== "LEFT" && item.side !== "RIGHT") return null;
+  // File subjects may carry valid line/side metadata too; the subject, not nullness,
+  // determines their target. Only file subjects may omit those location fields.
+  const line = subject === "file" && item.line === undefined ? null : item.line;
+  const side = subject === "file" && item.side === undefined ? null : item.side;
+  if (line !== null && (typeof line !== "number" || !Number.isSafeInteger(line) || line < 1)) return null;
+  if (side !== null && side !== "LEFT" && side !== "RIGHT") return null;
   return { kind: "line-comment", id: commentId, at, actor: who, body: text(item.body, 262_144), path: item.path,
-    subject, line: item.line, side: item.side, replyTo: id(item.in_reply_to_id) };
+    subject, line, side, replyTo: id(item.in_reply_to_id) };
 }
 
 /** Provider deployment + its latest status; a comment URL never enters this mapping. */

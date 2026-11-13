@@ -1279,7 +1279,7 @@ test("inline comment metadata: file subjects and unavailable line positions reta
 });
 
 test("inline comment metadata: malformed locations make coverage partial and never become an inferred current side", async () => {
-  const bad = [{ line: "41" }, { line: -1 }, { line: 0 }, { line: 1.5 }, { line: undefined }, { side: "MIDDLE" }, { side: undefined }, { subject_type: "unknown" }];
+  const bad = [{ line: "41" }, { line: -1 }, { line: 0 }, { line: 1.5 }, { line: undefined }, { side: "MIDDLE" }, { side: undefined }, { subject_type: "unknown" }, { subject_type: "file", line: "1", side: "RIGHT" }, { subject_type: "file", line: 1, side: "MIDDLE" }];
   for (const patch of bad) {
     const { github, read, prime } = setup();
     await prime();
@@ -1291,4 +1291,18 @@ test("inline comment metadata: malformed locations make coverage partial and nev
     assert.equal(reply.result.coverage.complete, false);
     assert.deepEqual(value<import("../src/shared/code-review.js").PrActivity[]>(reply).filter(r => r.kind === "line-comment").map(r => r.id), ["901"]);
   }
+});
+
+
+test("inline comment metadata: a file target may carry valid line and side metadata without becoming a line comment", async () => {
+  const { github, read, prime } = setup();
+  await prime();
+  // GitHub's public API returns file subjects with line:1/side:RIGHT as well as omitted locations.
+  github.lineComments.set("7301#73", [lineCommentRow(911, { subject_type: "file", line: 1, side: "RIGHT" }), lineCommentRow(912, { subject_type: "file", line: undefined, side: undefined })]);
+  const reply = await read({ op: "activity", key: keyOf(LENDING, 73), cursor: null });
+  assert.equal(reply.result.state, "ready");
+  const rows = value<import("../src/shared/code-review.js").PrActivity[]>(reply).filter(row => row.kind === "line-comment");
+  assert.deepEqual(rows.map(row => ({ subject: row.subject, line: row.line, side: row.side })), [
+    { subject: "file", line: 1, side: "RIGHT" }, { subject: "file", line: null, side: null },
+  ]);
 });

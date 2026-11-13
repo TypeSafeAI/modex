@@ -409,7 +409,7 @@ test("real use (F3): comments on lines of the diff are shown in Activity with th
     { id: 801, user: who, created_at: "2026-10-18T20:31:00Z", body: "Should this keep the position when the branch is closed?\n\n<script>window.__pwned=true</script>", path: "src/holds/move.ts", line: 41, side: "RIGHT" },
     { id: 802, user: who, created_at: "2026-10-18T20:32:00Z", body: "It does; see the closure test.", path: "src/holds/move.ts", line: 41, side: "RIGHT", in_reply_to_id: 801 },
     { id: 803, user: who, created_at: "2026-10-18T20:33:00Z", body: "This helper is gone now.", path: "src/holds/queue.ts", line: null, side: "LEFT" },
-    { id: 804, user: who, created_at: "2026-10-18T20:34:00Z", body: "Whole file feedback.", path: "src/holds/move.ts", subject_type: "file", line: null, side: null },
+    { id: 804, user: who, created_at: "2026-10-18T20:34:00Z", body: "Whole file feedback.", path: "src/holds/move.ts", subject_type: "file", line: 1, side: "RIGHT" },
     { id: 805, user: who, created_at: "2026-10-18T20:35:00Z", body: "Before-side feedback.", path: "src/holds/move.ts", subject_type: "line", line: 9, side: "LEFT" },
   ];
   h = await launchWithGh(world);
