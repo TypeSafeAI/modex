@@ -14,7 +14,8 @@ const root = path.resolve(process.argv[2] ?? "");
 if (!process.argv[2] || (fs.existsSync(root) && fs.readdirSync(root).length)) throw new Error("pass an empty directory");
 const fixture = path.resolve("dist/test/fixtures/code-review-gh-world.js");
 if (!fs.existsSync(fixture)) throw new Error("run from apps/desktop after pnpm build");
-const { baseWorld, WORLD_GH } = await import(pathToFileURL(fixture).href);
+const { WORLD_GH } = await import(pathToFileURL(fixture).href);
+const { humanWorld } = await import(pathToFileURL(path.resolve("dist/test/fixtures/code-review-human-world.js")).href);
 
 const home = path.join(root, "home"), repo = path.join(root, "review-repo");
 const bin = path.join(root, "bin"), config = path.join(root, "gh-config"), holds = path.join(root, "holds");
@@ -34,14 +35,15 @@ fs.writeFileSync(path.join(bin, "gh"), WORLD_GH, { mode: 0o755 });
 const recorder = `#!/bin/sh\nprintf '%s %s\\n' "$(basename "$0")" "$*" >> '${path.join(root, "provider-calls.log").replace(/'/g, "'\\''")}'\nexit 1\n`;
 for (const cli of ["claude", "codex"]) fs.writeFileSync(path.join(bin, cli), recorder, { mode: 0o755 });
 fs.writeFileSync(path.join(root, "provider-calls.log"), "");
-fs.writeFileSync(path.join(root, "gh-world.json"), JSON.stringify(baseWorld()));
+fs.writeFileSync(path.join(root, "gh-world.json"), JSON.stringify(humanWorld()));
 fs.writeFileSync(path.join(root, "gh-calls.log"), "");
 fs.writeFileSync(path.join(config, "hosts.yml"), "github.com:\n    user: ada-fixture\n    git_protocol: https\n");
 
 const q = (s) => `'${s.replace(/'/g, "'\\''")}'`;
 console.log([
-  "env -u GH_TOKEN -u GITHUB_TOKEN -u MODEX_E2E -u MODEX_DEMO",
+  "env -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u GITHUB_ENTERPRISE_TOKEN -u MODEX_E2E -u MODEX_DEMO",
   `MODEX_HOME=${q(home)} MODEX_NO_LOGIN_PATH=1 GH_CONFIG_DIR=${q(config)}`,
+  `JEV_API_KEY='' TYPESAFE_API_KEY='' JEV_CONFIG=${q(path.join(home, "no-jev.json"))}`,
   `FAKE_GH_WORLD=${q(path.join(root, "gh-world.json"))} FAKE_GH_LOG=${q(path.join(root, "gh-calls.log"))} FAKE_GH_HOLDS=${q(holds)}`,
-  `PATH=${q(bin)}:"$PATH" npx electron .`,
+  `PATH=${q(bin)}:"$PATH" pnpm exec electron .`,
 ].join(" "));

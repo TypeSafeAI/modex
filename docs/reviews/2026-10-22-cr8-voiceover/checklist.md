@@ -1,44 +1,25 @@
 # Keyboard and VoiceOver review of Code Review, 2026-10-22
 
-This is the human gate for [#327](https://github.com/TypeSafeAI/modex/issues/327) (CR-8) and for
-[#322](https://github.com/TypeSafeAI/modex/issues/322) AC4. A person drives the Code Review surface with
-the keyboard alone, then with VoiceOver, and records what they hear. The automated checks in
-`e2e/code-review-a11y.spec.ts` and `e2e/code-review-navigation.spec.ts` measure contrast, Tab reach, focus
-rings and Escape. They do not replace this review. The
-[acceptance matrix](../2026-10-22-cr8-acceptance-matrix.md) lists this gate as open until it is filled in.
+This is the human gate for [#327](https://github.com/TypeSafeAI/modex/issues/327) (CR-8) and for [#322](https://github.com/TypeSafeAI/modex/issues/322) AC4. A person drives the Code Review surface with the keyboard alone, then with VoiceOver, and records what they hear. The automated checks in `e2e/code-review-a11y.spec.ts` and `e2e/code-review-navigation.spec.ts` measure contrast, Tab reach, focus rings and Escape. They do not replace this review. The [acceptance matrix](../2026-10-22-cr8-acceptance-matrix.md) lists this gate as open until it is filled in.
 
-It covers what CR-3 built: the inbox, the PR and Changes tabs, the header actions, the split and the dividers,
-and, since the overview (#323) and the diff and file tree (#324) landed, parts C and D for the populated panes.
-The review panel and instructions popover (#325) and the GitHub writes (#326) have landed too; their rows stay
-listed at the end for their own issues' acceptance and are not part of #322 AC4.
+It covers what CR-3 built: the inbox, the PR and Changes tabs, the header actions, the split and the dividers, and, since the overview (#323) and the diff and file tree (#324) landed, parts C and D for the populated panes. The review panel and instructions popover (#325) and the GitHub writes (#326) have landed too; their rows stay listed at the end for their own issues' acceptance and are not part of #322 AC4.
 
-**Build:** `main` at `afec85b` (#438, the CR-3 acceptance follow-up) or later, built with `pnpm build`. On
-2026-10-30 `main` was `f51ef7e`; the automated half of this gate was re-run there
-([resume record](../2026-10-30-cr3-acceptance-resume.md)). On 2026-11-01 it was re-run on `0a8c513`, the seed was
-rebuilt there and its launch line opened the app ([matrix refresh](../2026-11-01-cr8-acceptance-matrix.md)). Record the SHA you used. The automated half's first run
-is in [the CR-3 acceptance record](../2026-10-28-cr3-acceptance.md).
+**Build:** `main` at `afec85b` (#438, the CR-3 acceptance follow-up) or later, built with `pnpm build`. On 2026-10-30 `main` was `f51ef7e`; the automated half of this gate was re-run there ([resume record](../2026-10-30-cr3-acceptance-resume.md)). On 2026-11-01 it was re-run on `0a8c513`, the seed was rebuilt there and its launch line opened the app ([matrix refresh](../2026-11-01-cr8-acceptance-matrix.md)). Record the SHA you used. The automated half's first run is in [the CR-3 acceptance record](../2026-10-28-cr3-acceptance.md).
 
 ## Setup (about 3 minutes)
 
-Use synthetic data and no GitHub login. The same harness as the `F-prod` specs: a throwaway home, a
-synthetic `gh` first on PATH, and no tokens. The person's own `gh` login is never read.
+Use synthetic data and no GitHub login. The same harness as the `F-prod` specs: a throwaway home, a synthetic `gh` first on PATH, and no tokens. The person's own `gh` login is never read.
 
 ```sh
 # from apps/desktop, in a worktree at the SHA under test, after pnpm build
 node ../../docs/reviews/2026-10-22-cr8-voiceover/seed.mjs /tmp/modex-cr8-voiceover   # prints the command to run
 ```
 
-The script writes the home, the synthetic `gh` and its world (the journey's three authored PRs and one to
-review, all made up), and prints an `env … npx electron .` line. Since 2026-11-01 it also puts recorder `claude`
-and `codex` executables first on PATH: they log to `provider-calls.log` and exit 1, so nothing in this home reaches
-your own Claude login or a provider. Run that line, then:
+The script writes the home, the synthetic `gh` and its world (the journey's three authored PRs and one to review, all made up), and prints an `env … pnpm exec electron .` line. Since 2026-11-01 it also puts recorder `claude` and `codex` executables first on PATH: they log to `provider-calls.log` and exit 1, so nothing in this home reaches your own Claude login or a provider. Run that line, then:
 
-1. From the v0.5.0 candidate on, Code Review is in the rail by default. On an older SHA, open DevTools (View → Toggle Developer Tools), run `localStorage.setItem("modex.codeReview", "on")` and reload (Command-R).
+1. Built apps hide Code Review by default (#492). In this disposable home, open Settings → General and tick **Show Code Review in the rail**. This is an explicit local opt-in for the review; it does not approve default activation or change your installed app’s profile.
 2. Make the window about 1440×900.
-3. Part A runs with VoiceOver off. Part B runs with VoiceOver on (Command-F5; VO = Control-Option).
-   Parts C and D run with VoiceOver on. Repeat A1–A6, C1–C3 and D1–D4 at about 900×600 and note
-   anything that differs: the split folds to one pane there, and the file tree sits behind the
-   **Show changed files** toggle in the Changes header.
+3. Part A runs with VoiceOver off. Part B runs with VoiceOver on (Command-F5; VO = Control-Option). Parts C and D run with VoiceOver on. Repeat A1–A6, C1–C3 and D1–D4 at about 900×600 and note anything that differs: the split folds to one pane there. When the active Changes pane is too narrow for the tree beside the diff, use **Show changed files** in its header; the fold depends on the pane’s available width, not the window width alone.
 
 ## A. Keyboard only (no mouse or trackpad)
 
@@ -47,8 +28,8 @@ your own Claude login or a provider. Run that line, then:
 | A1 | Tab to the rail's **Code Review** button and press Return | The inbox opens: "Code Review", **Inbox actions**, the search field, then "Authored by me" and "Needs my review" | |
 | A2 | Tab into the list, then use Down, Up, Home and End | One Tab stop for the whole list; the arrow keys move between rows; each row shows a focus ring | |
 | A3 | Press Return on "Move holds between branches…" | The PR opens: the PR tab and the **Changes +8,912 −47** tab appear in the title bar; the header reads "Open", "lending #73" | |
-| A4 | Keep pressing Tab | Pin, Copy link, Open in GitHub, Review with Claude, Review instructions and Merge, then the title bar's PR tab, its close, Changes and its close, New tab, and the split button. **Note:** the title-bar tabs come after the header, though they are drawn above it. Record whether that order is acceptable. | |
-| A5 | On **New tab**, press Return and Space. Then on **Review with Claude**, **Review instructions** and **Merge**, press Return | New tab does nothing and says why it isn't available (tooltip); focus stays put. The other three open their panel or popover (they have landed, #325 and #326), and Close or Escape returns focus to the button. Don't press Start or confirm anything here; those rows belong to #325 and #326 below | |
+| A4 | Keep pressing Tab | Pin, Copy link, Open in GitHub, Review with Claude, Review instructions and Merge, then the title bar's PR tab, its close, Changes and its close, and the split button. **Note:** the title-bar tabs come after the header, though they are drawn above it. Record whether that order is acceptable. | |
+| A5 | Focus **Review with Claude** and press Return; then activate **Review instructions** and **Merge**, closing each panel or popover | Each opens its panel or popover; Close or Escape returns focus to the initiating button. Review can open before main probes provider availability; the recorder refuses execution if a start is attempted. Do not press Start, confirm a merge or send any write here. Live review start/Stop and write acceptance stay with #325 and #326 below | |
 | A6 | Tab to the split button and press Return; then Tab to the divider between the panes and press Left/Right (Shift for larger steps) | Changes opens beside the PR. The divider moves and its value changes. It stops at each pane's minimum. | |
 | A7 | Inbox actions → Return → Escape | The menu opens with **Refresh** focused; Escape closes it and returns focus to **Inbox actions** | |
 | A8 | Open the second PR, then use the title bar's Back and Forward | Each PR returns as you left it (split or not), without a loading spinner | |
@@ -72,7 +53,7 @@ your own Claude login or a provider. Run that line, then:
 
 ## C. The overview (#323), keyboard and VoiceOver
 
-Open "Move holds between branches…" first. Its body is long enough to scroll.
+Open "Move holds between branches…" first. Its synthetic body is long enough to scroll; its 101 comments span two REST pages. Checks include success, failure and pending states, and the provider deployment links to example.test. These are made-up inputs, not real CI or deployment evidence.
 
 | # | Do | Expect | Pass? Notes |
 | --- | --- | --- | --- |
@@ -84,9 +65,7 @@ Open "Move holds between branches…" first. Its body is long enough to scroll.
 
 ## D. Changes: the diff and the file tree (#324), keyboard and VoiceOver
 
-Press Right on the PR tab, or activate **Changes**. At 900×600, the tree is behind the **Show changed files**
-toggle in the Changes header (it becomes **Show the diff** while the tree is up); at 1440×900 it sits to the
-right of the diff.
+Press Right on the PR tab, or activate **Changes**. When there is room, the tree sits beside the diff. When the active Changes pane is narrow, use **Show changed files** in the header (it becomes **Show the diff** while the tree is up). Record the actual pane arrangement at each window size.
 
 | # | Do | Expect | Pass? Notes |
 | --- | --- | --- | --- |
@@ -94,7 +73,7 @@ right of the diff.
 | D2 | On a file heading press Return, then VO-Right into the patch | The hunk reads line by line with its old and new line numbers; a context line, an added line and a removed line can be told apart by what is read, not by colour | |
 | D3 | With VO off: focus a file heading, then press PageDown; then scroll the inbox with the wheel | Only the diff scrolls on PageDown; the inbox scroll does not move the diff or take the focus from the heading | |
 | D4 | Tab into the tree's filter field ("Filter remote files"), type `move`, then Tab to the file ("View remote diff for src/holds/move.ts") and press Return | The tree narrows to the match; Return moves the diff to that file's section and focuses it; the tree keeps its own scroll position | |
-| D5 | Tab back into the tree and scroll it with PageDown | Only the tree scrolls; the diff stays where D4 left it | |
+| D5 | Return to the tree, activating **Show changed files** again if the narrow pane folded it after selection. Clear **Filter remote files**, focus a visible tree file without activating it, then press PageDown | The full eleven-file fixture has nested folders so the tree can scroll. Only the tree scrolls; the diff and inbox stay where D4 left them. Do not count focus-induced scrolling or a one-row filtered result as this check | |
 | D6 | Switch to the PR tab and back to Changes | The diff, the tree and the inbox are each where you left them; the file you chose is still marked current | |
 
 ## Not part of #322 (owned by their own issues)
@@ -103,6 +82,8 @@ right of the diff.
 | --- | --- |
 | #325 review | R3's instructions popover: its scope line, Escape returns focus to the gear; review start, stop and progress announced |
 | #326 writes | Confirmation dialogs; submit announced once; reconciliation state after an uncertain write |
+
+The C07 new-tab control was removed by Val’s 2026-11-04 decision. Its old unavailable-button steps are no longer part of A4/A5. This procedure repair records no human pass. The recorder providers refuse execution, so live review start/Stop acceptance and live write acceptance need their separately authorized procedures.
 
 ## Result
 
