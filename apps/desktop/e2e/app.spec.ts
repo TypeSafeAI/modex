@@ -809,7 +809,6 @@ test("accessibility: information text meets AA contrast, keyboard focus is visib
   await page.emulateMedia({ reducedMotion: "no-preference" });
 });
 
-
 test("a menu rename belongs to that chat and never opens editing on a later chat", async () => {
   await createThread(page, "Rename intent seed");
   await tid(page, "thread-menu-toggle").click();
@@ -822,9 +821,36 @@ test("a menu rename belongs to that chat and never opens editing on a later chat
   await expect(tid(currentRow(page), "thread-row-title")).toHaveText("Explicitly renamed seed");
   const later = await createThread(page, "Later chat fixture");
   await expect(title).toHaveAttribute("readonly", "");
+  const readLater = () => page.evaluate(async (id) => (await window.modex!.invoke("state:get", undefined)).threads.find(x => x.id === id), later);
+  const beforeBlur = await readLater();
+  expect(beforeBlur).toBeDefined();
+  expect(beforeBlur!.titleSource, "a later chat was not manually renamed").not.toBe("manual");
+  await expect(title).toHaveValue(beforeBlur!.title);
   await tid(page, "composer-input").focus();
-  const saved = await page.evaluate(async (id) => (await window.modex!.invoke("state:get", undefined)).threads.find(x => x.id === id), later);
-  expect(saved?.titleSource, "a later chat was not manually renamed").not.toBe("manual");
+  expect(await readLater()).toMatchObject({ id: later, title: beforeBlur!.title, titleSource: beforeBlur!.titleSource });
+
+  // A later mount still accepts new edit commands through every entry point.
+  await tid(page, "thread-menu-toggle").click();
+  await tid(page, "action-rename").click();
+  await expect(title).not.toHaveAttribute("readonly", "");
+  await title.fill("Later explicitly renamed");
+  await title.press("Enter");
+  await expect(title).toHaveAttribute("readonly", "");
+  await expect(title).toHaveValue("Later explicitly renamed");
+  await title.dblclick();
+  await expect(title).not.toHaveAttribute("readonly", "");
+  await title.fill("Cancelled later title");
+  await title.press("Escape");
+  await expect(title).toHaveAttribute("readonly", "");
+  await expect(title).toHaveValue("Later explicitly renamed");
+  await title.focus();
+  await title.press("Enter");
+  await expect(title).not.toHaveAttribute("readonly", "");
+  await title.fill("Later keyboard renamed");
+  await title.press("Enter");
+  await expect(title).toHaveAttribute("readonly", "");
+  await expect(title).toHaveValue("Later keyboard renamed");
+  expect(await readLater()).toMatchObject({ id: later, title: "Later keyboard renamed", titleSource: "manual" });
 });
 
 test("keyboard chat details follows its associated card while another chat is hovered", async () => {
