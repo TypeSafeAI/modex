@@ -63,17 +63,19 @@ export class TaskContextAttempt {
       if (!operations.some(op => op.kind === kind && contextRefId(op.target) === contextRefId(target))) operations.push({ target, kind });
     };
     if (this.o.turn.backend === "claude") {
-      if (item.name === "Read") add(item.args.file_path, "read", this.o.cwd);
-      else if (["Write", "Edit", "MultiEdit"].includes(item.name)) add(item.args.file_path, "changed", this.o.cwd);
-      else if (item.name === "NotebookEdit") add(item.args.notebook_path, "changed", this.o.cwd);
-      else if (["Grep", "Glob"].includes(item.name)) add(item.args.path, "searched", this.o.cwd);
+      if (item.name === "Read" && !item.unavailableInputs?.includes("args.file_path")) add(item.args.file_path, "read", this.o.cwd);
+      else if (["Write", "Edit", "MultiEdit"].includes(item.name) && !item.unavailableInputs?.includes("args.file_path")) add(item.args.file_path, "changed", this.o.cwd);
+      else if (item.name === "NotebookEdit" && !item.unavailableInputs?.includes("args.notebook_path")) add(item.args.notebook_path, "changed", this.o.cwd);
+      else if (["Grep", "Glob"].includes(item.name) && !item.unavailableInputs?.includes("args.path")) add(item.args.path, "searched", this.o.cwd);
     }
     if (this.o.turn.backend === "codex") {
-      for (const action of item.exec?.actions ?? []) add(action.path, action.kind === "read" ? "read" : "searched", item.exec?.cwd);
+      for (const [i, action] of (item.exec?.actions ?? []).entries()) {
+        if (!item.unavailableInputs?.includes(`exec.actions.${i}.path`)) add(action.path, action.kind === "read" ? "read" : "searched", item.unavailableInputs?.includes("exec.cwd") ? undefined : item.exec?.cwd);
+      }
       if (item.name === "apply_patch" && Array.isArray(item.args.files)) {
-        for (const file of item.args.files) if (file && typeof file === "object") {
-          add(file.path, "changed", this.o.cwd);
-          add(file.movePath, "changed", this.o.cwd);
+        for (const [i, file] of item.args.files.entries()) if (file && typeof file === "object") {
+          if (!item.unavailableInputs?.includes(`args.files.${i}.path`)) add(file.path, "changed", this.o.cwd);
+          if (!item.unavailableInputs?.includes(`args.files.${i}.movePath`)) add(file.movePath, "changed", this.o.cwd);
         }
       }
     }

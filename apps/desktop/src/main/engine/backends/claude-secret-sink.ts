@@ -1,4 +1,4 @@
-import type { Observation } from "../../../shared/conversation-events.js";
+import type { Observation, UnavailableNativeInput } from "../../../shared/conversation-events.js";
 import type { TurnSink } from "./types.js";
 
 type Delta = Extract<Observation, { type: "message.delta" | "reasoning.delta" }>;
@@ -24,6 +24,17 @@ export function claudeSecretSink(sink: TurnSink, secret: string): { sink: TurnSi
     sink: {
       ...sink,
       observe(event) {
+        // Redaction changes display text, not the identity of the file the native tool used.
+        // Preserve static unavailable-field receipts before discarding the original value.
+        const args = event.type === "tool.start" ? event.tool.args : event.type === "tool.update" || event.type === "tool.done" ? event.progress?.args : undefined;
+        if (args) {
+          const unavailable: UnavailableNativeInput[] = [];
+          for (const field of ["file_path", "notebook_path", "path"] as const) if (typeof args[field] === "string" && args[field].includes(secret)) unavailable.push(`args.${field}`);
+          if (contains(args)) {
+            if (event.type === "tool.start") event = { ...event, tool: { ...event.tool, displayOnlyInputs: true, ...(unavailable.length ? { unavailableInputs: [...new Set([...(event.tool.unavailableInputs ?? []), ...unavailable])] } : {}) } };
+            else if (event.type === "tool.update" || event.type === "tool.done") event = { ...event, progress: { ...event.progress, displayOnlyInputs: true, ...(unavailable.length ? { unavailableInputs: [...new Set([...(event.progress?.unavailableInputs ?? []), ...unavailable])] } : {}) } };
+          }
+        }
         if (event.type === "message.delta" || event.type === "reasoning.delta") {
           const key = `${nativeKey(event)}:${event.type}:${event.type === "reasoning.delta" ? `${event.representation}:${event.index}` : ""}`;
           const text = redactText((pending.get(key)?.text ?? "") + event.text);

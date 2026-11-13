@@ -13,7 +13,7 @@ import { LineBuffer, stderrTail, writeJsonResponse } from "./types.js";
 import { codexCall, UsageMeter, withUsage } from "./usage.js";
 import { cliEnvironment, cliSpawn, health, installation } from "./health.js";
 import type { AgentActivity, BackendHealth } from "../../../shared/types.js";
-import type { MessageAsk, MessagePhase, NativeRef, PlanStepStatus, SettledOutcome } from "../../../shared/conversation-events.js";
+import type { MessageAsk, MessagePhase, NativeRef, PlanStepStatus, SettledOutcome, UnavailableNativeInput } from "../../../shared/conversation-events.js";
 import { boundOutput, byteLength, codexWebSearch, memoryEvidence, type ExecAction } from "../../../shared/evidence.js";
 import { actionDigest, codexAnswerResponse, codexQuestions } from "../../../shared/human-requests.js";
 
@@ -136,7 +136,13 @@ export class CodexBackend implements Backend {
   private dispatch(line: string): void {
     let msg: RpcMessage;
     try {
-      msg = JSON.parse(line, (_key, value: unknown) => typeof value === "string" ? this.configuration?.redact(value) ?? value : value) as RpcMessage;
+      const fields = this.redactedInputs, redact = this.configuration?.redact;
+      msg = JSON.parse(line, function(this: object, key, value: unknown) {
+        if (typeof value !== "string") return value;
+        const safe = redact?.(value) ?? value;
+        if (safe !== value) { const changed = fields.get(this) ?? new Set<string>(); changed.add(key); fields.set(this, changed); }
+        return safe;
+      }) as RpcMessage;
     } catch {
       return;
     }
@@ -150,6 +156,25 @@ export class CodexBackend implements Backend {
       return;
     }
     for (const s of this.subscribers) s(msg);
+  }
+
+  /** Object-local field names only: raw credentials and values are never retained here. */
+  private readonly redactedInputs = new WeakMap<object, Set<string>>();
+  private inputAvailability(item: CodexItem): { displayOnlyInputs?: true; unavailableInputs?: UnavailableNativeInput[] } {
+    const fields: UnavailableNativeInput[] = [], changed = (object: object | undefined, key: string) => object !== undefined && this.redactedInputs.get(object)?.has(key);
+    if (changed(item, "command")) fields.push("exec.command");
+    if (changed(item, "cwd")) fields.push("exec.cwd");
+    let index = 0;
+    for (const action of Array.isArray(item.commandActions) ? item.commandActions : []) {
+      if (!codexActions([action])) continue;
+      if (changed(action, "path")) fields.push(`exec.actions.${index}.path`);
+      index++;
+    }
+    for (const [i, file] of (item.changes ?? []).entries()) {
+      if (changed(file, "path")) fields.push(`args.files.${i}.path`);
+      if (changed(file.kind, "move_path")) fields.push(`args.files.${i}.movePath`);
+    }
+    return fields.length ? { displayOnlyInputs: true, unavailableInputs: fields } : {};
   }
 
   private send(o: unknown): void {
@@ -564,13 +589,13 @@ export class CodexBackend implements Backend {
             } else if (item.type === "commandExecution") {
               tools.set(item.id, { started: Date.now(), output: "", bytes: 0 });
               commands.add(item.id);
-              sink.observe({ type: "tool.start", native: native(item.id), tool: { name: "shell", title: `$ ${stripShell(item.command ?? "")}`, args: { command: item.command, cwd: item.cwd },
+              sink.observe({ type: "tool.start", native: native(item.id), tool: { name: "shell", title: `$ ${stripShell(item.command ?? "")}`, args: { command: item.command, cwd: item.cwd }, ...this.inputAvailability(item),
                 ...(item.command ? { exec: { command: item.command, ...(item.cwd ? { cwd: item.cwd } : {}), ...(codexActions(item.commandActions) ? { actions: codexActions(item.commandActions)! } : {}) } } : {}) } });
             } else if (item.type === "fileChange") {
               tools.set(item.id, { started: Date.now(), output: "", bytes: 0 });
               const files = (item.changes ?? []).map((c) => c.path);
               this.changePaths.set(`${tid}:${item.id}`, files);
-              sink.observe({ type: "tool.start", native: native(item.id), tool: { name: "apply_patch", title: `edit ${files.join(", ")}`, args: { patch: (item.changes ?? []).map((c) => c.diff).join("\n"), files: (item.changes ?? []).map(patchFile) } } });
+              sink.observe({ type: "tool.start", native: native(item.id), tool: { name: "apply_patch", title: `edit ${files.join(", ")}`, args: { patch: (item.changes ?? []).map((c) => c.diff).join("\n"), files: (item.changes ?? []).map(patchFile) }, ...this.inputAvailability(item) } });
             } else if (item.type === "mcpToolCall" || item.type === "dynamicToolCall" || item.type === "webSearch") {
               tools.set(item.id, { started: Date.now(), output: "", bytes: 0 });
               // 0.163.0 starts a web search with an empty query; the completed item carries it.
@@ -629,6 +654,7 @@ export class CodexBackend implements Backend {
               const total = Math.max(t.bytes, byteLength(output));
               const shown = boundOutput(output).text;
               sink.observe({ type: "tool.done", native: native(item.id), outcome: codexOutcome(item), progress: {
+                ...this.inputAvailability(item),
                 ...(item.type === "fileChange" ? { args: { patch: (item.changes ?? []).map(c => c.diff).join("\n"), files: (item.changes ?? []).map(patchFile) } } : {}),
                 ...(search ? { search, ...(search.query ? { title: `search ${search.query}` } : {}) } : {}),
                 ...(shown ? { output: shown } : {}), ...(total > byteLength(shown) ? { outputBytes: total, outputTruncated: true } : {}),

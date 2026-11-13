@@ -13,6 +13,9 @@ import type { ThreadEvent } from "../src/shared/types.js";
 import type { TaskContextEvidence } from "../src/shared/task-context-evidence.js";
 import { taskRecord } from "../src/shared/task-context.js";
 import { gitRepo, tmpdir } from "./helpers.js";
+import { CodexBackend } from "../src/main/engine/backends/codex.js";
+import { FakeProcess, fakeSpawn } from "./fakeproc.js";
+import { codexServer } from "./conversation-fixtures.js";
 
 function setup(t: TestContext, run: Backend["runTurn"], capture = new TaskContextCapture(), backendId: "claude" | "codex" = "claude") {
   const home = tmpdir("modex-context-runner-"), store = new Store(home), project = store.addProject(gitRepo()), events: ThreadEvent[] = [];
@@ -28,6 +31,82 @@ function user(home: string, threadId: string) {
 }
 const native = { runtime: "synthetic-runtime", item: "read-1" };
 function start(sink: TurnSink, filename: string) { sink.observe({ type: "tool.start", source: "read-start", native, tool: { name: "Read", title: "read file", args: { file_path: filename } } }); }
+
+for (const [name, field] of [["Read", "file_path"], ["Write", "file_path"], ["NotebookEdit", "notebook_path"], ["Grep", "path"]] as const) {
+  test(`credential redaction cannot turn a ${name} target into an observed decoy file`, async t => {
+    const { claudeSecretSink } = await import("../src/main/engine/backends/claude-secret-sink.js");
+    const secret = "sk-orca-synthetic-context-path-123456";
+    const h = setup(t, async (_text, opts, sink) => {
+      const protectedSink = claudeSecretSink(sink, secret);
+      protectedSink.sink.observe({ type: "tool.start", native, tool: { name, title: "native target", args: { [field]: path.join(opts.cwd, "src", `${secret}.ts`) } } });
+      protectedSink.sink.observe({ type: "tool.done", native, outcome: "succeeded" }); protectedSink.finish();
+      return { status: "completed" };
+    });
+    fs.mkdirSync(path.join(h.project.path, "src"));
+    fs.writeFileSync(path.join(h.project.path, "src", `${secret}.ts`), "actual target");
+    fs.writeFileSync(path.join(h.project.path, "src", "[redacted].ts"), "different decoy");
+    const thread = await h.runner.createThread(h.project.id, { backend: "claude", auto: false }); await h.runner.send(thread.id, "Check");
+    const items = h.runner.items(thread.id), context = user(h.home, thread.id).contextEvidence;
+    assert.deepEqual(context?.refs ?? [], [], "an unavailable native identity must not name the redacted decoy");
+    assert.deepEqual(context?.captures ?? [], [], "the decoy must never be opened for a context hash");
+    const record = taskRecord(items, { threadId: thread.id, title: "Task", cwd: h.project.path });
+    assert.deepEqual(record.context?.files, []); assert.deepEqual(record.files, []);
+    assert.equal(JSON.stringify(items).includes(secret), false);
+  });
+}
+
+test("redacting a Write body preserves its public target and a genuine literal redaction-marker filename", async t => {
+  const { claudeSecretSink } = await import("../src/main/engine/backends/claude-secret-sink.js");
+  const secret = "sk-orca-synthetic-context-body-123456";
+  const h = setup(t, async (_text, opts, sink) => {
+    const protectedSink = claudeSecretSink(sink, secret);
+    for (const filename of ["README.md", "[redacted].ts"]) {
+      const ref = { runtime: "fixture", item: filename };
+      protectedSink.sink.observe({ type: "tool.start", native: ref, tool: { name: "Write", title: "Write public file", args: { file_path: path.join(opts.cwd, filename), content: secret } } });
+      protectedSink.sink.observe({ type: "tool.done", native: ref, outcome: "succeeded" });
+    }
+    protectedSink.finish(); return { status: "completed" };
+  });
+  fs.writeFileSync(path.join(h.project.path, "[redacted].ts"), "literal file");
+  const thread = await h.runner.createThread(h.project.id, { backend: "claude", auto: false }); await h.runner.send(thread.id, "Check");
+  const items = h.runner.items(thread.id), context = user(h.home, thread.id).contextEvidence!;
+  assert.deepEqual(context.refs.map(r => r.target), [{ kind: "file", path: "README.md" }, { kind: "file", path: "[redacted].ts" }]);
+  assert.equal(context.captures.length, 2); assert.equal(JSON.stringify(items).includes(secret), false);
+});
+
+for (const shape of ["actions", "cwd", "patch"] as const) {
+  test(`Codex credential redaction preserves only real public targets for ${shape}`, async t => {
+    const secret = "synthetic-codex-context-credential-123456", proc = new FakeProcess();
+    const backend = new CodexBackend("codex", fakeSpawn(proc).spawn, { args: [], env: {}, redact: text => text.split(secret).join("[redacted]") });
+    t.after(() => backend.dispose());
+    const h = setup(t, (text, opts, sink, signal) => backend.runTurn(text, opts, sink, signal), undefined, "codex");
+    fs.mkdirSync(path.join(h.project.path, "src"));
+    fs.writeFileSync(path.join(h.project.path, "src", "literal-[redacted].ts"), "decoy");
+    fs.mkdirSync(path.join(h.project.path, "[redacted]")); fs.writeFileSync(path.join(h.project.path, "[redacted]", "README.md"), "cwd decoy");
+    const item = shape === "patch" ? { type: "fileChange", id: "patch", changes: [
+      { path: path.join(h.project.path, "src", `${secret}.ts`), kind: { type: "update" }, diff: "" },
+      { path: path.join(h.project.path, "README.md"), kind: { type: "update", move_path: path.join(h.project.path, `${secret}.md`) }, diff: secret },
+      { path: path.join(h.project.path, "src", "literal-[redacted].ts"), kind: { type: "update" }, diff: "" },
+    ] } : { type: "commandExecution", id: "read", command: `cat ${secret}`, cwd: shape === "cwd" ? path.join(h.project.path, secret) : h.project.path, commandActions: [
+      { type: "unknown" }, { type: "read", path: shape === "cwd" ? "README.md" : `src/${secret}.ts` },
+      { type: "read", path: path.join(h.project.path, "README.md") },
+      { type: "read", path: path.join(h.project.path, "src", "literal-[redacted].ts") },
+    ] };
+    const params = { threadId: "fixture-thread", turnId: "fixture-turn" };
+    codexServer(proc, [
+      { method: "turn/started", params: { threadId: params.threadId, turn: { id: params.turnId } } },
+      { method: "item/started", params: { ...params, item } },
+      { method: "item/completed", params: { ...params, item: { ...item, status: "completed", exitCode: 0 } } },
+      { method: "turn/completed", params: { threadId: params.threadId, turn: { id: params.turnId, status: "completed" } } },
+    ].map(line => JSON.stringify(line)));
+    const thread = await h.runner.createThread(h.project.id, { backend: "codex", auto: false }); await h.runner.send(thread.id, "Check");
+    const items = h.runner.items(thread.id), context = user(h.home, thread.id).contextEvidence!;
+    assert.deepEqual(context.refs.map(ref => ref.target), [{ kind: "file", path: "README.md" }, { kind: "file", path: "src/literal-[redacted].ts" }]);
+    assert.equal(context.captures.length, 2);
+    assert.equal(JSON.stringify(items).includes(secret), false);
+    assert.deepEqual(taskRecord(items, { threadId: thread.id, title: "Task", cwd: h.project.path }).context?.files.map(file => file.path), ["README.md", "src/literal-[redacted].ts"]);
+  });
+}
 
 test("accepted native read intent precedes success; duplicate completion records one body-free after-result capture", async t => {
   let enter!: () => void, finish!: () => void;
