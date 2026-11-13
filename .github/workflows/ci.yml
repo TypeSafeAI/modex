@@ -23,7 +23,10 @@ jobs:
     # Not a required check: the PR already ran it, and main runs it again after the merge.
     if: github.event_name != 'merge_group'
     runs-on: macos-latest
-    timeout-minutes: 30
+    # Run 43360620861 spent 14.5 minutes before UI tests and hit 30 minutes while cases were
+    # still passing. Leave roughly 30 minutes for the suite on a similarly slow runner;
+    # individual test deadlines, assertions and the retained cancellation evidence stay unchanged.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
       - name: Sample memory through the job
