@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { listWorkspaceFiles } from "./workspace-files.js";
+import type { TaskContextCandidates } from "../../shared/task-context-evidence.js";
 import type { Store } from "./store.js";
 import type { TaskContextCapture, CapturedNoteInput } from "./task-context-capture.js";
 import { contextRefId, copyTaskContextEvidence, isContextDraftBinding, taskContextBelongsTo, type ContextCapture, type ContextDraftOwner, type ContextDraftBinding, type ContextTarget, type TaskContextEvidence, type PendingTaskContext } from "../../shared/task-context-evidence.js";
@@ -15,7 +17,7 @@ export class TaskContextService {
   private readonly drafts = new Map<string, Draft>();
   private readonly owners = new Map<string, string>();
   private readonly spent = new Map<string, { binding: ContextDraftBinding; threadId: string; turnId: string; context?: TaskContextEvidence; projectId: string }>();
-  constructor(private readonly options: { store: Store; capture: Pick<TaskContextCapture, "captureSelection"> }) {}
+  constructor(private readonly options: { store: Store; capture: Pick<TaskContextCapture, "captureSelection">; listFiles?: typeof listWorkspaceFiles }) {}
   private scope(owner: ContextDraftOwner): Scope {
     if (!owner || typeof owner !== "object") throw fail();
     if (owner.kind === "thread") {
@@ -42,6 +44,42 @@ export class TaskContextService {
     this.drafts.set(binding.nonce, { binding, scope, context: empty(), abort: new AbortController(), generation: 0 });
     this.owners.set(key(owner), binding.nonce);
     return structuredClone(binding);
+  }
+  async candidates(binding: ContextDraftBinding): Promise<TaskContextCandidates> {
+    const draft = this.current(binding), generation = draft.generation;
+    const listed = await (this.options.listFiles ?? listWorkspaceFiles)(draft.scope.cwd);
+    if (this.current(binding) !== draft || draft.generation !== generation) throw fail();
+    const files: TaskContextCandidates["files"] = { paths: [], truncated: listed.truncated };
+    let fileBytes = 2; // Include the array delimiters; one byte per row reserves its comma.
+    for (const relative of listed.paths) {
+      const target: ContextTarget = { kind: "file", path: relative };
+      try { copyTaskContextEvidence({ revision: 0, refs: [{ id: "candidate", target, relations: [], captureIds: [] }], captures: [], checks: [] }); }
+      catch { files.truncated = true; continue; }
+      const bytes = Buffer.byteLength(JSON.stringify(relative)) + 1;
+      if (files.paths.length === 5000 || fileBytes + bytes > 2 * 1024 * 1024) { files.truncated = true; break; }
+      files.paths.push(relative); fileBytes += bytes;
+    }
+    const space = this.options.store.space, own = space.projectFor(draft.scope.projectId);
+    const notes: TaskContextCandidates["notes"] = { items: [], truncated: false };
+    if (own) {
+      const within = (rel: string | undefined) => rel !== undefined && (rel === own.rel || rel.startsWith(`${own.rel}/`));
+      const rels = space.pageRels(), tree = space.tree();
+      notes.truncated = tree.truncated;
+      let bytes = 2;
+      const append = (row: TaskContextCandidates["notes"]["items"][number]) => {
+        const size = Buffer.byteLength(JSON.stringify(row)) + 1;
+        if (notes.items.length === 5000 || bytes + size > 2 * 1024 * 1024) { notes.truncated = true; return false; }
+        notes.items.push(row); bytes += size; return true;
+      };
+      for (const page of space.list()) {
+        if (!page.trashedAt && within(rels.get(page.id)) && !append({ target: { kind: "note", pageId: page.id }, title: page.title })) break;
+      }
+      for (const node of tree.nodes) {
+        if (node.kind === "file" && within(node.rel) && !append({ target: { kind: "notes-file", id: node.id }, title: node.name })) break;
+      }
+    }
+    if (this.current(binding) !== draft || draft.generation !== generation) throw fail();
+    return { files, notes };
   }
   private noteInScope(projectId: string, target: Exclude<ContextTarget, { kind: "file" }>): boolean {
     const notes = this.options.store.space, own = notes.projectFor(projectId);

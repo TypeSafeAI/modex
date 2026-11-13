@@ -17,10 +17,13 @@ test("shared main commands select exact project context and refuse a closed bind
   registerCommands(((channel, handler) => handlers.set(channel, handler)) as RegisterCommand, { store, runner, terminals, emit: () => {}, pickDirectory: async () => null, openPath: async () => {}, openTerminal: async () => {} });
   const invoke = async (channel: string, req: unknown) => { const handler = handlers.get(channel); if (!handler) throw new Error(`Context command unavailable: ${channel}`); return handler(req); };
   const binding = await invoke("task:context-draft-open", { owner: { kind: "project", projectId: project.id, key: `draft:0:${project.id}` } }) as ContextDraftBinding;
+  const candidates = await invoke("task:context-candidates", { binding });
+  assert.ok(candidates.files.paths.includes("README.md")); assert.equal(store.snapshot().threads.length, 0);
   const selected = await invoke("task:context-draft-select", { binding, targets: [{ kind: "file", path: "README.md" }] }) as { binding: ContextDraftBinding; context: TaskContextEvidence };
   assert.equal(selected.context.refs[0]!.target.kind, "file");
   assert.equal(selected.context.captures[0]!.revision.state, "available");
   await invoke("task:context-draft-close", { binding: selected.binding });
+  await assert.rejects(invoke("task:context-candidates", { binding: selected.binding }), /draft|stale/);
   await assert.rejects(invoke("task:context-draft-select", { binding: selected.binding, targets: [] }), /draft|stale/);
   assert.equal(store.snapshot().threads.length, 0, "selecting context cannot create a thread or start a CLI turn");
 });

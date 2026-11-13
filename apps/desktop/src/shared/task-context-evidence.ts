@@ -52,6 +52,11 @@ export interface TaskContextEvidence {
   checks: TaskCheckEvidence[];
 }
 
+export interface TaskContextCandidates {
+  files: { paths: string[]; truncated: boolean };
+  notes: { items: { target: Exclude<ContextTarget, { kind: "file" }>; title: string }[]; truncated: boolean };
+}
+
 /** Tuple encoding preserves kind and literal delimiters; scope/canonicalization belongs to main. */
 export function contextRefId(target: ContextTarget): string {
   return JSON.stringify(target.kind === "file" ? ["file", target.path] : target.kind === "note" ? ["note", target.pageId] : ["notes-file", target.id]);

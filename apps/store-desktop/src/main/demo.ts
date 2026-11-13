@@ -90,6 +90,7 @@ export class StoreDemo {
       "task:context-draft-open": unavailable,
       "task:context-draft-select": unavailable,
       "task:context-draft-close": unavailable,
+      "task:context-candidates": unavailable,
       "task:save-note": unavailable,
       "task:note": unavailable,
       "evidence:memory": unavailable,

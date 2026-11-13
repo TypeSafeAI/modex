@@ -411,6 +411,10 @@ export class ThreadRunner {
     return this.background.run(() => this.contextDrafts.selectTaskContext(binding, targets));
   }
   closeContextDraft(binding: ContextDraftBinding): void { this.contextDrafts.closeContextDraft(binding); }
+  taskContextCandidates(binding: ContextDraftBinding): ReturnType<TaskContextService["candidates"]> {
+    this.assertContextEditing(binding?.owner);
+    return this.background.run(() => this.contextDrafts.candidates(binding));
+  }
   snapshotContextForPending(binding: ContextDraftBinding, owner: ContextDraftOwner): PendingTaskContext {
     this.assertContextEditing(owner); return this.contextDrafts.snapshotForPending(binding, owner);
   }

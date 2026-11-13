@@ -821,6 +821,7 @@ handle("thread:items", ({ threadId }) => runner.items(threadId));
 handle("task:context-draft-open", ({ owner }) => runner.openContextDraft(owner), { localOnly: true });
 handle("task:context-draft-select", ({ binding, targets }) => runner.selectTaskContext(binding, targets), { localOnly: true });
 handle("task:context-draft-close", ({ binding }) => runner.closeContextDraft(binding), { localOnly: true });
+handle("task:context-candidates", ({ binding }) => runner.taskContextCandidates(binding), { localOnly: true });
 handle("task:save-note", ({ threadId, turnId }) => runner.saveTaskNote(threadId, turnId));
 handle("task:note", ({ pageId }) => runner.taskNote(pageId));
 handle("thread:followup", ({ threadId }) => runner.followUp(threadId));
