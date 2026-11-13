@@ -10,6 +10,24 @@ for (const theme of ["graphite", "jev", "coven"] as const) {
     const { home } = seedHome();
     const { app, page } = await launch(home);
     try {
+      // Observe renderer delivery/cancellation; snapshot native focus on failure.
+      // DOM focus alone does not explain a missing native scroll action.
+      await page.evaluate(() => {
+        const state = window as typeof window & { __markdownKeys?: unknown[] };
+        const records: unknown[] = state.__markdownKeys = [];
+        const record = (value: unknown) => { records.push(value); if (records.length > 200) records.shift(); };
+        const scroll = (el: Element) => ({ tag: el.tagName, className: el.className, left: el.scrollLeft, width: el.clientWidth, scrollWidth: el.scrollWidth });
+        for (const type of ["keydown", "keyup"] as const) document.addEventListener(type, event => {
+          if (!["ArrowRight", "ArrowLeft", "Tab"].includes(event.key)) return;
+          const target = event.target instanceof Element ? scroll(event.target) : null;
+          // A later task observes cancellation after all capture/bubble listeners.
+          setTimeout(() => record({ type, key: event.key, at: performance.now(), trusted: event.isTrusted, defaultPrevented: event.defaultPrevented,
+            documentFocused: document.hasFocus(), visibility: document.visibilityState, target, active: document.activeElement && scroll(document.activeElement) }), 0);
+        }, true);
+        document.addEventListener("scroll", event => {
+          if (event.target instanceof Element && event.target.matches(".md-table, pre.code")) record({ type: "scroll", at: performance.now(), target: scroll(event.target) });
+        }, true);
+      });
       await resizeWindow(app, page, 900, 600);
       await setTheme(page, theme);
       await page.emulateMedia({ reducedMotion: "reduce" });
@@ -86,6 +104,26 @@ for (const theme of ["graphite", "jev", "coven"] as const) {
       }))).toEqual([]);
       await expect(items(page, "tool")).toHaveCount(0);
       await expect(items(page, "approval")).toHaveCount(0);
-    } finally { await app.close(); }
+    } catch (error) {
+      // A stalled renderer must not prevent collecting native state or rethrowing
+      // the original assertion. Keep both observations inside their own budget.
+      const observe = async <T>(read: () => Promise<T>) => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          return await Promise.race([Promise.resolve().then(read).catch(readError => ({ error: String(readError) })),
+            new Promise<{ error: string }>(resolve => { timer = setTimeout(() => resolve({ error: "Diagnostic read exceeded 2000ms" }), 2000); })]);
+        } finally { clearTimeout(timer); }
+      };
+      const [renderer, native] = await Promise.all([
+        observe(() => page.evaluate(() => ({ records: (window as typeof window & { __markdownKeys?: unknown[] }).__markdownKeys,
+          documentFocused: document.hasFocus(), visibility: document.visibilityState, active: document.activeElement?.outerHTML.slice(0, 800),
+          scroll: [...document.querySelectorAll(".md-table, pre.code")].map(el => ({ tag: el.tagName, className: el.className, left: el.scrollLeft, width: el.clientWidth, scrollWidth: el.scrollWidth })) }))),
+        observe(() => app.evaluate(({ BrowserWindow }) => ({ windows: BrowserWindow.getAllWindows().map(w => ({ id: w.id, focused: w.isFocused(), contentsFocused: w.webContents.isFocused(), visible: w.isVisible(), minimized: w.isMinimized(), bounds: w.getBounds() })) }))),
+      ]);
+      await observe(() => test.info().attach("markdown-keyboard-diagnostics", { body: JSON.stringify({ renderer, native }, null, 2), contentType: "application/json" }));
+      throw error;
+    } finally {
+      await app.close();
+    }
   });
 }
