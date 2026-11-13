@@ -12,6 +12,8 @@ const fail = () => new Error("Task context draft is stale or no longer belongs t
 const key = (owner: ContextDraftOwner) => owner.kind === "thread" ? `thread:${owner.threadId}` : owner.key;
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const empty = (): TaskContextEvidence => ({ revision: 0, refs: [], captures: [], checks: [] });
+const SELECTION_BYTES = 2 * 1024 * 1024;
+const tooLarge = () => new Error("Selected context is too large to save; the previous draft was preserved.");
 
 /** Main owns draft identities and receipt bodies; renderer requests contain targets only. */
 export class TaskContextService {
@@ -98,15 +100,40 @@ export class TaskContextService {
     const draft = this.current(binding), generation = draft.generation;
     if (!Array.isArray(targets)) throw fail();
     const unique = new Map<string, ContextTarget>();
+    let minimumReferenceBytes = 0;
     for (const target of targets) {
       // Reuse the strict persisted-target validator before any filesystem/Notes read.
       const candidate: TaskContextEvidence = { revision: 0, refs: [{ id: "candidate", target, relations: [], captureIds: [] }], captures: [], checks: [] };
       copyTaskContextEvidence(candidate);
+      const id = contextRefId(target);
+      if (unique.has(id)) continue;
+      // These ref fields alone cannot fit, regardless of capture results. Bound
+      // the logical selection rather than rejecting large duplicate inputs.
+      minimumReferenceBytes += Buffer.byteLength(JSON.stringify({ id, target, relations: [], captureIds: [] })) + 1;
+      if (minimumReferenceBytes > SELECTION_BYTES) throw tooLarge();
       if (target.kind !== "file" && !this.noteInScope(draft.scope.projectId, target)) throw new Error("This note is outside this project's notes.");
-      unique.set(contextRefId(target), structuredClone(target));
+      unique.set(id, structuredClone(target));
     }
     const requested = [...unique.values()];
     const source = { kind: "human" as const, actionId: randomUUID(), at: new Date().toISOString() };
+    const retained = draft.context.captures.filter(c => unique.has(contextRefId(c.target)));
+    const previousRefs = new Map(draft.context.refs.map(ref => [ref.id, ref]));
+    const workspace = (target: ContextTarget): NonNullable<ContextCapture["workspace"]> => target.kind === "file" && binding.owner.kind === "thread"
+      ? { kind: "thread", projectId: draft.scope.projectId, threadId: binding.owner.threadId } : { kind: "project", projectId: draft.scope.projectId };
+    const compose = (captures: ContextCapture[]): TaskContextEvidence => {
+      const capturedIds = new Map<string, string[]>();
+      for (const capture of captures) { const id = contextRefId(capture.target); capturedIds.set(id, [...(capturedIds.get(id) ?? []), capture.id]); }
+      return { revision: draft.context.revision + 1, refs: [...unique].map(([id, target]) => {
+        const previous = previousRefs.get(id);
+        return { id, target, relations: [...(previous?.relations ?? []), { kind: "relevant", provenance: "user-confirmed", source }], captureIds: [...(previous?.captureIds ?? []), ...(capturedIds.get(id) ?? [])] };
+      }), captures: [...retained, ...captures], checks: [] };
+    };
+    // Size prediction only: unavailable/budget is the shortest capture shape,
+    // IDs and ISO timestamps have their actual widths, and optional Note/hash
+    // metadata is omitted. Never publish or persist these predicted receipts.
+    const minimum = compose(requested.map((target, i): ContextCapture => ({ id: String(i).padStart(36, "0"), target, source, phase: "selected", startedAt: source.at, finishedAt: source.at,
+      repository: { state: "unavailable", reason: "budget" }, revision: { state: "unavailable", reason: "budget" }, workspace: workspace(target) })));
+    if (Buffer.byteLength(JSON.stringify(minimum)) > SELECTION_BYTES) throw tooLarge();
     const notes: CapturedNoteInput[] = [];
     for (const target of requested) {
       if (target.kind === "note") {
@@ -119,9 +146,7 @@ export class TaskContextService {
       }
     }
     const captured = await this.options.capture.captureSelection(draft.scope.cwd, requested, source, notes, "selected", draft.abort.signal);
-    const captures: ContextCapture[] = captured.map(capture => ({ ...capture, workspace: capture.target.kind === "file" && draft.binding.owner.kind === "thread"
-      ? { kind: "thread", projectId: draft.scope.projectId, threadId: draft.binding.owner.threadId }
-      : { kind: "project", projectId: draft.scope.projectId } }));
+    const captures: ContextCapture[] = captured.map(capture => ({ ...capture, workspace: workspace(capture.target) }));
     if (this.current(binding) !== draft || draft.generation !== generation) throw fail();
     for (const target of requested) if (target.kind !== "file" && !this.noteInScope(draft.scope.projectId, target)) throw fail();
     for (const note of notes) if (note.target.kind === "note") {
@@ -129,13 +154,8 @@ export class TaskContextService {
       const current = this.options.store.space.list().find(p => p.id === pageId && !p.trashedAt);
       if (!current || current.revision !== note.version!.revision || current.updatedAt !== note.version!.updatedAt) throw new Error("The selected Note changed; the previous context draft was preserved.");
     }
-    const retained = draft.context.captures.filter(c => unique.has(contextRefId(c.target)));
-    const context: TaskContextEvidence = { revision: draft.context.revision + 1,
-      refs: requested.map(target => {
-        const id = contextRefId(target), previous = draft.context.refs.find(r => r.id === id);
-        return { id, target, relations: [...(previous?.relations ?? []), { kind: "relevant", provenance: "user-confirmed", source }], captureIds: [...(previous?.captureIds ?? []), ...captures.filter(c => contextRefId(c.target) === id).map(c => c.id)] };
-      }), captures: [...retained, ...captures], checks: [] };
-    if (Buffer.byteLength(JSON.stringify(context)) > 2 * 1024 * 1024) throw new Error("Selected context is too large to save; the previous draft was preserved.");
+    const context = compose(captures);
+    if (Buffer.byteLength(JSON.stringify(context)) > SELECTION_BYTES) throw tooLarge();
     this.recovery.save(binding.owner, draft.scope, draft.context, context, draft.created);
     draft.context = copyTaskContextEvidence(context);
     draft.binding = { ...draft.binding, revision: draft.binding.revision + 1 };

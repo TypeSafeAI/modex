@@ -173,3 +173,22 @@ test("after transfer, repeated reads use the authoritative stored turn and never
   f.store.saveItems(thread.id, [{ kind: "user", id: "U", text: "Check", at: user.at }]);
   assert.throws(() => f.service.consumeContextDraft(selected.binding, thread.id, "U"), /context|record|preserved/);
 });
+
+test("a selection already too large to represent is refused before capture and preserves the accepted draft", async t => {
+  const capture = new TaskContextCapture(), f = setup(capture); t.after(() => f.runner.dispose());
+  const selected = await f.service.selectTaskContext(f.service.openContextDraft(f.owner), [{ kind: "file", path: "README.md" }]);
+  let captures = 0;
+  t.mock.method(capture, "captureSelection", async () => { captures++; throw new Error("Unexpected capture for oversized selection"); });
+  await assert.rejects(f.service.selectTaskContext(selected.binding, Array.from({ length: 5000 }, (_, i) => ({ kind: "file" as const, path: `selected-${i}.ts` }))));
+  assert.equal(captures, 0, "known oversized metadata must not start reads or hashes");
+  assert.deepEqual(f.service.readDraft(selected.binding), selected.context);
+});
+
+test("duplicate targets do not narrow the accepted logical selection when raw input exceeds two MiB", async t => {
+  const f = setup(); t.after(() => f.runner.dispose());
+  const targets = Array.from({ length: 75000 }, () => ({ kind: "file" as const, path: "README.md" }));
+  assert.ok(Buffer.byteLength(JSON.stringify(targets)) > 2 * 1024 * 1024);
+  const selected = await f.service.selectTaskContext(f.service.openContextDraft(f.owner), targets);
+  assert.equal(selected.context.refs.length, 1); assert.equal(selected.context.captures.length, 1);
+  assert.equal(selected.context.captures[0]!.revision.state, "available");
+});

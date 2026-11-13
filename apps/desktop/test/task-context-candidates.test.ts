@@ -23,16 +23,33 @@ test("candidate listing returns own-project metadata without selecting context o
   const file = path.join(h.store.home, "reference.txt"); fs.writeFileSync(file, "private-file-body");
   const imported = await h.store.space.importFiles(h.store.space.projectFor(h.project.id)!.id, [file]);
   assert.equal(imported.errors.length, 0); const ownFile = imported.imported[0]!; assert.equal(ownFile.kind, "file");
+  const foreignImported = await h.store.space.importFiles(h.store.space.projectFor(h.other.id)!.id, [file]);
+  assert.equal(foreignImported.errors.length, 0); const foreignFile = foreignImported.imported[0]!;
   t.mock.method(h.store.space, "readFile", () => { throw new Error("Candidate listing must not read a Notes file body"); });
   const before = h.store.space.list();
   const result = await h.service.candidates(h.binding);
   assert.ok(result.files.paths.includes("README.md")); assert.equal(result.files.truncated, false);
   assert.ok(result.notes.items.some(row => row.target.kind === "note" && row.target.pageId === own.id && row.title === own.title));
   assert.ok(result.notes.items.some(row => row.target.kind === "notes-file" && row.target.id === ownFile.id && row.title === "reference.txt"));
-  for (const secret of [foreign.id, foreign.title, "private-own-body", "foreign-body", "private-file-body", h.project.path, h.other.path]) assert.equal(JSON.stringify(result).includes(secret), false);
+  for (const secret of [foreign.id, foreignFile.id, foreign.title, "private-own-body", "foreign-body", "private-file-body", h.project.path, h.other.path]) assert.equal(JSON.stringify(result).includes(secret), false);
   assert.deepEqual(h.service.readDraft(h.binding).refs, []); assert.deepEqual(h.store.space.list(), before);
   await assert.rejects(h.service.candidates({ ...h.binding, owner: { kind: "project", projectId: h.other.id, key: `draft:0:${h.other.id}` } }), /draft|stale/);
 });
+
+for (const limit of ["count", "bytes"] as const) {
+  test(`candidate Notes output keeps its independent ${limit} bound and never returns bodies`, async t => {
+    const h = fixture(async () => ({ paths: [], truncated: false })), own = h.store.space.projectFor(h.project.id)!;
+    const base = h.store.space.create({ containerId: own.id, title: "Metadata", markdown: "private-body-not-a-candidate" });
+    const pages = Array.from({ length: limit === "count" ? 5001 : 1000 }, (_, i) => ({ ...base, id: `note-${i}`, title: limit === "count" ? `Title ${i}` : `${i}-${"x".repeat(3000)}` }));
+    t.mock.method(h.store.space, "list", () => pages);
+    t.mock.method(h.store.space, "pageRels", () => new Map(pages.map(page => [page.id, `${own.rel}/${page.id}.md`])));
+    const result = await h.service.candidates(h.binding);
+    assert.equal(result.notes.truncated, true); assert.ok(result.notes.items.length <= 5000);
+    assert.ok(Buffer.byteLength(JSON.stringify(result.notes.items)) <= 2 * 1024 * 1024);
+    assert.equal(JSON.stringify(result).includes(base.markdown), false);
+    assert.deepEqual(h.service.readDraft(h.binding).refs, []);
+  });
+}
 
 test("candidate file output is bounded and unsafe or omitted paths are explicit", async () => {
   const exact = Array.from({ length: 523 }, (_, i) => `${String(i).padStart(4, "0")}${"x".repeat(3996)}`);
