@@ -108,7 +108,7 @@ test("identity: a read refused because gh's sign-in moved and came back is read 
   expect(pulls()).toBeGreaterThan(2);
 });
 
-test("revision: a head that moves before or during a files page is never served as the current diff", async () => {
+for (const heldRead of ["files", "comparison"] as const) test(`revision: a head that moves before or during a ${heldRead} read is never served as the current diff`, async () => {
   const world = baseWorld();
   h = await launchWithGh(world);
   const key = await keyOf("example-org/lending#73");
@@ -128,11 +128,18 @@ test("revision: a head that moves before or during a files page is never served 
   const listed = () => h.calls().filter((c) => c.startsWith("repos/example-org/lending/pulls/73/files")).length;
   // The moved head was caught by the read before the page: the files list itself was never asked for.
   expect(listed()).toBe(0);
-  h.world((w) => { w.holds = { "repos/example-org/lending/pulls/73/files": "files" }; });
+  const comparison = `repos/example-org/lending/compare/${sha("b")}...${sha("d")}`;
+  const heldEndpoint = heldRead === "files" ? "repos/example-org/lending/pulls/73/files" : comparison;
+  h.world((w) => {
+    // A comparison names immutable SHAs. It remains readable after the PR moves;
+    // deriving it from the world's current PR would race the parallel files read.
+    w.routes[comparison] = { base_commit: { sha: sha("b") }, merge_base_commit: { sha: sha("b") } };
+    w.holds = { [heldEndpoint]: "revision-read" };
+  });
   const during = invoke({ op: "files", requestId: "f2", key, revision: current, cursor: null });
-  await expect.poll(listed).toBe(1);
+  await expect.poll(() => h.calls().filter(c => c.split("?")[0] === heldEndpoint).length).toBe(1);
   h.world((w) => { w.routes["repos/example-org/lending/pulls/73"] = ghPull(LENDING, 73, "Moved again", { head: sha("e"), files: 2, additions: 3, deletions: 1 }); });
-  h.release("files");
+  h.release("revision-read");
   const moved = await during;
   expect(moved.scope.revision).toEqual(current);
   expect(moved.result).toMatchObject({ state: "stale", reason: "head-changed" });
