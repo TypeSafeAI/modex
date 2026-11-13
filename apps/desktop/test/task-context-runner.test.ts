@@ -14,15 +14,16 @@ import type { TaskContextEvidence } from "../src/shared/task-context-evidence.js
 import { taskRecord } from "../src/shared/task-context.js";
 import { gitRepo, tmpdir } from "./helpers.js";
 import { CodexBackend } from "../src/main/engine/backends/codex.js";
+import { ClaudeBackend } from "../src/main/engine/backends/claude.js";
 import { FakeProcess, fakeSpawn } from "./fakeproc.js";
 import { codexServer } from "./conversation-fixtures.js";
 
-function setup(t: TestContext, run: Backend["runTurn"], capture = new TaskContextCapture(), backendId: "claude" | "codex" = "claude") {
+function setup(t: TestContext, run: Backend["runTurn"], capture = new TaskContextCapture(), backendId: "claude" | "codex" | "opencode" | "mimo" | "mock" = "claude", proposalsEnabled = true) {
   const home = tmpdir("modex-context-runner-"), store = new Store(home), project = store.addProject(gitRepo()), events: ThreadEvent[] = [];
   const pages = new PagesAgents({ space: store.space, notes: store.space, capture, enabled: id => store.project(id)?.pagesMaintenance === true,
     scope: id => { const p = store.space.projectFor(id); return p ? { id: p.id, rel: p.rel } : null; } });
   const proposals = new TaskContextAgents({ store });
-  const runner = new ThreadRunner({ home, store, contextCapture: capture, pages, taskContext: proposals, emit: event => events.push(structuredClone(event)), backends: { [backendId]: { id: backendId, identity: () => "cli", listModels: async () => [], dispose: async () => {}, runTurn: (text: string, opts: Parameters<Backend["runTurn"]>[1], sink: TurnSink, signal: AbortSignal) => text === "Check" || text.startsWith("Check\n\nModex selected") ? run(text, opts, sink, signal) : Promise.resolve({ status: "completed" as const }) } } });
+  const runner = new ThreadRunner({ home, store, contextCapture: capture, pages, ...(proposalsEnabled ? { taskContext: proposals } : {}), emit: event => events.push(structuredClone(event)), backends: { [backendId]: { id: backendId, identity: () => "cli", listModels: async () => [], dispose: async () => {}, runTurn: (text: string, opts: Parameters<Backend["runTurn"]>[1], sink: TurnSink, signal: AbortSignal) => text === "Check" || text.startsWith("Check\n\nModex selected") ? run(text, opts, sink, signal) : Promise.resolve({ status: "completed" as const }) } } });
   t.after(async () => { await runner.dispose(); await pages.dispose(); await proposals.dispose(); });
   return { home, store, project, runner, events, proposals };
 }
@@ -31,6 +32,73 @@ function user(home: string, threadId: string) {
 }
 const native = { runtime: "synthetic-runtime", item: "read-1" };
 function start(sink: TurnSink, filename: string) { sink.observe({ type: "tool.start", source: "read-start", native, tool: { name: "Read", title: "read file", args: { file_path: filename } } }); }
+
+function reportCapability(sink: TurnSink, capability: unknown) {
+  const report = (sink as unknown as { taskContextCapability?: (capability: unknown) => void }).taskContextCapability;
+  assert.ok(report, "the attempt must expose a main-owned capability reporter"); report(capability);
+}
+function capabilities(home: string, threadId: string) {
+  return (user(home, threadId).contextEvidence as unknown as { capabilities?: { turn: { attempt: string; thread: string; turn: string }; capability: unknown }[] } | undefined)?.capabilities;
+}
+
+test("capabilities persist before native work, rotate across Retry and leave an explicit Save immutable", async t => {
+  let h!: ReturnType<typeof setup>, old: TurnSink | undefined, saved: ReturnType<ThreadRunner["saveTaskNote"]> | undefined, frozen: unknown;
+  h = setup(t, async (_text, opts, sink) => {
+    assert.ok(opts.taskContext);
+    assert.deepEqual(capabilities(h.home, thread.id)?.at(-1)?.capability, { state: "unavailable", reason: "configuration-not-bound" });
+    if (!saved) { saved = h.runner.saveTaskNote(thread.id, user(h.home, thread.id).id); frozen = structuredClone(h.store.space.taskSnapshot(saved.pageId)); }
+    reportCapability(sink, { state: "available" });
+    assert.deepEqual(capabilities(h.home, thread.id)?.at(-1)?.capability, { state: "available" });
+    if (old) reportCapability(old, { state: "unavailable", reason: "configuration-not-bound" }); else old = sink;
+    return { status: "completed" };
+  });
+  const thread = await h.runner.createThread(h.project.id, { backend: "claude", auto: false }); await h.runner.send(thread.id, "Check"); await h.runner.retry(thread.id);
+  const receipts = capabilities(h.home, thread.id); assert.ok(receipts); assert.equal(receipts.length, 2); assert.equal(new Set(receipts.map(c => c.turn.attempt)).size, 2);
+  assert.ok(receipts.every(c => c.turn.thread === thread.id && c.turn.turn === user(h.home, thread.id).id));
+  assert.deepEqual(receipts.map(c => c.capability), [{ state: "available" }, { state: "available" }]);
+  assert.deepEqual(h.store.space.taskSnapshot(saved!.pageId), frozen);
+  reportCapability(old!, { state: "unavailable", reason: "configuration-not-bound" }); assert.deepEqual(capabilities(h.home, thread.id), receipts);
+});
+
+for (const backendId of ["opencode", "mimo", "mock", "claude"] as const) test(`${backendId} records unavailable proposals without advertising a missing or unsupported connection`, async t => {
+  const reason = backendId === "claude" ? "configuration-not-bound" : "unsupported-adapter";
+  const h = setup(t, async (_text, opts, sink) => { assert.equal(opts.taskContext, undefined); reportCapability(sink, { state: "available" }); return { status: "completed" }; }, undefined, backendId, false);
+  const thread = await h.runner.createThread(h.project.id, { backend: backendId, auto: false }); await h.runner.send(thread.id, "Check");
+  assert.deepEqual(capabilities(h.home, thread.id)?.map(c => c.capability), [{ state: "unavailable", reason }]);
+});
+
+for (const fault of [new Error("Synthetic capability receipt write failure"), undefined]) test(`a ${fault ? "typed" : "non-Error"} capability write failure stays visible without throwing through the native callback`, async t => {
+  let h!: ReturnType<typeof setup>, callbackReturned = false, wasAborted = false;
+  h = setup(t, async (_text, _opts, sink, signal) => {
+    const save = h.store.saveItems.bind(h.store);
+    h.store.saveItems = (id, items) => { if (items.some(item => item.kind === "user" && item.contextEvidence?.capabilities?.some(c => c.capability.state === "available"))) throw fault; save(id, items); };
+    try { reportCapability(sink, { state: "available" }); callbackReturned = true; wasAborted = signal.aborted; }
+    finally { h.store.saveItems = save; }
+    // Liveness witness only: this fake backend sends no OS signals to the test process.
+    return { status: "interrupted", stop: { outcome: "unconfirmed", pid: process.pid, ms: 1 } };
+  });
+  const thread = await h.runner.createThread(h.project.id, { backend: "claude", auto: false }); await h.runner.send(thread.id, "Check");
+  assert.equal(callbackReturned, true); assert.equal(wasAborted, true);
+  assert.deepEqual(capabilities(h.home, thread.id)?.map(c => c.capability), [{ state: "unavailable", reason: "configuration-not-bound" }]);
+  assert.ok(h.runner.items(thread.id).some(item => item.kind === "notice" && item.level === "error" && item.text.includes(fault ? fault.message : "undefined")), "the persistence failure must not become a generic Stopped notice");
+  await assert.rejects(h.runner.deleteThread(thread.id), /has not confirmed that it stopped/);
+  assert.ok(h.store.thread(thread.id), "an unconfirmed native exit still protects the thread after a metadata failure");
+});
+
+test("a real Claude adapter init callback handles capability persistence failure without escaping stdout dispatch", async t => {
+  const proc = new FakeProcess(), backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn); t.after(() => backend.dispose());
+  const h = setup(t, (text, opts, sink, signal) => backend.runTurn(text, opts, sink, signal));
+  const thread = await h.runner.createThread(h.project.id, { backend: "claude", auto: false }); const running = h.runner.send(thread.id, "Check");
+  await proc.waitFor(line => line.includes('"type":"user"'));
+  const save = h.store.saveItems.bind(h.store);
+  h.store.saveItems = (id, items) => { if (items.some(item => item.kind === "user" && item.contextEvidence?.capabilities?.some(c => c.capability.state === "available"))) throw new Error("Synthetic adapter capability write failure"); save(id, items); };
+  try { assert.doesNotThrow(() => proc.emitLine({ type: "system", subtype: "init", session_id: "s", mcp_servers: [{ name: "modex_task_context", status: "connected" }] })); }
+  finally { h.store.saveItems = save; proc.close(0); }
+  await running;
+  assert.ok(proc.sent(message => message.type === "control_request" && message.request?.subtype === "interrupt").length);
+  assert.ok(h.runner.items(thread.id).some(item => item.kind === "notice" && item.level === "error" && item.text.includes("Synthetic adapter capability write failure")));
+  assert.deepEqual(capabilities(h.home, thread.id)?.map(c => c.capability), [{ state: "unavailable", reason: "configuration-not-bound" }]);
+});
 
 for (const [name, field] of [["Read", "file_path"], ["Write", "file_path"], ["NotebookEdit", "notebook_path"], ["Grep", "path"]] as const) {
   test(`credential redaction cannot turn a ${name} target into an observed decoy file`, async t => {
@@ -421,16 +489,16 @@ for (const outcome of ["failed", "denied", "interrupted", "unknown"] as const) {
 }
 
 test("a metadata persistence failure cannot mutate live context or publish a false update", async t => {
-  let caught: unknown; let install = () => {}, restore = () => {};
+  let caught: unknown, before: TaskContextEvidence | undefined, eventCount = 0; let install = () => {}, restore = () => {};
   const h = setup(t, async (_text, opts, sink) => { install(); try { start(sink, path.join(opts.cwd, "README.md")); } catch (error) { caught = error; } finally { restore(); } return { status: "failed", error: "fixture ended" }; });
   const save = h.store.saveItems.bind(h.store);
-  install = () => { h.store.saveItems = (id, items) => { if (items.some(item => item.kind === "user" && item.contextEvidence)) throw new Error("Synthetic metadata persistence failure"); save(id, items); }; };
+  install = () => { before = structuredClone(user(h.home, thread.id).contextEvidence); eventCount = h.events.length; h.store.saveItems = (id, items) => { if (items.some(item => item.kind === "user" && item.contextEvidence)) throw new Error("Synthetic metadata persistence failure"); save(id, items); }; };
   restore = () => { h.store.saveItems = save; }; t.after(restore);
   const thread = await h.runner.createThread(h.project.id, { backend: "claude", auto: false }); await h.runner.send(thread.id, "Check");
   assert.ok(caught instanceof Error && /metadata persistence/.test(caught.message));
-  assert.equal(user(h.home, thread.id).contextEvidence, undefined);
-  assert.equal(h.runner.items(thread.id).find(item => item.kind === "user")?.contextEvidence, undefined);
-  assert.equal(h.events.some(event => event.type === "item_update" && "contextEvidence" in event.patch), false);
+  assert.deepEqual(user(h.home, thread.id).contextEvidence, before);
+  assert.deepEqual(h.runner.items(thread.id).find(item => item.kind === "user")?.contextEvidence, before);
+  assert.equal(h.events.slice(eventCount).some(event => event.type === "item_update" && "contextEvidence" in event.patch), false);
 });
 
 test("actual runner Notes history receipts are durable before reply and rotate across explicit Retry", async t => {

@@ -1,5 +1,6 @@
 /** Serializable, body-free task provenance. Captures are timed observations, never input attestations. */
 import type { ExecutionOutcome, ItemOrigin, TurnRef } from "./conversation-events.js";
+import { isTaskContextCapability, type TaskContextCapability } from "./task-context-tools.js";
 
 export type ContextDraftOwner = { kind: "thread"; threadId: string } | { kind: "project"; projectId: string; key: string };
 export interface ContextDraftBinding { owner: ContextDraftOwner; nonce: string; revision: number }
@@ -52,6 +53,8 @@ export interface TaskContextEvidence {
   refs: { id: string; target: ContextTarget; relations: ContextRelation[]; captureIds: string[] }[];
   captures: ContextCapture[];
   checks: TaskCheckEvidence[];
+  /** Latest adapter report per actual attempt; absent in older records. No private connection data. */
+  capabilities?: { turn: TurnRef; at: string; capability: TaskContextCapability }[];
 }
 
 export interface TaskContextCandidates {
@@ -98,6 +101,7 @@ export function sameContextDraftOwner(left: unknown, right: unknown): boolean {
 export function isPendingTaskContext(v: unknown): v is PendingTaskContext {
   return shape(v, ["owner", "projectId", "evidence"]) && isContextDraftOwner(v.owner) && identity(v.projectId) && isTaskContextEvidence(v.evidence)
     && v.evidence.checks.length === 0
+    && !(v.evidence.capabilities?.length)
     && v.evidence.refs.every(ref => ref.captureIds.length > 0 && ref.relations.length > 0 && ref.relations.every(r => r.kind === "relevant" && r.provenance === "user-confirmed" && r.source.kind === "human"))
     && v.evidence.captures.every(c => c.phase === "selected" && c.source.kind === "human" && c.workspace?.projectId === v.projectId);
 }
@@ -165,7 +169,10 @@ function check(v: unknown): v is TaskCheckEvidence {
 
 /** Strictly validate supplied metadata; absence is handled by legacy callers, never by coercion. */
 export function isTaskContextEvidence(v: unknown): v is TaskContextEvidence {
-  if (!shape(v, ["revision", "refs", "captures", "checks"]) || !integer(v.revision) || !Array.isArray(v.refs) || !Array.isArray(v.captures) || !Array.isArray(v.checks)) return false;
+  if (!shape(v, ["revision", "refs", "captures", "checks"], ["capabilities"]) || !integer(v.revision) || !Array.isArray(v.refs) || !Array.isArray(v.captures) || !Array.isArray(v.checks)) return false;
+  if (v.capabilities !== undefined && (!Array.isArray(v.capabilities) || v.capabilities.length > 1000
+    || !v.capabilities.every(c => shape(c, ["turn", "at", "capability"]) && turn(c.turn) && date(c.at) && isTaskContextCapability(c.capability))
+    || new Set(v.capabilities.map(c => (c.turn as TurnRef).attempt)).size !== v.capabilities.length)) return false;
   if (!v.captures.every(capture) || !v.checks.every(check)) return false;
   const captures = new Map(v.captures.map(c => [c.id, c]));
   if (captures.size !== v.captures.length || new Set(v.checks.map(c => c.itemId)).size !== v.checks.length) return false;
@@ -191,7 +198,7 @@ export function copyTaskContextEvidence(value: TaskContextEvidence): TaskContext
 export function taskContextBelongsTo(value: TaskContextEvidence, threadId: string, turnId: string, projectId?: string): boolean {
   const matches = (t: TurnRef) => t.thread === threadId && t.turn === turnId;
   const owns = (s: ContextSource) => s.kind === "native" ? matches(s.origin) : s.kind === "model-proposal" || s.kind === "notes-read" ? matches(s.turn) : true;
-  return value.refs.every(r => r.relations.every(rel => owns(rel.source))) && value.captures.every(c => owns(c.source) && (!c.workspace || ((projectId === undefined || c.workspace.projectId === projectId) && (c.workspace.kind !== "thread" || c.workspace.threadId === threadId)))) && value.checks.every(c => !c.origin || matches(c.origin));
+  return (value.capabilities ?? []).every(c => matches(c.turn)) && value.refs.every(r => r.relations.every(rel => owns(rel.source))) && value.captures.every(c => owns(c.source) && (!c.workspace || ((projectId === undefined || c.workspace.projectId === projectId) && (c.workspace.kind !== "thread" || c.workspace.threadId === threadId)))) && value.checks.every(c => !c.origin || matches(c.origin));
 }
 
 

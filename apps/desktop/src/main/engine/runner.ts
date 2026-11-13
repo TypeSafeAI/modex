@@ -1005,8 +1005,16 @@ export class ThreadRunner {
           update: change => this.updateTaskContext(threadId, l, actualTurn, projectId, change),
         });
         this.contextAttempts.set(actualTurn.attempt, context);
+        const ceiling = local ? "local-execution-unqualified" : ran.backend !== "claude" && ran.backend !== "codex" ? "unsupported-adapter" : undefined;
+        let capabilityFailure: Error | undefined;
+        const reportCapability: NonNullable<TurnSink["taskContextCapability"]> = value => {
+          if (!context.accepting()) return;
+          try { context.capability(ceiling ? { state: "unavailable", reason: ceiling } : value.state === "available" && !taskContext ? { state: "unavailable", reason: "configuration-not-bound" } : value); }
+          catch (error) { capabilityFailure ??= privacy.error(error); abort.abort(); }
+        };
         let failed = false, failure: unknown;
         try {
+          context.capability({ state: "unavailable", reason: ceiling ?? "configuration-not-bound" });
           if (!local && (ran.backend === "claude" || ran.backend === "codex") && this.o.taskContext) {
             taskContext = await this.o.taskContext.prepare({ turn: actualTurn, cwd: codingCwd, projectId, isCurrent: () => context.accepting(), accept: proposal => context.proposed(proposal) }, context.signal);
             privacy.addConnection(taskContext.connection.url);
@@ -1029,7 +1037,7 @@ export class ThreadRunner {
             if (!file) throw new Error(`Attachment ${f.name} is missing or changed. Attach it again before retrying.`);
             return { name: f.name, mime: f.mime, kind: f.kind, path: file };
           });
-          const result = privacy.redact(await backend.runTurn(
+          let result = privacy.redact(await backend.runTurn(
             describeAttachments(describeTaskContext(text, contextAdmission?.context ?? (l.items.find(item => item.id === turnId && item.kind === "user") as UserItem | undefined)?.contextEvidence), turnFiles),
             {
               cwd: ran.cwd, mode: ran.mode, plan: ran.plan, model: ran.model, effort: ran.effort, fast, ...(conserveCredits ? { conserveCredits: true } : {}), resume: ran.sessionHandle, account: accountFor(ran),
@@ -1037,11 +1045,13 @@ export class ThreadRunner {
               addDirs: turnFiles.some((f) => f.kind === "file") ? [path.join(this.attachments.root, threadId)] : [],
               ...(turnFiles.length ? { attachments: turnFiles } : {}), ...(knowledge ? { knowledge: knowledge.connection } : {}), ...(pages ? { pages: pages.connection } : {}), ...(taskContext ? { taskContext: taskContext.connection } : {}), ...(images ? { images: images.connection } : {}),
             },
-            attempt.sink,
+            { ...attempt.sink, taskContextCapability: reportCapability },
             abort.signal,
           ));
+          if (!capabilityFailure && result.taskContextCapability) reportCapability(result.taskContextCapability);
+          if (capabilityFailure) result = { ...result, status: "failed", error: capabilityFailure.message, detail: { ...result.detail, stage: "persist task context capability" }, taskContextCapability: { state: "unavailable", reason: "configuration-not-bound" } };
           context.seal(); privacy.finish();
-          attempt.end(abort.signal.aborted ? "interrupted" : ATTEMPT_OUTCOME[result.status]);
+          attempt.end(capabilityFailure ? "failed" : abort.signal.aborted ? "interrupted" : ATTEMPT_OUTCOME[result.status]);
           if (taskContext) { const closing = taskContext; taskContext = undefined; await closing.close(); }
           if (pages) { const closing = pages; pages = undefined; await closing.close(); }
           const drain = context.flush();

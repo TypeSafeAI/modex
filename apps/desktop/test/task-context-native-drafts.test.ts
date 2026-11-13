@@ -9,6 +9,7 @@ import { NativeDrafts } from "../src/main/engine/native-drafts.js";
 import { isPendingTaskContext, type ContextDraftOwner, type TaskContextEvidence } from "../src/shared/task-context-evidence.js";
 import type { ComposerRecovery } from "../src/shared/update-recovery.js";
 import { tmpdir } from "./helpers.js";
+import { admittedTaskContext } from "./task-context-assertions.js";
 
 const native = { skip: process.platform === "win32" };
 const configuration = { worktree: false, settings: { backend: "mock" as const, mode: "agent" as const, plan: false, auto: false, model: "mock" } };
@@ -37,6 +38,7 @@ async function fixture(t: TestContext) {
 function context(value: unknown): { owner: ContextDraftOwner; projectId: string; evidence: TaskContextEvidence } | undefined {
   return (value as { context?: { owner: ContextDraftOwner; projectId: string; evidence: TaskContextEvidence } } | null)?.context;
 }
+
 async function transfer(h: ReturnType<typeof stack>, session: string, intentId: string, before: ComposerRecovery) {
   const thread = await h.controller.create(session, intentId);
   const after: ComposerRecovery = { ...before, selectedThreadId: thread.id, threads: [{ threadId: thread.id, text: "", attachments: [] }], projects: before.projects.map(p => ({ ...p, text: "", attachments: [] })) };
@@ -55,7 +57,7 @@ test("native pending intent owns selected context and admits it exactly once wit
   const bound = context(h.controller.readPending(h.session, intent.id))!;
   await h.controller.send(h.session, intent.id);
   const user = new Store(h.home).items(thread.id).find(item => item.id === intent.id);
-  assert.ok(user?.kind === "user"); assert.deepEqual(user.contextEvidence, bound.evidence); assert.equal(user.text, " Check ");
+  assert.ok(user?.kind === "user"); admittedTaskContext(user.contextEvidence, bound.evidence, thread.id, user.id); assert.equal(user.text, " Check ");
   assert.equal(h.turns.length, 1); assert.ok(h.turns[0]!.includes("selected.ts")); assert.equal(h.turns[0]!.includes("file-body-must-stay-local"), false);
   assert.equal(h.controller.readPending(h.session, intent.id), null);
   await assert.rejects(h.controller.send(h.session, intent.id)); assert.equal(h.turns.length, 1);
@@ -74,7 +76,7 @@ test("restart retains canonical selected context without restoring an editable n
   const bound = context(next.controller.readPending(opened.session, intent.id))!;
   await next.controller.send(opened.session, intent.id);
   const user = next.store.items(thread.id).find(item => item.id === intent.id);
-  assert.ok(user?.kind === "user"); assert.deepEqual(user.contextEvidence, bound.evidence); assert.equal(h.turns.length, 1);
+  assert.ok(user?.kind === "user"); admittedTaskContext(user.contextEvidence, bound.evidence, thread.id, user.id); assert.equal(h.turns.length, 1);
 });
 
 test("native prewrite failure preserves canonical context for one later explicit send", native, async t => {
@@ -87,7 +89,7 @@ test("native prewrite failure preserves canonical context for one later explicit
   assert.deepEqual(h.controller.readPending(h.session, intent.id), original); assert.deepEqual(h.turns, []);
   await h.controller.send(h.session, intent.id);
   const user = h.store.items(thread.id).find(item => item.id === intent.id);
-  assert.ok(user?.kind === "user"); assert.deepEqual(user.contextEvidence, context(original)!.evidence); assert.equal(h.turns.length, 1);
+  assert.ok(user?.kind === "user"); admittedTaskContext(user.contextEvidence, context(original)!.evidence, thread.id, user.id); assert.equal(h.turns.length, 1);
 });
 
 test("native target binding preserves a large accepted selection and the existing encoded message allowance", native, async t => {
@@ -107,7 +109,7 @@ test("native target binding preserves a large accepted selection and the existin
   assert.equal(h.controller.transfer(h.session, { id: "large-context-transfer", sequence: 3, snapshot: after, intentId: intent.id, files: [] }).status, "committed");
   await h.controller.send(h.session, intent.id);
   const user = new Store(h.home).items(thread.id).find(item => item.id === intent.id);
-  assert.ok(user?.kind === "user"); assert.equal(user.text, rawText); assert.deepEqual(user.contextEvidence, context(bound)!.evidence);
+  assert.ok(user?.kind === "user"); assert.equal(user.text, rawText); admittedTaskContext(user.contextEvidence, context(bound)!.evidence, thread.id, user.id);
   assert.equal(h.turns.length, 1);
 });
 

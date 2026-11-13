@@ -29,6 +29,19 @@ test("saved task refuses malformed context rather than reopening it as trusted l
   assert.equal(tasks.isTaskSnapshot(snapshot({ revision: 3, refs: "forged", captures: [], checks: [] })), false);
 });
 
+test("attempt capability receipts are strict, scoped and preserved independently of legacy absence", () => {
+  const receipt = { turn: { thread: "T", turn: "U", attempt: "A", backend: "codex" }, at, capability: { state: "unavailable", reason: "configuration-not-bound" } };
+  const context = Object.assign(evidence(), { capabilities: [receipt] });
+  assert.equal(tasks.isTaskSnapshot(snapshot(context)), true);
+  const record = tasks.taskRecord([Object.assign({ kind: "user", id: "U", text: "Check", at }, { contextEvidence: context }) as ThreadItem], { threadId: "T", title: "Task", cwd: "/repo" });
+  receipt.capability.reason = "unsupported-adapter";
+  assert.equal((record.contextEvidence as unknown as { capabilities: typeof context.capabilities }).capabilities[0]!.capability.reason, "configuration-not-bound");
+  for (const capabilities of [null, {}, [{ ...receipt, capability: { state: "available", reason: "forged" } }], [{ ...receipt, capability: { state: "unavailable", reason: "invented" } }], [{ ...receipt, url: "private" }], [receipt, receipt], [{ ...receipt, turn: { ...receipt.turn, turn: "foreign" } }]]) {
+    assert.equal(tasks.isTaskSnapshot(snapshot({ ...context, capabilities })), false);
+  }
+  assert.equal(tasks.isTaskSnapshot(snapshot(evidence())), true);
+});
+
 test("model proposal roles survive strict snapshots but cannot claim native or human provenance", () => {
   const context = evidence(); Object.assign(context.refs[0]!.relations[0]!, { role: "test" });
   assert.equal(tasks.isTaskSnapshot(snapshot(context)), true);

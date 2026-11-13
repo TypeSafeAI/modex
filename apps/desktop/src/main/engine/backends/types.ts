@@ -2,8 +2,19 @@ import type { Writable } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
 import type { AgentActivity, ApprovalAnswer, BackendHealth, BackendId, Mode, ModelInfo } from "../../../shared/types.js";
 import type { NativeRef, Observation } from "../../../shared/conversation-events.js";
+import type { TaskContextCapability } from "../../../shared/task-context-tools.js";
 
 export type { ModelInfo };
+
+/** Carry setup reports through early failures without treating a task result as a capability check. */
+export async function withTaskContextCapability(initial: TaskContextCapability, sink: TurnSink, run: (sink: TurnSink) => Promise<TurnResult>): Promise<TurnResult> {
+  let latest = structuredClone(initial);
+  const report = (value: TaskContextCapability) => { latest = structuredClone(value); sink.taskContextCapability?.(structuredClone(value)); };
+  report(initial);
+  const result = await run({ ...sink, taskContextCapability: report });
+  if (result.taskContextCapability) report(result.taskContextCapability);
+  return { ...result, taskContextCapability: latest };
+}
 
 export interface ToolStart {
   id: string;
@@ -70,6 +81,8 @@ export type QuestionReply = { answers: Record<string, string[]> } | { withdrawn:
 
 /** Callbacks a backend uses to report one turn to the ThreadRunner. */
 export interface TurnSink {
+  /** Main-only adapter report. It grants no execution or Notes authority and contains no route/token. */
+  taskContextCapability?(capability: import("../../../shared/task-context-tools.js").TaskContextCapability): void;
   /**
    * Assistant text, reasoning and tool work, each named by its native identity: the one path for
    * all three (shared/conversation-events.ts, docs/conversation-events.md). The runner stamps it

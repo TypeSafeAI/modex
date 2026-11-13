@@ -9,7 +9,7 @@ import { generateTitle } from "../titles.js";
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { Backend, ModelInfo, NativeRequest, TitleOptions, TurnOptions, TurnResult, TurnSink } from "./types.js";
-import { LineBuffer, stderrTail, writeJsonResponse } from "./types.js";
+import { LineBuffer, stderrTail, writeJsonResponse, withTaskContextCapability } from "./types.js";
 import { codexCall, UsageMeter, withUsage } from "./usage.js";
 import { cliEnvironment, cliSpawn, health, installation } from "./health.js";
 import type { AgentActivity, BackendHealth } from "../../../shared/types.js";
@@ -348,6 +348,9 @@ export class CodexBackend implements Backend {
    * is run again on a server that has read the current sign-in. Other failures return as they are.
    */
   async runTurn(text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult> {
+    return withTaskContextCapability({ state: "unavailable", reason: this.configuration?.local ? "local-execution-unqualified" : "configuration-not-bound" }, sink, reported => this.runCodingTurn(text, opts, reported, signal));
+  }
+  private async runCodingTurn(text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult> {
     const local = this.configuration?.local;
     if (local && opts.model !== local.model) return { status: "failed", error: "This local Codex runs only its selected model. Select the local target again to start a fresh conversation." };
     if (local && opts.resume && !this.loaded.has(opts.resume)) return { status: "failed", error: "This conversation's native session belongs to another Codex process. Select the local target again to start a fresh conversation." };
@@ -366,6 +369,7 @@ export class CodexBackend implements Backend {
       if (!shared) this.restart("Codex was restarted to pick up a new sign-in.");
       const opened = first.detail?.codexThreadId;
       const resume = typeof opened === "string" ? opened : opts.resume;
+      sink.taskContextCapability?.({ state: "unavailable", reason: "configuration-not-bound" });
       const second = await this.attempt(text, { ...opts, resume }, sink, signal);
       if (second.status !== "failed") return second;
       return { ...second, detail: { ...second.detail, firstAttempt: { error: first.error, ...first.detail } }, recovery: [`${step}: failed again`] };
@@ -447,6 +451,7 @@ export class CodexBackend implements Backend {
     if (signal.aborted) return { status: "interrupted" };
     this.loaded.add(threadId);
     this.metadataConnections.set(threadId, metadata);
+    if (taskContext) sink.taskContextCapability?.({ state: "available" });
     sink.session(threadId);
 
     const tid = threadId;

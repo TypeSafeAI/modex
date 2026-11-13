@@ -11,7 +11,7 @@ import { PAGES_TOOLS } from "../../../shared/pages.js";
 import { TASK_CONTEXT_TOOLS } from "../../../shared/task-context-tools.js";
 import { KNOWLEDGE_TOOLS } from "../../../shared/knowledge.js";
 import type { ApprovalRequest, Backend, ModelInfo, StopReport, TitleOptions, TurnAttachment, TurnOptions, TurnResult, TurnSink } from "./types.js";
-import { LineBuffer, shortJson, stderrTail, writeJsonResponse } from "./types.js";
+import { LineBuffer, shortJson, stderrTail, writeJsonResponse, withTaskContextCapability } from "./types.js";
 import { claudeCall, UsageMeter, withUsage } from "./usage.js";
 import { cliEnvironment, cliSpawn, health, installation, probe } from "./health.js";
 import type { ApprovalAnswer, BackendHealth } from "../../../shared/types.js";
@@ -158,6 +158,9 @@ export class ClaudeBackend implements Backend {
   }
 
   runTurn(text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult> {
+    return withTaskContextCapability({ state: "unavailable", reason: "configuration-not-bound" }, sink, reported => this.runClaudeTurn(text, opts, reported, signal));
+  }
+  private runClaudeTurn(text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult> {
     if (signal.aborted) return Promise.resolve({ status: "interrupted" });
     return new Promise((resolve) => {
       let child: ChildProcess;
@@ -401,7 +404,12 @@ export class ClaudeBackend implements Backend {
         // The thread's own calls only: sub-agents run on their own context. One call can span several messages with one id.
         if (msg.type === "assistant" && !msg.parent_tool_use_id && msg.message?.usage) meter.call(claudeCall(msg.message.usage), msg.message.id);
         if ((msg.type === "result" || (msg.type === "system" && msg.subtype === "init")) && msg.fast_mode_state !== undefined) fast = { state: msg.fast_mode_state, reason: msg.fast_mode_disabled_reason };
-        if (msg.type === "system" && msg.subtype === "init") sawAssistant = false;
+        if (msg.type === "system" && msg.subtype === "init") {
+          sawAssistant = false;
+          const connected = opts.taskContext && !opts.confinement && Array.isArray(msg.mcp_servers)
+            && msg.mcp_servers.some(server => server && server.name === "modex_task_context" && server.status === "connected");
+          sink.taskContextCapability?.(connected ? { state: "available" } : { state: "unavailable", reason: "configuration-not-bound" });
+        }
         if (msg.type === "assistant" && !msg.parent_tool_use_id) sawAssistant = true;
         if (msg.type === "result") return onResult(msg);
         // An API refusal arrives as a synthetic assistant reply, then again as the failed result. The
@@ -702,6 +710,7 @@ interface ClaudeUsage {
   output_tokens?: number;
 }
 interface ClaudeMessage {
+  mcp_servers?: { name?: string; status?: string }[];
   type: string;
   subtype?: string;
   parent_tool_use_id?: string | null;

@@ -5,6 +5,7 @@ import { Store } from "../src/main/engine/store.js";
 import { ThreadRunner } from "../src/main/engine/runner.js";
 import { TerminalManager } from "../src/main/engine/terminal.js";
 import { gitRepo, tmpdir } from "./helpers.js";
+import { admittedTaskContext } from "./task-context-assertions.js";
 import { stateFor } from "../src/main/engine/routing/judge.js";
 import type { ContextDraftBinding, TaskContextEvidence } from "../src/shared/task-context-evidence.js";
 
@@ -68,7 +69,7 @@ test("first ordinary Send carries selected receipts once and refuses a second Se
   const thread = await f.invoke("thread:create", { projectId: f.project.id, backend: "mock", auto: false, contextDraft: selected.binding });
   assert.deepEqual(await f.invoke("thread:send", { threadId: thread.id, text: "Check", contextDraft: selected.binding }), { ok: true });
   const user = f.store.items(thread.id).find(i => i.kind === "user");
-  assert.ok(user?.kind === "user"); assert.deepEqual(user.contextEvidence, selected.context);
+  assert.ok(user?.kind === "user"); admittedTaskContext(user.contextEvidence, selected.context, thread.id, user.id);
   assert.equal(f.turns(), 1);
   assert.ok(f.inputs[0]!.includes("README.md"), "selected relative refs reach the existing native coding input");
   assert.equal(f.inputs[0]!.includes(f.project.path), false);
@@ -93,7 +94,7 @@ test("a failed user write keeps the selection editable and a later explicit Send
   assert.equal(f.turns(), 0); assert.deepEqual(f.store.items(thread.id), []);
   assert.equal((await f.invoke("thread:send", { threadId: thread.id, text: "Check", contextDraft: selected.binding })).ok, true);
   const user = f.store.items(thread.id).find(i => i.kind === "user");
-  assert.ok(user?.kind === "user"); assert.deepEqual(user.contextEvidence, selected.context);
+  assert.ok(user?.kind === "user"); admittedTaskContext(user.contextEvidence, selected.context, thread.id, user.id);
   assert.equal(f.turns(), 1);
 });
 

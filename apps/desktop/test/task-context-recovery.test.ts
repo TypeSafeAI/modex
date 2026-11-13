@@ -11,6 +11,7 @@ import { NativeDrafts } from "../src/main/engine/native-drafts.js";
 import { AttachmentStore } from "../src/main/engine/attachments.js";
 import type { ContextDraftOwner } from "../src/shared/task-context-evidence.js";
 import { gitRepo, tmpdir } from "./helpers.js";
+import { admittedTaskContext } from "./task-context-assertions.js";
 
 const native = { skip: process.platform === "win32" };
 function fixture(capture = new TaskContextCapture()) {
@@ -232,7 +233,7 @@ test("restart after a pre-user-write failure restores the selection and exact cr
   assert.equal(same.id, thread.id); assert.equal(next.store.snapshot().threads.length, 1);
   await next.runner.send(same.id, "Check", [], "desktop", binding);
   const user = next.store.items(same.id).find(item => item.kind === "user"); assert.ok(user?.kind === "user");
-  assert.deepEqual(user.contextEvidence, selected.context); assert.equal(turns.length, 1);
+  admittedTaskContext(user.contextEvidence, selected.context, thread.id, user.id); assert.equal(turns.length, 1);
 });
 
 for (const defect of ["schema", "scope", "context-body", "owner"] as const) {

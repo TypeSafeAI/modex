@@ -53,6 +53,22 @@ function fakeServer(proc: FakeProcess, opts: { sessionId?: string; resume?: bool
 
 const opts = { cwd: "/repo", mode: "agent" as const, plan: false, model: "" };
 
+for (const family of ["opencode", "mimo"] as const) test(`${family} explicitly reports unavailable proposal capability on fresh, resume and load`, async () => {
+  for (const resume of [undefined, "resume", "load"]) {
+    const proc = new FakeProcess(), server = fakeServer(proc, { resume: resume !== "load" }), backend = new AcpBackend(family, family, fakeSpawn(proc).spawn);
+    const reports: unknown[] = [], collected = collectSink();
+    const sink = Object.assign(collected.sink, { taskContextCapability: (value: unknown) => reports.push(value) });
+    try {
+      const run = backend.runTurn("hello", { ...opts, ...(resume ? { resume: server.sessionId } : {}), taskContext: { url: "http://127.0.0.1:1234/private", instructions: "MUST NOT BE ADVERTISED" } }, sink, new AbortController().signal);
+      await proc.waitFor(line => line.includes('"session/prompt"')); server.endTurn(); const result = await run;
+      assert.deepEqual((result as unknown as { taskContextCapability: unknown }).taskContextCapability, { state: "unavailable", reason: "unsupported-adapter" });
+      assert.ok(reports.length); assert.ok(reports.every(value => JSON.stringify(value) === JSON.stringify({ state: "unavailable", reason: "unsupported-adapter" })));
+      const opening = server.seen.find(request => request.method === (resume === "load" ? "session/load" : resume ? "session/resume" : "session/new")); assert.deepEqual(opening?.params.mcpServers, []);
+      assert.equal(JSON.stringify(server.seen).includes("MUST NOT BE ADVERTISED"), false);
+    } finally { await backend.dispose(); }
+  }
+});
+
 test("ACP backend injects Modex's agents inline, opens a session in the thread's cwd, picks the mode agent and streams the reply", async () => {
   const proc = new FakeProcess();
   const server = fakeServer(proc);

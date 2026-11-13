@@ -12,6 +12,17 @@ import { gitRepo, tmpdir } from "./helpers.js";
 
 const MODEL = "qwen3.8-flash-next-iq3_s";
 
+test("local attempts persist unqualified proposal capability even if a synthetic adapter reports available", async () => {
+  const h = await setup(async sink => { assert.ok(sink.taskContextCapability); sink.taskContextCapability({ state: "available" }); return { status: "completed" }; });
+  try {
+    h.select(); await h.runner.send(h.thread.id, "local fixture");
+    const user = h.store.items(h.thread.id).find(item => item.kind === "user"); assert.ok(user?.kind === "user");
+    assert.deepEqual(user.contextEvidence?.capabilities?.map(c => c.capability), [{ state: "unavailable", reason: "local-execution-unqualified" }]);
+    assert.ok(user.contextEvidence?.capabilities?.every(c => c.turn.thread === h.thread.id && c.turn.turn === user.id && c.turn.backend === "codex"));
+    assert.equal(h.turns[0]?.taskContext, undefined); assert.equal(h.counts.cloud, 0); assert.equal(h.counts.adapters, 0);
+  } finally { await h.runner.dispose(); }
+});
+
 test("only this Mac can send or retry a local turn; remote refusals preserve the transcript", async () => {
   const h = await setup();
   try {

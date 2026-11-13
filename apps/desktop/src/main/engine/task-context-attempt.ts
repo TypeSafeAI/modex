@@ -5,7 +5,7 @@ import type { ThreadItem } from "../../shared/types.js";
 import { contextRefId, type ContextCapture, type ContextRelation, type ContextTarget, type TaskContextEvidence } from "../../shared/task-context-evidence.js";
 import type { TaskContextCapture } from "./task-context-capture.js";
 import type { PagesReadReceipt } from "./pages-agents.js";
-import type { TaskContextProposal, TaskContextProposalResult } from "../../shared/task-context-tools.js";
+import { isTaskContextCapability, type TaskContextCapability, type TaskContextProposal, type TaskContextProposalResult } from "../../shared/task-context-tools.js";
 import type { Exec } from "../../shared/evidence.js";
 
 type Tool = Extract<ThreadItem, { kind: "tool" }>;
@@ -24,6 +24,7 @@ export class TaskContextAttempt {
   private readonly pending = new Set<Promise<void>>();
   private readonly errors: unknown[] = [];
   private sealed = false;
+  private lastCapability?: string;
   constructor(private readonly o: {
     turn: TurnRef; cwd: string; projectId: string; signal: AbortSignal;
     capture: Pick<TaskContextCapture, "capture">;
@@ -36,6 +37,18 @@ export class TaskContextAttempt {
   accepting(): boolean { return !this.sealed && this.current(); }
   seal(): void { this.sealed = true; }
   close(): void { this.abort.abort(); }
+  capability(value: TaskContextCapability): void {
+    if (!this.accepting()) return;
+    if (!isTaskContextCapability(value)) throw new Error("Invalid task context capability report.");
+    const signature = JSON.stringify(value);
+    if (this.lastCapability === signature) return;
+    this.change(context => {
+      const receipts = context.capabilities ??= [], index = receipts.findIndex(c => c.turn.attempt === this.o.turn.attempt);
+      const receipt = { turn: structuredClone(this.o.turn), at: new Date().toISOString(), capability: structuredClone(value) };
+      if (index < 0) receipts.push(receipt); else receipts[index] = receipt;
+    });
+    this.lastCapability = signature;
+  }
   flush(): Promise<void> | undefined {
     if (!this.pending.size) { if (this.errors.length) throw this.errors[0]; return; }
     return Promise.all(this.pending).then(() => { if (this.errors.length) throw this.errors[0]; });
@@ -145,6 +158,7 @@ export class TaskContextAttempt {
     if (this.o.privateValue?.(proposal)) throw new Error("Task context proposal contains a private connection.");
     const signature = JSON.stringify(proposal), prior = this.proposals.get(proposal.receiptId);
     if (prior) { if (prior.signature !== signature) throw new Error("Task context proposal receipt changed."); return structuredClone(prior.result); }
+    this.capability({ state: "available" });
     const source = { kind: "model-proposal" as const, turn: structuredClone(this.o.turn), leaseId: proposal.leaseId, receiptId: proposal.receiptId, requestId: proposal.requestId, at: proposal.at };
     let result: TaskContextProposalResult | undefined;
     this.change(context => {
