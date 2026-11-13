@@ -99,6 +99,9 @@ export function registerCommands(handle: RegisterCommand, {
   });
   handle("thread:create", ({ projectId, worktree, mode, model, backend, auto }) => runner.createThread(projectId, { worktree, mode, model, backend, auto }));
   handle("thread:items", ({ threadId }) => runner.items(threadId));
+  handle("task:context-draft-open", ({ owner }) => runner.openContextDraft(owner));
+  handle("task:context-draft-select", ({ binding, targets }) => runner.selectTaskContext(binding, targets));
+  handle("task:context-draft-close", ({ binding }) => runner.closeContextDraft(binding));
   handle("task:save-note", ({ threadId, turnId }) => runner.saveTaskNote(threadId, turnId));
   handle("task:note", ({ pageId }) => runner.taskNote(pageId));
   handle("thread:followup", ({ threadId }) => runner.followUp(threadId));

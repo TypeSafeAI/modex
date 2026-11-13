@@ -131,3 +131,24 @@ test("a first-send worktree keeps original selection provenance and marks its ne
   assert.deepEqual(consumed.captures[1]!.revision, { state: "unavailable", reason: "not-captured" });
   assert.equal(consumed.refs[0]!.captureIds.length, 2);
 });
+
+test("cancelling a removal's pending capture preserves previously accepted selections", async t => {
+  let entered!: () => void;
+  const started = new Promise<void>(r => { entered = r; });
+  let calls = 0;
+  const capture = new class extends TaskContextCapture {
+    override async captureSelection(...args: Parameters<TaskContextCapture["captureSelection"]>) {
+      if (++calls > 1) {
+        entered();
+        await new Promise<void>(resolve => { if (args[5].aborted) resolve(); else args[5].addEventListener("abort", () => resolve(), { once: true }); });
+      }
+      return super.captureSelection(...args);
+    }
+  };
+  const f = setup(capture); t.after(() => f.runner.dispose());
+  const selected = await f.service.selectTaskContext(f.service.openContextDraft(f.owner), [{ kind: "file", path: "README.md" }]);
+  const pending = f.service.selectTaskContext(selected.binding, [{ kind: "file", path: "README.md" }, { kind: "file", path: "package.json" }]);
+  await started; f.service.cancelProjectCaptures(f.project.id);
+  await assert.rejects(pending, /stale|draft/);
+  assert.deepEqual(f.service.readDraft(selected.binding), selected.context, "a refused removal can keep its original confirmed context");
+});

@@ -1,3 +1,6 @@
+import { TaskContextCapture } from "./task-context-capture.js";
+import { TaskContextService } from "./task-context-service.js";
+import type { ContextDraftOwner, ContextDraftBinding, ContextTarget, TaskContextEvidence } from "../../shared/task-context-evidence.js";
 import { executionBinding } from "./execution-binding.js";
 import { resolveCli } from "./cli-path.js";
 import type { LocalExecution } from "./local-models/execution.js";
@@ -158,8 +161,10 @@ export class ThreadRunner {
   readonly attachments: AttachmentStore;
   /** Raw output of tools that outgrew the transcript's preview (main/engine/tool-logs.ts). */
   readonly toolLogs: ToolLogStore;
+  private readonly contextDrafts: TaskContextService;
 
   constructor(private readonly o: RunnerOptions) {
+    this.contextDrafts = new TaskContextService({ store: o.store, capture: new TaskContextCapture() });
     this.attachments = o.attachments ?? new AttachmentStore(path.join(o.home, "attachments"));
     this.toolLogs = new ToolLogStore(path.join(o.home, "app", "tool-logs"));
     const s = () => o.store.settings;
@@ -202,6 +207,7 @@ export class ThreadRunner {
 
   async dispose(): Promise<void> {
     this.disposing = true;
+    this.contextDrafts.dispose();
     for (const abort of this.naming.values()) abort.abort();
     this.naming.clear();
     const runs = [...this.live.values()].flatMap((l) => l.run ? [l.run] : []);
@@ -366,6 +372,22 @@ export class ThreadRunner {
       return { completed: this.slot(threadId).completed === true };
     } finally { this.unattended.delete(threadId); }
   }
+
+  private assertContextEditing(owner: ContextDraftOwner): void {
+    this.assertNotRestarting();
+    if (this.disposing) throw new Error("Modex is shutting down.");
+    if (owner?.kind === "thread") this.assertThreadAvailable(owner.threadId);
+    else if (owner?.kind === "project" && this.removingProjects.has(owner.projectId)) throw new Error("This project is being removed.");
+  }
+  openContextDraft(owner: ContextDraftOwner): ContextDraftBinding {
+    this.assertContextEditing(owner);
+    return this.contextDrafts.openContextDraft(owner);
+  }
+  selectTaskContext(binding: ContextDraftBinding, targets: ContextTarget[]): Promise<{ binding: ContextDraftBinding; context: TaskContextEvidence }> {
+    this.assertContextEditing(binding?.owner);
+    return this.background.run(() => this.contextDrafts.selectTaskContext(binding, targets));
+  }
+  closeContextDraft(binding: ContextDraftBinding): void { this.contextDrafts.closeContextDraft(binding); }
 
   /**
    * Saves a turn's task record (shared/task-context.ts) to the thread's project notes, at a person's
@@ -553,6 +575,7 @@ export class ThreadRunner {
   private async removeProjectHeld(projectId: string): Promise<void> {
     if (this.removingProjects.has(projectId)) throw new Error("This project is being removed.");
     this.removingProjects.add(projectId);
+    this.contextDrafts.cancelProjectCaptures(projectId);
     try {
       await Promise.allSettled(this.creating.get(projectId) ?? []);
       const threads = this.o.store.snapshot().threads.filter((thread) => thread.projectId === projectId);
@@ -560,6 +583,7 @@ export class ThreadRunner {
       const failure = removals.find((result): result is PromiseRejectedResult => result.status === "rejected");
       if (failure) throw failure.reason;
       this.o.store.removeProject(projectId);
+      this.contextDrafts.invalidateProject(projectId);
     } finally {
       this.removingProjects.delete(projectId);
     }
@@ -573,6 +597,7 @@ export class ThreadRunner {
   private async deleteThreadHeld(threadId: string, removeWorktree = false): Promise<void> {
     if (this.deleting.has(threadId)) throw new Error("This thread is being deleted. If its CLI has not confirmed the stop, press Stop again to force it.");
     this.deleting.add(threadId);
+    this.contextDrafts.cancelThreadCaptures(threadId);
     this.naming.get(threadId)?.abort();
     this.naming.delete(threadId);
     try {
@@ -602,6 +627,7 @@ export class ThreadRunner {
       }
       clearTimeout(l?.flushTimer);
       this.o.store.deleteThread(threadId);
+      this.contextDrafts.invalidateThread(threadId);
       this.attachments.removeThread(threadId);
       this.toolLogs.removeThread(threadId);
       this.live.delete(threadId);

@@ -4,7 +4,7 @@ import type { TaskContextCapture, CapturedNoteInput } from "./task-context-captu
 import { contextRefId, copyTaskContextEvidence, type ContextCapture, type ContextDraftOwner, type ContextDraftBinding, type ContextTarget, type TaskContextEvidence } from "../../shared/task-context-evidence.js";
 
 interface Scope { projectId: string; cwd: string; identity: string }
-interface Draft { binding: ContextDraftBinding; scope: Scope; context: TaskContextEvidence; abort: AbortController; created?: { id: string; at: string } }
+interface Draft { binding: ContextDraftBinding; scope: Scope; context: TaskContextEvidence; abort: AbortController; generation: number; created?: { id: string; at: string } }
 const fail = () => new Error("Task context draft is stale or no longer belongs to this composer/project.");
 const key = (owner: ContextDraftOwner) => owner.kind === "thread" ? `thread:${owner.threadId}` : owner.key;
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -39,7 +39,7 @@ export class TaskContextService {
     const scope = this.scope(owner), old = this.owners.get(key(owner));
     if (old) this.closeContextDraft(this.drafts.get(old)!.binding);
     const binding = { owner: structuredClone(owner), nonce: randomUUID(), revision: 0 };
-    this.drafts.set(binding.nonce, { binding, scope, context: empty(), abort: new AbortController() });
+    this.drafts.set(binding.nonce, { binding, scope, context: empty(), abort: new AbortController(), generation: 0 });
     this.owners.set(key(owner), binding.nonce);
     return structuredClone(binding);
   }
@@ -54,7 +54,7 @@ export class TaskContextService {
     return notes.tree().nodes.some(n => n.kind === "file" && n.id === target.id && within(n.rel));
   }
   async selectTaskContext(binding: ContextDraftBinding, targets: ContextTarget[]): Promise<{ binding: ContextDraftBinding; context: TaskContextEvidence }> {
-    const draft = this.current(binding);
+    const draft = this.current(binding), generation = draft.generation;
     if (!Array.isArray(targets)) throw fail();
     const unique = new Map<string, ContextTarget>();
     for (const target of targets) {
@@ -81,7 +81,7 @@ export class TaskContextService {
     const captures: ContextCapture[] = captured.map(capture => ({ ...capture, workspace: capture.target.kind === "file" && draft.binding.owner.kind === "thread"
       ? { kind: "thread", projectId: draft.scope.projectId, threadId: draft.binding.owner.threadId }
       : { kind: "project", projectId: draft.scope.projectId } }));
-    if (this.current(binding) !== draft) throw fail();
+    if (this.current(binding) !== draft || draft.generation !== generation) throw fail();
     for (const target of requested) if (target.kind !== "file" && !this.noteInScope(draft.scope.projectId, target)) throw fail();
     for (const note of notes) if (note.target.kind === "note") {
       const pageId = note.target.pageId;
@@ -135,6 +135,16 @@ export class TaskContextService {
     return copyTaskContextEvidence(context);
   }
   readDraft(binding: ContextDraftBinding): TaskContextEvidence { return copyTaskContextEvidence(this.current(binding).context); }
+  private cancelCapture(draft: Draft): void {
+    draft.abort.abort(); draft.abort = new AbortController(); draft.generation++;
+  }
+  /** Cancel work at removal start while keeping accepted selections if removal later refuses. */
+  cancelProjectCaptures(projectId: string): void {
+    for (const draft of this.drafts.values()) if (draft.scope.projectId === projectId) this.cancelCapture(draft);
+  }
+  cancelThreadCaptures(threadId: string): void {
+    for (const draft of this.drafts.values()) if ((draft.binding.owner.kind === "thread" && draft.binding.owner.threadId === threadId) || draft.created?.id === threadId) this.cancelCapture(draft);
+  }
   invalidateProject(projectId: string): void {
     for (const draft of this.drafts.values()) if (draft.scope.projectId === projectId) this.closeContextDraft(draft.binding);
     for (const [nonce, row] of this.spent) if (row.projectId === projectId) this.spent.delete(nonce);

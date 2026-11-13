@@ -626,6 +626,9 @@ export interface BridgeCommands extends NativeDraftCommands, ImageCommands, Plug
   "thread:create": { req: { projectId: string; worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean }; res: Thread };
   "thread:items": { req: { threadId: string }; res: ThreadItem[] };
   /** Saves one turn's task record to its project's notes, or updates the note it was saved to (docs/task-context.md). */
+  "task:context-draft-open": { req: { owner: import("./task-context-evidence.js").ContextDraftOwner }; res: import("./task-context-evidence.js").ContextDraftBinding };
+  "task:context-draft-select": { req: { binding: import("./task-context-evidence.js").ContextDraftBinding; targets: import("./task-context-evidence.js").ContextTarget[] }; res: { binding: import("./task-context-evidence.js").ContextDraftBinding; context: import("./task-context-evidence.js").TaskContextEvidence } };
+  "task:context-draft-close": { req: { binding: import("./task-context-evidence.js").ContextDraftBinding }; res: void };
   "task:save-note": { req: { threadId: string; turnId: string }; res: { pageId: string; title: string; revision: number; created: boolean; preserved: boolean } };
   /** A saved task note, reopened read-only; null when the page is not one. Runs and writes nothing. */
   "task:note": { req: { pageId: string }; res: import("./task-context.js").TaskNoteView | null };
