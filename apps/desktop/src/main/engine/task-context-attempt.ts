@@ -7,6 +7,7 @@ import type { TaskContextCapture } from "./task-context-capture.js";
 import type { PagesReadReceipt } from "./pages-agents.js";
 import { isTaskContextCapability, type TaskContextCapability, type TaskContextProposal, type TaskContextProposalResult } from "../../shared/task-context-tools.js";
 import type { Exec } from "../../shared/evidence.js";
+import { checkDirectoryChanges, isCheckCommand, mayWrite } from "../../shared/task-context.js";
 
 type Tool = Extract<ThreadItem, { kind: "tool" }>;
 type Operation = { target: ContextTarget; kind: "read" | "changed" | "searched" };
@@ -31,6 +32,8 @@ export class TaskContextAttempt {
     privateValue?(value: unknown): boolean;
     current(): boolean;
     update(change: (context: TaskContextEvidence) => void): void;
+    read(): TaskContextEvidence;
+    planRevision(): number | undefined;
     publicationFailed?(error: unknown): void;
   }) { this.signal = AbortSignal.any([o.signal, this.abort.signal]); }
 
@@ -96,10 +99,81 @@ export class TaskContextAttempt {
     }
     return operations;
   }
+  planChanged(): void {
+    if (!this.accepting() || !this.o.read().checks.length) return;
+    this.change(context => { for (const check of context.checks) check.staleness = "stale"; });
+  }
+  private checkAccepted(event: ConversationEvent, item: Tool, nativeExec?: Exec): void {
+    if (event.type !== "tool.start" && event.type !== "tool.done") return;
+    const exec = nativeExec ?? item.exec, command = exec?.command;
+    if (!command || !item.origin) return;
+    if (item.unavailableInputs?.includes("exec.command") || this.o.privateValue?.(command)) {
+      if (event.type === "tool.done" && event.outcome !== "denied") this.planChanged();
+      return;
+    }
+    if (!isCheckCommand(command)) {
+      if (event.type === "tool.done" && event.outcome !== "denied" && mayWrite(command) && this.o.read().checks.length) this.planChanged();
+      return;
+    }
+    const source = { kind: "native" as const, itemId: item.id, origin: item.origin };
+    const phase = event.type === "tool.start" ? "check-start-observed" : "check-end-observed";
+    const placeholders: ContextCapture[] = [];
+    this.change(context => {
+      let check = context.checks.find(c => c.itemId === item.id);
+      if (!check) {
+        const changes = checkDirectoryChanges(command);
+        const cwd = exec?.cwd && !item.unavailableInputs?.includes("exec.cwd") && changes
+          ? changes.reduce((cwd, change) => path.resolve(cwd, change), path.resolve(exec.cwd)) : undefined;
+        const relative = cwd === undefined ? undefined : path.relative(this.o.cwd, cwd);
+        const scope = relative === undefined ? "unknown" : relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative) ? "outside" : "project";
+        const planRevision = this.o.planRevision();
+        check = { itemId: item.id, origin: item.origin, eventIds: [], command, outcome: "running", scope,
+          relevantRefIds: [], relevance: "unestablished", startCaptureIds: [], endCaptureIds: [], staleness: "unknown",
+          ...(planRevision === undefined ? {} : { planRevision }) };
+        context.checks.push(check);
+      }
+      check.eventIds.push(event.id);
+      if (event.type === "tool.start") check.startedAt = event.at;
+      else {
+        check.finishedAt = event.at; check.outcome = event.outcome;
+        if (item.exitCode !== undefined) check.exitCode = item.exitCode;
+        // Millisecond timestamps can tie even when the start read is still queued. Preserve
+        // that missed boundary rather than retroactively promoting a late hash on settlement.
+        if (check.staleness !== "stale") check.staleness = check.startedAt && check.startCaptureIds.length
+          && check.startCaptureIds.every(id => context.captures.some(c => c.id === id && c.revision.state === "available")) ? "current-observation" : "unknown";
+      }
+      // An unconfirmed model proposal never causes a filesystem or Notes body read.
+      const refs = event.type === "tool.start"
+        ? context.refs.filter(ref => ref.relations.some(r => r.provenance === "user-confirmed" || r.provenance === "observed"))
+        : context.refs.filter(ref => ref.captureIds.some(id => check!.startCaptureIds.includes(id)));
+      for (const ref of refs) {
+        const capture: ContextCapture = { id: randomUUID(), target: ref.target, source, phase, startedAt: event.at, finishedAt: event.at,
+          repository: { state: "unavailable", reason: "not-captured" }, revision: { state: "unavailable", reason: "not-captured" },
+          workspace: { kind: "thread", projectId: this.o.projectId, threadId: this.o.turn.thread } };
+        placeholders.push(capture); context.captures.push(capture); ref.captureIds.push(capture.id);
+        (event.type === "tool.start" ? check.startCaptureIds : check.endCaptureIds).push(capture.id);
+      }
+    });
+    if (!placeholders.length) return;
+    const pending = this.o.capture.capture(this.o.cwd, placeholders.map(c => c.target), source, phase, this.signal).then(captures => {
+      if (!this.current()) return;
+      this.change(context => {
+        for (const placeholder of placeholders) {
+          const capture = captures.find(c => contextRefId(c.target) === contextRefId(placeholder.target));
+          const index = context.captures.findIndex(c => c.id === placeholder.id);
+          if (capture && index >= 0) context.captures[index] = { ...capture, id: placeholder.id, workspace: placeholder.workspace };
+        }
+      });
+    }).catch(error => { if (this.current()) this.errors.push(error); }).finally(() => { this.pending.delete(pending); });
+    this.pending.add(pending);
+  }
   accepted(event: ConversationEvent, item: Tool, nativeArgs?: Record<string, unknown>, nativeExec?: Exec): void {
     if (!this.accepting() || !item.origin || !sameTurn(item.origin, this.o.turn) || (event.type !== "tool.start" && event.type !== "tool.done")) return;
     const key = JSON.stringify([item.id, event.type]);
     if (this.native.has(key)) return;
+    this.checkAccepted(event, item, nativeExec);
+    this.native.add(key);
+    if (event.type === "tool.done" && event.outcome !== "denied" && ["Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch"].includes(item.name) && this.o.read().checks.length) this.planChanged();
     // Display previews may truncate strings; derive identities from accepted native arguments instead.
     const operations = event.type === "tool.done" && nativeArgs === undefined
       ? this.requested.get(item.id) ?? []

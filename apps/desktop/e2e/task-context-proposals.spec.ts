@@ -64,6 +64,8 @@ test("main owns a proposal service across fresh/resumed turns and revokes each p
       expect(user.contextEvidence?.captures).toEqual([]); expect(user.contextEvidence?.checks).toEqual([]);
       expect(JSON.stringify(user.contextEvidence)).not.toContain("private-note-body-not-inspected");
       expect(user.contextEvidence?.capabilities?.map(receipt => receipt.capability)).toEqual([{ state: "available" }]);
+      expect(await page.evaluate(turnId => window.modex!.invoke("task:context", { threadId: "proposal-thread", turnId }), user.id)).toEqual(user.contextEvidence);
+      await expect(page.evaluate(({ turnId, revision, refId }) => window.modex!.invoke("task:check-confirm", { threadId: "proposal-thread", turnId, expectedRevision: revision, itemId: "foreign-check", refIds: [refId] }), { turnId: user.id, revision: user.contextEvidence!.revision, refId: user.contextEvidence!.refs[0]!.id })).rejects.toThrow(/does not belong/);
     }
     const reports = fs.readFileSync(path.join(home, "fixture-proposals.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line));
     expect(reports).toEqual([{ missing: false, oldStatus: null, fresh: true, status: 200, error: false }, { missing: false, oldStatus: 404, fresh: true, status: 200, error: false }]);

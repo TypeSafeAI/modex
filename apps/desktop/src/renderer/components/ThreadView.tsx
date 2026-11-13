@@ -228,7 +228,7 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
         {turns.map((turn, i) => (
           <DeferMarkdown.Provider key={turn.user?.id ?? `pre-${i}`} value={i < turns.length - EAGER_TURNS ? scroller : null}>
           <TurnContent key={turn.user?.id ?? `pre-${i}`} turn={turn} status={i === lastUser && busy ? thread.status : undefined}
-            footer={(t) => <><MessageActions threadId={thread.id} turn={t} readOnly={Boolean(thread.retired)} noteSaved={Boolean(thread.taskNotes?.[t.user!.id])} /><TaskNoPlanLine items={t.rest} /><TaskVerificationLine items={t.rest} /><TaskContextLine items={t.user ? [t.user, ...t.rest] : t.rest} cwd={thread.cwd} /></>}
+            footer={(t) => <><MessageActions threadId={thread.id} turn={t} readOnly={Boolean(thread.retired)} noteSaved={Boolean(thread.taskNotes?.[t.user!.id])} /><TaskNoPlanLine items={t.rest} /><TaskVerificationLine items={t.user ? [t.user, ...t.rest] : t.rest} /><TaskContextLine items={t.user ? [t.user, ...t.rest] : t.rest} cwd={thread.cwd} /></>}
             render={(item, live) => <Item key={item.id} item={item} live={live} onAnswer={onAnswer} onAnswerQuestion={onAnswerQuestion} onPolicy={(approvals) => onUpdate({ approvals })} onFix={onFix} onRetry={!thread.retired && !busy && item.id === retryId ? onRetry : undefined} onReply={!thread.retired && !busy && item.id === askId ? (text) => void onSend(text) : undefined} />} />
           </DeferMarkdown.Provider>
         ))}

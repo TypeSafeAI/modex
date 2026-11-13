@@ -308,7 +308,8 @@ test("a saved task note reopens as the record it saved: plan, files, verificatio
     assert.deepEqual(view.record, expected, "the record as saved, not rebuilt from today's transcript");
     assert.deepEqual(view.record.plan?.steps.map((step) => step.status), ["completed", "completed"]);
     assert.deepEqual(view.record.context?.files.map((file) => file.path), ["src/a.ts"]);
-    assert.equal(view.record.verification?.state, "verified");
+    assert.equal(view.record.verification?.state, "unknown", "new receipts without confirmed coverage cannot inherit legacy verification");
+    assert.equal(view.record.verification?.basis, "context-snapshots");
     assert.match(view.record.answer ?? "", /turn 1/);
     assert.deepEqual([view.threadId, view.turnId, view.savedRevision, view.note.revision], [thread.id, turnId, saved.revision, saved.revision]);
     assert.equal(view.edited, undefined);
@@ -733,4 +734,82 @@ test("a finished turn that did work without a plan says which CLI reported none;
   const planned = turn("claude", [{ id: "p", kind: "plan", from: "claude-todo", revision: 1, steps: [{ text: "Fix", status: "completed" }], outcome: "succeeded", origin: origin("claude"), at } as ThreadItem]);
   assert.equal(noPlan(planned), null);
   assert.ok(!md(planned).includes("reported no plan"));
+});
+
+/** Modern evidence cannot inherit the legacy command-order claim. */
+function scopedCheck() {
+  const e = stream(), native = { runtime: "R", item: "check" };
+  const attempt = e({ type: "attempt.start" });
+  const start = e({ type: "tool.start", native, tool: { name: "exec_command", title: "test", args: {}, exec: { command: "pnpm test", cwd: "/repo" } } });
+  const end = e({ type: "tool.done", native, outcome: "succeeded", progress: { exitCode: 0 } });
+  const tool = projectConversation([attempt, start, end]).items[0]!;
+  assert.ok(tool.kind === "tool" && tool.origin);
+  const source = { kind: "native" as const, itemId: tool.id, origin: tool.origin };
+  const target = { kind: "file" as const, path: "src/main.ts" };
+  const capture = (id: string, phase: "check-start-observed" | "check-end-observed", at: string) => ({ id, target, source, phase, startedAt: at, finishedAt: at, repository: { state: "available" as const, head: "a".repeat(40) }, revision: { state: "available" as const, algorithm: "sha256" as const, digest: "b".repeat(64), bytes: 3 } });
+  const evidence: import("../src/shared/task-context-evidence.js").TaskContextEvidence = { revision: 1,
+    refs: [{ id: "ref", target, relations: [{ kind: "relevant", provenance: "user-confirmed", source: { kind: "human", actionId: "selection", at: start.at } }], captureIds: ["start", "end"] }],
+    captures: [capture("start", "check-start-observed", start.at), capture("end", "check-end-observed", end.at)],
+    checks: [{ itemId: tool.id, eventIds: [start.id, end.id], origin: tool.origin, startedAt: start.at, finishedAt: end.at, command: "pnpm test", outcome: "succeeded", exitCode: 0, scope: "project", relevantRefIds: ["ref"], relevance: "user-confirmed", startCaptureIds: ["start"], endCaptureIds: ["end"], staleness: "current-observation" }],
+  };
+  const user: ThreadItem = { kind: "user", id: "U", text: "Fix main", at: start.at, contextEvidence: evidence };
+  return { evidence, tool, items: [user, tool] as ThreadItem[] };
+}
+
+for (const [name, alter] of [
+  ["unrelated exit-zero command", (f: ReturnType<typeof scopedCheck>) => { f.evidence.checks[0]!.relevance = "unestablished"; f.evidence.checks[0]!.relevantRefIds = []; }],
+  ["green command outside the project", (f: ReturnType<typeof scopedCheck>) => { f.evidence.checks[0]!.scope = "outside"; }],
+  ["nested cwd with unestablished relevance", (f: ReturnType<typeof scopedCheck>) => { f.evidence.checks[0]!.relevance = "unestablished"; if (f.tool.kind === "tool") f.tool.exec!.cwd = "/repo/nested"; }],
+  ["human confirmation bound to the wrong item", (f: ReturnType<typeof scopedCheck>) => { f.evidence.checks[0]!.itemId = "foreign-item"; }],
+  ["foreign native origin", (f: ReturnType<typeof scopedCheck>) => { f.evidence.checks[0]!.origin = { ...f.evidence.checks[0]!.origin!, attempt: "foreign" }; }],
+  ["unavailable command identity", (f: ReturnType<typeof scopedCheck>) => { if (f.tool.kind === "tool") f.tool.unavailableInputs = ["exec.command"]; }],
+  ["nonzero reported exit", (f: ReturnType<typeof scopedCheck>) => { f.evidence.checks[0]!.exitCode = 1; }],
+  ["unknown exit", (f: ReturnType<typeof scopedCheck>) => { delete f.evidence.checks[0]!.exitCode; }],
+  ["missing start receipt", (f: ReturnType<typeof scopedCheck>) => { f.evidence.checks[0]!.startCaptureIds = []; }],
+  ["missing boundary times", (f: ReturnType<typeof scopedCheck>) => { delete f.evidence.checks[0]!.startedAt; delete f.evidence.checks[0]!.finishedAt; }],
+  ["start and end snapshots both delayed past completion", (f: ReturnType<typeof scopedCheck>) => { f.evidence.captures[0]!.startedAt = f.evidence.captures[0]!.finishedAt = "2026-10-18T09:00:04.000Z"; f.evidence.captures[1]!.startedAt = f.evidence.captures[1]!.finishedAt = "2026-10-18T09:00:05.000Z"; }],
+  ["changed start/end bytes", (f: ReturnType<typeof scopedCheck>) => { const rev = f.evidence.captures[1]!.revision; if (rev.state === "available") rev.digest = "c".repeat(64); }],
+  ["late start observation", (f: ReturnType<typeof scopedCheck>) => { f.evidence.captures[0]!.finishedAt = "2026-10-18T09:00:04.000Z"; }],
+  ["later context hash change", (f: ReturnType<typeof scopedCheck>) => { const c = structuredClone(f.evidence.captures[1]!); c.id = "later"; c.startedAt = c.finishedAt = "2026-10-18T09:00:04.000Z"; if (c.revision.state === "available") c.revision.digest = "c".repeat(64); f.evidence.captures.push(c); f.evidence.refs[0]!.captureIds.push(c.id); }],
+  ["later plan revision", (f: ReturnType<typeof scopedCheck>) => { f.evidence.checks[0]!.planRevision = 1; f.items.push({ id: "plan", kind: "plan", steps: [], from: "codex-plan", revision: 2, outcome: "succeeded", at: "2026-10-18T09:00:04.000Z" }); }],
+] as const) test(`modern verification refuses ${name}`, () => {
+  const f = scopedCheck(); alter(f);
+  assert.notEqual(verification(f.items).state, "verified");
+  assert.notEqual(taskRecord(f.items, { threadId: "T", title: "Task", cwd: "/repo" }).verification!.state, "verified");
+});
+
+test("matching modern observations are labeled snapshots, never check-input attestation", () => {
+  const f = scopedCheck(), record = taskRecord(f.items, { threadId: "T", title: "Task", cwd: "/repo" });
+  assert.equal(record.verification!.state, "verified");
+  assert.match(taskMarkdown(record), /matching.*snapshots/i);
+  assert.match(taskMarkdown(record), /do not prove.*(?:consumed|read)/i);
+  assert.doesNotMatch(taskMarkdown(record), /every check after the turn's last change passed/);
+});
+
+test("later possible writers invalidate a modern observation while legacy wording stays historical", () => {
+  const f = scopedCheck();
+  f.items.push({ id: "writer", kind: "tool", name: "exec_command", title: "write", args: {}, exec: { command: "node mutate.js", cwd: "/repo" }, outcome: "failed", status: "done", at: "2026-10-18T09:00:04.000Z" });
+  assert.equal(verification(f.items).state, "stale");
+  const legacy = scopedCheck().items.slice(1);
+  const markdown = taskMarkdown(taskRecord([{ kind: "user", id: "U", text: "Old", at: "2026-10-18T09:00:00.000Z" }, ...legacy], { threadId: "T", title: "Old", cwd: "/repo" }));
+  assert.match(markdown, /Verified: every check after the turn's last change passed/);
+  assert.doesNotMatch(markdown, /matching.*snapshots/i);
+});
+
+test("a later complete check supersedes stale snapshots without rewriting their history", () => {
+  const f = scopedCheck(), next = scopedCheck();
+  f.evidence.checks[0]!.staleness = "stale";
+  assert.ok(next.tool.kind === "tool" && next.tool.origin);
+  next.tool.id += "-next"; next.tool.origin.native.item = "next-check"; next.tool.at = "2026-10-18T09:00:04.000Z";
+  const check = next.evidence.checks[0]!; check.itemId = next.tool.id; check.origin = structuredClone(next.tool.origin); check.eventIds = ["next-start", "next-end"];
+  check.startedAt = "2026-10-18T09:00:04.000Z"; check.finishedAt = "2026-10-18T09:00:05.000Z";
+  check.startCaptureIds = ["next-start-capture"]; check.endCaptureIds = ["next-end-capture"];
+  for (const [i, capture] of next.evidence.captures.entries()) {
+    capture.id = i ? "next-end-capture" : "next-start-capture";
+    capture.startedAt = capture.finishedAt = i ? check.finishedAt : check.startedAt;
+    capture.source = { kind: "native", itemId: next.tool.id, origin: structuredClone(next.tool.origin) };
+  }
+  f.evidence.checks.push(check); f.evidence.captures.push(...next.evidence.captures); f.evidence.refs[0]!.captureIds.push(...next.evidence.captures.map(c => c.id)); f.items.push(next.tool);
+  assert.equal(verification(f.items).state, "verified");
+  assert.equal(f.evidence.checks[0]!.staleness, "stale", "projecting a current result must not rewrite old receipts");
 });

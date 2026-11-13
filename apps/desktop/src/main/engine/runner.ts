@@ -423,6 +423,36 @@ export class ThreadRunner {
     return this.background.run(() => this.contextDrafts.selectTaskContext(binding, targets));
   }
   closeContextDraft(binding: ContextDraftBinding): void { this.contextDrafts.closeContextDraft(binding); }
+  taskContext(threadId: string, turnId: string): TaskContextEvidence {
+    const thread = this.o.store.thread(threadId);
+    if (!thread || !this.o.store.project(thread.projectId)) throw new Error("Task context project is unavailable.");
+    const user = this.items(threadId).find(item => item.kind === "user" && item.id === turnId);
+    if (user?.kind !== "user") throw new Error("That request is no longer in this thread.");
+    const context = copyTaskContextEvidence(user.contextEvidence ?? { revision: 0, refs: [], captures: [], checks: [] });
+    if (!taskContextBelongsTo(context, threadId, turnId, thread.projectId)) throw new Error("Task context scope changed.");
+    return context;
+  }
+  confirmTaskCheck(threadId: string, turnId: string, expectedRevision: number, itemId: string, refIds: string[]): TaskContextEvidence {
+    this.assertContextEditing({ kind: "thread", threadId });
+    const thread = this.o.store.thread(threadId)!;
+    const context = this.taskContext(threadId, turnId);
+    if (!Number.isSafeInteger(expectedRevision) || context.revision !== expectedRevision) throw new Error("Task context changed; review it again.");
+    if (!Array.isArray(refIds) || !refIds.length || refIds.length > context.refs.length || refIds.some(id => typeof id !== "string") || new Set(refIds).size !== refIds.length
+      || refIds.some(id => !context.refs.some(ref => ref.id === id))) throw new Error("Choose existing references from this task.");
+    const items = this.items(threadId), start = items.findIndex(item => item.kind === "user" && item.id === turnId);
+    const next = items.findIndex((item, i) => i > start && item.kind === "user");
+    const check = context.checks.find(check => check.itemId === itemId);
+    const item = items.slice(start + 1, next < 0 ? undefined : next).find(item => item.kind === "tool" && item.id === itemId);
+    if (!check?.origin || item?.kind !== "tool" || !item.origin || JSON.stringify(check.origin) !== JSON.stringify(item.origin) || item.exec?.command !== check.command)
+      throw new Error("This check does not belong to the requested task.");
+    // Confirmation adds relevance only. It never changes the native result, plan or timed captures.
+    this.updateTaskContext(threadId, this.slot(threadId), check.origin, thread.projectId, evidence => {
+      if (evidence.revision !== expectedRevision) throw new Error("Task context changed; review it again.");
+      const current = evidence.checks.find(c => c.itemId === itemId)!;
+      current.relevantRefIds = [...refIds]; current.relevance = "user-confirmed"; evidence.revision++;
+    });
+    return this.taskContext(threadId, turnId);
+  }
   invalidateContextDocument(): void { this.contextDrafts.invalidateDocument(); this.contextCreations.clear(); }
   taskContextCandidates(binding: ContextDraftBinding): ReturnType<TaskContextService["candidates"]> {
     this.assertContextEditing(binding?.owner);
@@ -1013,6 +1043,16 @@ export class ThreadRunner {
         const attempt = this.beginAttempt(threadId, l, actualTurn, privacy, error => failPublication(error, "publish native observation"));
         const context = new TaskContextAttempt({ turn: actualTurn, cwd: codingCwd, projectId, signal: abort.signal, capture: this.contextCapture,
           privateValue: value => privacy.contains(value),
+          read: () => {
+            const user = l.items.find(item => item.kind === "user" && item.id === turnId);
+            if (user?.kind !== "user" || !user.contextEvidence) throw new Error("Task context user item is missing.");
+            return user.contextEvidence;
+          },
+          planRevision: () => {
+            const index = l.items.findIndex(item => item.kind === "user" && item.id === turnId);
+            const plan = l.items.slice(index + 1).reverse().find(item => item.kind === "plan");
+            return plan?.kind === "plan" ? plan.revision : undefined;
+          },
           current: () => {
             const current = this.o.store.thread(threadId);
             return this.live.get(threadId) === l && l.abort === abort && l.attempt === actualTurn.attempt && Boolean(current)
@@ -1651,6 +1691,7 @@ export class ThreadRunner {
       const item = id ? l.items.find(item => item.id === id) : undefined;
       if (item?.kind === "tool") this.contextAttempts.get(event.turn.attempt)?.accepted(event, item, nativeArgs, nativeExec);
     }
+    if (event.type === "plan.update") this.contextAttempts.get(event.turn.attempt)?.planChanged();
   }
 
   /** Context publication is transactional: failed storage never changes live metadata or emits success. */

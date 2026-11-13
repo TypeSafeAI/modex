@@ -38,6 +38,8 @@ export interface TaskCheckEvidence {
   eventIds: string[];
   origin?: ItemOrigin;
   planRevision?: number;
+  startedAt?: string;
+  finishedAt?: string;
   command: string;
   outcome: ExecutionOutcome;
   exitCode?: number | null;
@@ -164,7 +166,7 @@ function capture(v: unknown): v is ContextCapture {
   return true;
 }
 function check(v: unknown): v is TaskCheckEvidence {
-  return shape(v, ["itemId", "eventIds", "command", "outcome", "scope", "relevantRefIds", "relevance", "startCaptureIds", "endCaptureIds", "staleness"], ["origin", "planRevision", "exitCode"]) && identity(v.itemId) && ids(v.eventIds) && typeof v.command === "string" && v.command.length > 0 && v.command.length <= 1024 * 1024 && !v.command.includes("\0") && one(v.outcome, ["running", "succeeded", "failed", "denied", "interrupted", "unknown"]) && one(v.scope, ["project", "outside", "unknown"]) && ids(v.relevantRefIds) && one(v.relevance, ["user-confirmed", "native", "unestablished"]) && ids(v.startCaptureIds) && ids(v.endCaptureIds) && one(v.staleness, ["current-observation", "stale", "unknown"]) && (v.origin === undefined || turn(v.origin, true)) && (v.planRevision === undefined || integer(v.planRevision)) && (v.exitCode === undefined || v.exitCode === null || (typeof v.exitCode === "number" && Number.isSafeInteger(v.exitCode)));
+  return shape(v, ["itemId", "eventIds", "command", "outcome", "scope", "relevantRefIds", "relevance", "startCaptureIds", "endCaptureIds", "staleness"], ["origin", "planRevision", "exitCode", "startedAt", "finishedAt"]) && identity(v.itemId) && ids(v.eventIds) && typeof v.command === "string" && v.command.length > 0 && v.command.length <= 1024 * 1024 && !v.command.includes("\0") && one(v.outcome, ["running", "succeeded", "failed", "denied", "interrupted", "unknown"]) && one(v.scope, ["project", "outside", "unknown"]) && ids(v.relevantRefIds) && one(v.relevance, ["user-confirmed", "native", "unestablished"]) && ids(v.startCaptureIds) && ids(v.endCaptureIds) && one(v.staleness, ["current-observation", "stale", "unknown"]) && (v.origin === undefined || turn(v.origin, true)) && (v.planRevision === undefined || integer(v.planRevision)) && (v.startedAt === undefined || date(v.startedAt)) && (v.finishedAt === undefined || (date(v.finishedAt) && (v.startedAt === undefined || v.finishedAt >= v.startedAt))) && (v.exitCode === undefined || v.exitCode === null || (typeof v.exitCode === "number" && Number.isSafeInteger(v.exitCode)));
 }
 
 /** Strictly validate supplied metadata; absence is handled by legacy callers, never by coercion. */

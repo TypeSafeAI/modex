@@ -630,6 +630,8 @@ export interface BridgeCommands extends NativeDraftCommands, ImageCommands, Plug
   "task:context-draft-select": { req: { binding: import("./task-context-evidence.js").ContextDraftBinding; targets: import("./task-context-evidence.js").ContextTarget[] }; res: { binding: import("./task-context-evidence.js").ContextDraftBinding; context: import("./task-context-evidence.js").TaskContextEvidence } };
   "task:context-draft-close": { req: { binding: import("./task-context-evidence.js").ContextDraftBinding }; res: void };
   "task:context-candidates": { req: { binding: import("./task-context-evidence.js").ContextDraftBinding }; res: import("./task-context-evidence.js").TaskContextCandidates };
+  "task:context": { req: { threadId: string; turnId: string }; res: import("./task-context-evidence.js").TaskContextEvidence };
+  "task:check-confirm": { req: { threadId: string; turnId: string; expectedRevision: number; itemId: string; refIds: string[] }; res: import("./task-context-evidence.js").TaskContextEvidence };
   "task:save-note": { req: { threadId: string; turnId: string }; res: { pageId: string; title: string; revision: number; created: boolean; preserved: boolean } };
   /** A saved task note, reopened read-only; null when the page is not one. Runs and writes nothing. */
   "task:note": { req: { pageId: string }; res: import("./task-context.js").TaskNoteView | null };

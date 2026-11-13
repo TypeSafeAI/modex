@@ -288,7 +288,8 @@ test("a saved task note reopens read-only as the task it saved, asks the CLI not
     await expect(tid(view, "task-view-step")).toHaveText(["Reported done Ask which import", "Reported done Fix the import", "Reported done Run the tests"]);
     await expect(tid(view, "task-view-clarification")).toHaveText(["Which import should I fix? — lodash"]);
     await expect(tid(view, "task-view-file")).toHaveText(["src/app.ts changed"]);
-    await expect(tid(view, "task-view-verification")).toHaveAttribute("data-state", "verified");
+    await expect(tid(view, "task-view-verification")).toHaveAttribute("data-state", "unknown");
+    await expect(tid(view, "task-view-verification")).toContainText("confirmed relevance");
     await expect(tid(view, "task-view-verification")).toContainText("pnpm test");
     await expect(tid(view, "task-view-edited")).toHaveCount(0);
     await expect(tid(view, "task-view-moved")).toHaveCount(0);
@@ -318,4 +319,20 @@ test("a saved task note reopens read-only as the task it saved, asks the CLI not
     await reopenApp.close();
     for (const dir of [seeded.home, seeded.repo, logs]) fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("a modern task cannot inherit legacy footer verification from an unrelated green command", async () => {
+  const origin = { thread: threadId, turn: "modern-check", attempt: "modern-attempt", backend: "codex", native: { runtime: "fixture", item: "green-command" } };
+  await app.evaluate(({ BrowserWindow }, events) => {
+    for (const event of events) BrowserWindow.getAllWindows()[0]!.webContents.send("thread:event", event);
+  }, [
+    { type: "item", threadId, item: { id: "modern-check", kind: "user", text: "Modern task", at: at(), contextEvidence: { revision: 0, refs: [], captures: [], checks: [] } } },
+    { type: "item", threadId, item: { id: "modern-green", kind: "tool", name: "exec_command", title: "test", args: {}, exec: { command: "pnpm test", cwd: repo }, status: "done", outcome: "succeeded", exitCode: 0, origin, at: at() } },
+    { type: "item", threadId, item: { id: "modern-answer", kind: "assistant", text: "Fixture complete", phase: "final", outcome: "succeeded", origin: { ...origin, native: { runtime: "fixture", item: "answer" } }, at: at() } },
+    { type: "status", threadId, status: "idle" },
+  ]);
+  const line = tid(page, "task-verification").last();
+  await expect(line).toHaveAttribute("data-state", "unknown");
+  await expect(line).toContainText("confirmed relevance");
+  await expect(line).toContainText("timed snapshots");
 });

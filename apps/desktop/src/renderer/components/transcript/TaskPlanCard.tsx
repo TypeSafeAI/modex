@@ -3,7 +3,7 @@ import type { ThreadItem } from "../../../shared/types";
 import type { PlanStep } from "../../../shared/conversation-events";
 import { bridge } from "../../bridge";
 import { ErrorNotice } from "../ui/ErrorNotice";
-import { CONTEXT_SHOWN, UNLISTED_WORDS, contextCount, displayCommand, noPlan, noPlanText, taskContext, verification, type TaskCheck, type TaskVerification } from "../../../shared/task-context";
+import { CONTEXT_SHOWN, UNLISTED_WORDS, contextCount, displayCommand, noPlan, noPlanText, taskContext, verification, verificationWords, type TaskCheck, type TaskVerification } from "../../../shared/task-context";
 
 export const PLAN_STATUS: Record<PlanStep["status"], string> = { pending: "Not started", "in-progress": "In progress", completed: "Reported done", unknown: "Status unknown" };
 export const PLAN_FROM = { "codex-plan": "Codex's plan", "claude-todo": "Claude's todo list", "claude-tasks": "Claude's task list", "acp-plan": "The agent's plan" } as const;
@@ -86,6 +86,7 @@ export function TaskVerificationLine({ items }: { items: readonly ThreadItem[] }
 
 /** What a turn's checks say, in words: the footer's line, and a reopened task note's (docs/task-context.md#reopening-a-saved-note). */
 export function VerificationText({ v }: { v: TaskVerification }) {
+  if (v.basis === "context-snapshots") return <>{verificationWords(v)}{v.checks.length ? <> Recorded checks: <Checks checks={v.checks} />.</> : null}</>;
   const current = v.checks.filter((check) => !check.stale);
   const failing = current.filter((check) => !check.passed && (check.outcome === "failed" || check.outcome === "denied" || (typeof check.exitCode === "number" && check.exitCode !== 0)));
   const text = v.state === "verified" ? <>Verified: <Checks checks={current} /> passed after the last change</>
