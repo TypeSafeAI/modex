@@ -813,7 +813,10 @@ handle("project:remove", async ({ projectId }) => {
   await runner.removeProject(projectId);
   return store.snapshot();
 });
-handle("thread:create", ({ projectId, worktree, mode, model, backend, auto }) => runner.createThread(projectId, { worktree, mode, model, backend, auto }));
+handle("thread:create", ({ projectId, worktree, mode, model, backend, auto, contextDraft }, event) => {
+  if (contextDraft !== undefined && !event) throw new Error("Select draft context from this Mac.");
+  return runner.createThread(projectId, { worktree, mode, model, backend, auto, contextDraft });
+});
 handle("thread:items", ({ threadId }) => runner.items(threadId));
 handle("task:context-draft-open", ({ owner }) => runner.openContextDraft(owner), { localOnly: true });
 handle("task:context-draft-select", ({ binding, targets }) => runner.selectTaskContext(binding, targets), { localOnly: true });
@@ -840,7 +843,7 @@ async function startTurn(threadId: string, run: Promise<void>): Promise<{ ok: bo
   accepting = false;
   return earlyError !== undefined ? { ok: false, error: earlyError } : { ok: true };
 }
-handle("thread:send", ({ threadId, text, attachments: files }, event) => startTurn(threadId, runner.send(threadId, text, files, event ? "desktop" : "paired-desktop")));
+handle("thread:send", ({ threadId, text, attachments: files, contextDraft }, event) => startTurn(threadId, runner.send(threadId, text, files, event ? "desktop" : "paired-desktop", contextDraft)));
 registerAttachmentCommands(handle, attachments, { bytesOnly: false, reveal: (abs) => shell.showItemInFolder(abs) });
 handle("attachments:pick", async (req) => {
   // Explicit renderer paths keep the strict whole-request guard. Only the native dialog's

@@ -1,6 +1,6 @@
 import { TaskContextCapture } from "./task-context-capture.js";
 import { TaskContextService } from "./task-context-service.js";
-import type { ContextDraftOwner, ContextDraftBinding, ContextTarget, TaskContextEvidence } from "../../shared/task-context-evidence.js";
+import { describeTaskContext, isContextDraftBinding, type ContextDraftOwner, type ContextDraftBinding, type ContextTarget, type TaskContextEvidence } from "../../shared/task-context-evidence.js";
 import { executionBinding } from "./execution-binding.js";
 import { resolveCli } from "./cli-path.js";
 import type { LocalExecution } from "./local-models/execution.js";
@@ -154,6 +154,7 @@ export class ThreadRunner {
   /** Threads running an unattended routine turn: no person is there to answer, so approvals are refused. */
   private readonly unattended = new Set<string>();
   private readonly creating = new Map<string, Set<Promise<Thread>>>();
+  private readonly contextCreations = new Map<string, { projectId: string; binding: ContextDraftBinding; promise: Promise<Thread> }>();
   private readonly pendingCreations = new Map<string, { signature: string; promise: Promise<Thread> }>();
   private readonly backends: Record<BackendId, Backend>;
   /** Auto routing: judges a request (Jev or the offline heuristic) and picks model/effort/fast per turn. */
@@ -223,7 +224,7 @@ export class ThreadRunner {
   holdForRestart(): () => void {
     this.assertNotRestarting();
     if (this.disposing) throw new Error("Modex is shutting down.");
-    if (this.creating.size || this.deleting.size || this.removingProjects.size || this.titleRuns.size
+    if (this.creating.size || this.contextCreations.size || this.deleting.size || this.removingProjects.size || this.titleRuns.size
       || [...this.live.values()].some(l => l.run || l.pending.size || l.status === "running" || l.status === "waiting")) {
       throw new Error("Let current turns and worktree operations finish before restarting.");
     }
@@ -339,8 +340,29 @@ export class ThreadRunner {
     return this.o.store.thread(thread.id)!;
   }
 
-  async createThread(projectId: string, opts: { worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean } = {}): Promise<Thread> {
-    return this.trackCreation(projectId, opts);
+  async createThread(projectId: string, opts: { worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean; contextDraft?: ContextDraftBinding } = {}): Promise<Thread> {
+    if (opts.contextDraft === undefined) return this.trackCreation(projectId, opts);
+    if (!isContextDraftBinding(opts.contextDraft)) throw new Error("Invalid task context draft.");
+    const binding = structuredClone(opts.contextDraft);
+    this.assertContextEditing(binding.owner);
+    const existing = this.contextDrafts.creationFor(binding, projectId);
+    if (existing) return this.o.store.thread(existing)!;
+    const pending = this.contextCreations.get(binding.nonce);
+    if (pending) {
+      if (pending.projectId !== projectId || JSON.stringify(pending.binding) !== JSON.stringify(binding)) throw new Error("Context creation identity changed.");
+      return pending.promise;
+    }
+    let resolve!: (thread: Thread) => void, reject!: (error: unknown) => void;
+    const promise = new Promise<Thread>((yes, no) => { resolve = yes; reject = no; });
+    this.contextCreations.set(binding.nonce, { projectId, binding, promise });
+    void this.trackCreation(projectId, opts).then(thread => { this.contextDrafts.bindCreatedThread(binding, thread.id); return thread; }).then(thread => {
+      this.contextCreations.delete(binding.nonce); resolve(thread);
+    }, error => {
+      // A failed worktree script may have made evidence. Never run it again from this nonce.
+      if (!opts.worktree) this.contextCreations.delete(binding.nonce);
+      reject(error);
+    });
+    return promise;
   }
 
   /**
@@ -681,9 +703,11 @@ export class ThreadRunner {
   }
 
   /** Runs one user turn. Resolves when the thread is idle again (or errored). */
-  async send(threadId: string, text: string, attachments: Attachment[] = [], by = "desktop"): Promise<void> {
+  async send(threadId: string, text: string, attachments: Attachment[] = [], by = "desktop", contextDraft?: ContextDraftBinding): Promise<void> {
     this.assertLocalSender(threadId, by);
-    return this.start(threadId, text, undefined, attachments);
+    if (contextDraft !== undefined && !isContextDraftBinding(contextDraft)) throw new Error("Invalid task context draft.");
+    if (contextDraft !== undefined && by !== "desktop" && by !== "browser") throw new Error("Select draft context from this Mac.");
+    return this.start(threadId, text, undefined, attachments, undefined, contextDraft);
   }
 
   private assertLocalSender(threadId: string, by: string): void {
@@ -724,7 +748,7 @@ export class ThreadRunner {
     return this.start(threadId, user.text, user.id, user.attachments);
   }
 
-  private async start(threadId: string, text: string, reuse?: string, attachments: Attachment[] = [], prepared?: PreparedAdmission): Promise<void> {
+  private async start(threadId: string, text: string, reuse?: string, attachments: Attachment[] = [], prepared?: PreparedAdmission, contextDraft?: ContextDraftBinding): Promise<void> {
     this.assertThreadAvailable(threadId);
     this.o.beforeSend?.(this.o.store.thread(threadId)!);
     const l = this.slot(threadId);
@@ -737,13 +761,13 @@ export class ThreadRunner {
     // A new message on an archived thread brings it back: an archived thread is never one that is working.
     try {
       this.unarchive(threadId);
-      await this.runTurn(threadId, text, reuse, attachments, prepared);
+      await this.runTurn(threadId, text, reuse, attachments, prepared, contextDraft);
     }
     finally { if (l.run === reservation) l.run = null; release(); }
   }
 
   /** `reuse` names an existing user item to run again instead of adding one (Retry). */
-  private async runTurn(threadId: string, text: string, reuse?: string, attachments: Attachment[] = [], prepared?: PreparedAdmission): Promise<void> {
+  private async runTurn(threadId: string, text: string, reuse?: string, attachments: Attachment[] = [], prepared?: PreparedAdmission, contextDraft?: ContextDraftBinding): Promise<void> {
     const savedThread = this.o.store.thread(threadId);
     if (!savedThread) throw new Error(`unknown thread ${threadId}`);
     let thread = savedThread;
@@ -782,6 +806,9 @@ export class ThreadRunner {
       claude: thread.claudeAccount ?? (thread.backend === "claude" && thread.sessionHandle ? "cli" : prospectiveClaudeAccount),
     };
     const admittedExecution = executionBinding(thread, prospectiveCodexAccount);
+    const turnId = reuse ?? prepared?.id ?? newId();
+    if (contextDraft && (reuse !== undefined || prepared)) throw new Error("Editable draft context cannot replace an admitted message.");
+    const contextAdmission = contextDraft ? this.contextDrafts.prepareContextDraft(contextDraft, threadId, turnId) : undefined;
     // Staged files move into the thread's folder now, so a Retry (or a restart) still finds them.
     let draft: AttachmentDraft | undefined;
     if ((prepared || retry) && Array.isArray(attachments) && attachments.length) {
@@ -805,13 +832,14 @@ export class ThreadRunner {
     l.followUp?.abort.abort();
     l.followUp = undefined;
     // The Modex turn is the user message it answers: Retry runs the same turn again as a new attempt.
-    const turnId = reuse ?? prepared?.id ?? newId();
     if (!retry) {
       const item: UserItem = { id: turnId, kind: "user", text: prepared?.rawText ?? text, execution: admittedExecution,
-        at: prepared?.at ?? new Date().toISOString(), ...(files.length ? { attachments: files } : {}) };
-      this.addItem(threadId, item, prepared ? () => {
+        at: prepared?.at ?? new Date().toISOString(), ...(files.length ? { attachments: files } : {}), ...(contextAdmission ? { contextEvidence: contextAdmission.context } : {}) };
+      this.addItem(threadId, item, prepared || contextAdmission ? () => {
+        contextAdmission?.commit();
+        if (contextDraft) this.contextDrafts.contextPersisted(contextDraft, threadId, turnId);
         const receipt = Object.freeze({ ...item, ...(item.attachments ? { attachments: Object.freeze(item.attachments.map(file => Object.freeze({ ...file }))) } : {}) });
-        if (prepared.committed(receipt) !== undefined) throw new Error("Durable admission callback must complete synchronously.");
+        if (prepared && prepared.committed(receipt) !== undefined) throw new Error("Durable admission callback must complete synchronously.");
       } : undefined);
       this.assertThreadAvailable(threadId);
       if (thread.title === "New thread" && thread.titleSource !== "manual") this.updateThread(threadId, { title: derivedTitle }, { automaticTitle: true });
@@ -956,7 +984,7 @@ export class ThreadRunner {
         const attempt = this.beginAttempt(threadId, l, { thread: threadId, turn: turnId, attempt: newId(), backend: ran.backend, ...(accountFor(ran) ? { account: accountFor(ran) } : {}) });
         try {
           const result = await backend.runTurn(
-            describeAttachments(text, turnFiles),
+            describeAttachments(describeTaskContext(text, contextAdmission?.context ?? (l.items.find(item => item.id === turnId && item.kind === "user") as UserItem | undefined)?.contextEvidence), turnFiles),
             {
               cwd: ran.cwd, mode: ran.mode, plan: ran.plan, model: ran.model, effort: ran.effort, fast, ...(conserveCredits ? { conserveCredits: true } : {}), resume: ran.sessionHandle, account: accountFor(ran),
               // Files the CLI reads by path sit outside cwd; --add-dir keeps that from prompting.

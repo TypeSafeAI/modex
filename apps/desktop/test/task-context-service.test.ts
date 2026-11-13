@@ -152,3 +152,17 @@ test("cancelling a removal's pending capture preserves previously accepted selec
   await assert.rejects(pending, /stale|draft/);
   assert.deepEqual(f.service.readDraft(selected.binding), selected.context, "a refused removal can keep its original confirmed context");
 });
+
+test("after transfer, repeated reads use the authoritative stored turn and never invent a missing record", async t => {
+  const f = setup(); t.after(() => f.runner.dispose());
+  const selected = await f.service.selectTaskContext(f.service.openContextDraft(f.owner), [{ kind: "file", path: "README.md" }]);
+  const thread = await f.runner.createThread(f.project.id, { backend: "mock", auto: false });
+  f.service.bindCreatedThread(selected.binding, thread.id);
+  const admitted = f.service.consumeContextDraft(selected.binding, thread.id, "U");
+  const stored = structuredClone(admitted); stored.revision++;
+  const user = { kind: "user" as const, id: "U", text: "Check", at: new Date().toISOString(), contextEvidence: stored };
+  f.store.saveItems(thread.id, [user]);
+  assert.deepEqual(f.service.consumeContextDraft(selected.binding, thread.id, "U"), stored);
+  f.store.saveItems(thread.id, [{ kind: "user", id: "U", text: "Check", at: user.at }]);
+  assert.throws(() => f.service.consumeContextDraft(selected.binding, thread.id, "U"), /context|record|preserved/);
+});

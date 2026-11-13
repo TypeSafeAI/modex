@@ -97,7 +97,7 @@ export function registerCommands(handle: RegisterCommand, {
     await runner.removeProject(projectId);
     return store.snapshot();
   });
-  handle("thread:create", ({ projectId, worktree, mode, model, backend, auto }) => runner.createThread(projectId, { worktree, mode, model, backend, auto }));
+  handle("thread:create", ({ projectId, worktree, mode, model, backend, auto, contextDraft }) => runner.createThread(projectId, { worktree, mode, model, backend, auto, contextDraft }));
   handle("thread:items", ({ threadId }) => runner.items(threadId));
   handle("task:context-draft-open", ({ owner }) => runner.openContextDraft(owner));
   handle("task:context-draft-select", ({ binding, targets }) => runner.selectTaskContext(binding, targets));
@@ -105,7 +105,7 @@ export function registerCommands(handle: RegisterCommand, {
   handle("task:save-note", ({ threadId, turnId }) => runner.saveTaskNote(threadId, turnId));
   handle("task:note", ({ pageId }) => runner.taskNote(pageId));
   handle("thread:followup", ({ threadId }) => runner.followUp(threadId));
-  handle("thread:send", ({ threadId, text, attachments }) => startTurn(threadId, runner.send(threadId, text, attachments, "browser")));
+  handle("thread:send", ({ threadId, text, attachments, contextDraft }) => startTurn(threadId, runner.send(threadId, text, attachments, "browser", contextDraft)));
   registerAttachmentCommands(handle, runner.attachments, { bytesOnly: true, reveal: revealAttachment ?? (() => { throw new Error("Attachment reveal is unavailable."); }) });
   handle("thread:retry", ({ threadId }) => startTurn(threadId, runner.retry(threadId, "browser")));
   handle("thread:stop", ({ threadId }) => runner.stop(threadId));

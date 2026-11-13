@@ -623,7 +623,7 @@ export interface BridgeCommands extends NativeDraftCommands, ImageCommands, Plug
   /** Asks for a folder with the system's own dialog and returns its path; nothing is added. */
   "project:pick-folder": { req: undefined; res: string | null };
   "project:remove": { req: { projectId: string }; res: AppState };
-  "thread:create": { req: { projectId: string; worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean }; res: Thread };
+  "thread:create": { req: { projectId: string; worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean; contextDraft?: import("./task-context-evidence.js").ContextDraftBinding }; res: Thread };
   "thread:items": { req: { threadId: string }; res: ThreadItem[] };
   /** Saves one turn's task record to its project's notes, or updates the note it was saved to (docs/task-context.md). */
   "task:context-draft-open": { req: { owner: import("./task-context-evidence.js").ContextDraftOwner }; res: import("./task-context-evidence.js").ContextDraftBinding };
@@ -633,7 +633,7 @@ export interface BridgeCommands extends NativeDraftCommands, ImageCommands, Plug
   /** A saved task note, reopened read-only; null when the page is not one. Runs and writes nothing. */
   "task:note": { req: { pageId: string }; res: import("./task-context.js").TaskNoteView | null };
   "thread:followup": { req: { threadId: string }; res: FollowUp | null };
-  "thread:send": { req: { threadId: string; text: string; attachments?: import("./attachments.js").Attachment[] }; res: { ok: boolean; error?: string } };
+  "thread:send": { req: { threadId: string; text: string; attachments?: import("./attachments.js").Attachment[]; contextDraft?: import("./task-context-evidence.js").ContextDraftBinding }; res: { ok: boolean; error?: string } };
   /** Copies dropped, pasted or picked files into main's staging folder; over-limit files come back as errors. */
   "attachments:stage": { req: { files: import("./attachments.js").StagedFile[] }; res: { staged: import("./attachments.js").Attachment[]; errors: string[] } };
   /** Opens the file picker (or stages `paths` directly, for tests) and stages the choice. */

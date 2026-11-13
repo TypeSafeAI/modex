@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Store } from "./store.js";
 import type { TaskContextCapture, CapturedNoteInput } from "./task-context-capture.js";
-import { contextRefId, copyTaskContextEvidence, type ContextCapture, type ContextDraftOwner, type ContextDraftBinding, type ContextTarget, type TaskContextEvidence } from "../../shared/task-context-evidence.js";
+import { contextRefId, copyTaskContextEvidence, isContextDraftBinding, taskContextBelongsTo, type ContextCapture, type ContextDraftOwner, type ContextDraftBinding, type ContextTarget, type TaskContextEvidence } from "../../shared/task-context-evidence.js";
 
 interface Scope { projectId: string; cwd: string; identity: string }
 interface Draft { binding: ContextDraftBinding; scope: Scope; context: TaskContextEvidence; abort: AbortController; generation: number; created?: { id: string; at: string } }
@@ -14,7 +14,7 @@ const empty = (): TaskContextEvidence => ({ revision: 0, refs: [], captures: [],
 export class TaskContextService {
   private readonly drafts = new Map<string, Draft>();
   private readonly owners = new Map<string, string>();
-  private readonly spent = new Map<string, { binding: ContextDraftBinding; threadId: string; turnId: string; context: TaskContextEvidence; projectId: string }>();
+  private readonly spent = new Map<string, { binding: ContextDraftBinding; threadId: string; turnId: string; context?: TaskContextEvidence; projectId: string }>();
   constructor(private readonly options: { store: Store; capture: Pick<TaskContextCapture, "captureSelection"> }) {}
   private scope(owner: ContextDraftOwner): Scope {
     if (!owner || typeof owner !== "object") throw fail();
@@ -30,7 +30,7 @@ export class TaskContextService {
     return { projectId: p.id, cwd: p.path, identity: JSON.stringify([p.id, p.path, p.addedAt]) };
   }
   private current(binding: ContextDraftBinding, revision = true): Draft {
-    if (!binding || typeof binding !== "object" || Object.keys(binding).sort().join() !== "nonce,owner,revision") throw fail();
+    if (!isContextDraftBinding(binding)) throw fail();
     const draft = this.drafts.get(binding.nonce);
     if (!draft || !equal(draft.binding.owner, binding.owner) || (revision && draft.binding.revision !== binding.revision) || this.scope(binding.owner).identity !== draft.scope.identity) throw fail();
     return draft;
@@ -110,11 +110,29 @@ export class TaskContextService {
     if (binding.owner.kind !== "project" || !thread || thread.retired || thread.projectId !== draft.scope.projectId || (draft.created && (draft.created.id !== thread.id || draft.created.at !== thread.createdAt))) throw new Error("The created thread is not bound to this project draft.");
     draft.created = { id: thread.id, at: thread.createdAt };
   }
-  consumeContextDraft(binding: ContextDraftBinding, threadId: string, turnId: string): TaskContextEvidence {
+  creationFor(binding: ContextDraftBinding, projectId: string): string | undefined {
+    const draft = this.current(binding);
+    if (binding.owner.kind !== "project" || draft.scope.projectId !== projectId) throw new Error("Context draft belongs to another project.");
+    if (draft.created) {
+      const thread = this.options.store.thread(draft.created.id);
+      if (!thread || thread.retired || thread.projectId !== projectId || thread.createdAt !== draft.created.at) throw fail();
+      return thread.id;
+    }
+    return undefined;
+  }
+  /** Main-only admission: committing is separate so a failed user write leaves the draft editable. */
+  prepareContextDraft(binding: ContextDraftBinding, threadId: string, turnId: string): { context: TaskContextEvidence; commit(): void } {
+    if (!isContextDraftBinding(binding)) throw fail();
     const spent = this.spent.get(binding.nonce);
     if (spent) {
       if (!equal(spent.binding, binding) || spent.threadId !== threadId || spent.turnId !== turnId || !this.options.store.project(spent.projectId)) throw new Error("Context draft was already consumed by another request.");
-      return copyTaskContextEvidence(spent.context);
+      const users = this.options.store.items(threadId).filter(item => item.id === turnId && item.kind === "user");
+      if (users.length > 1) throw fail();
+      const user = users[0], recorded = user?.kind === "user" ? user.contextEvidence : undefined;
+      const context = recorded ?? spent.context;
+      if (!context || !taskContextBelongsTo(copyTaskContextEvidence(context), threadId, turnId, spent.projectId)) throw new Error("The recorded task context is unavailable; the original turn was preserved.");
+      if (recorded) delete spent.context;
+      return { context: copyTaskContextEvidence(context), commit: () => {} };
     }
     const draft = this.current(binding), thread = this.options.store.thread(threadId);
     if (!thread || thread.retired || thread.projectId !== draft.scope.projectId || !/^[A-Za-z0-9_-]{1,128}$/.test(turnId)) throw fail();
@@ -130,9 +148,23 @@ export class TaskContextService {
       }
       context.revision++;
     }
-    this.spent.set(binding.nonce, { binding: structuredClone(binding), threadId, turnId, context, projectId: draft.scope.projectId });
-    this.closeContextDraft(binding);
-    return copyTaskContextEvidence(context);
+    let committed = false;
+    const generation = draft.generation;
+    return { context: copyTaskContextEvidence(context), commit: () => {
+      if (committed) return;
+      if (this.current(binding) !== draft || draft.generation !== generation) throw fail();
+      this.spent.set(binding.nonce, { binding: structuredClone(binding), threadId, turnId, context, projectId: draft.scope.projectId });
+      this.closeContextDraft(binding); committed = true;
+    } };
+  }
+  consumeContextDraft(binding: ContextDraftBinding, threadId: string, turnId: string): TaskContextEvidence {
+    const admission = this.prepareContextDraft(binding, threadId, turnId); admission.commit(); return admission.context;
+  }
+  /** Called only from main's post-durable user callback; retain replay identity, not duplicate snapshots. */
+  contextPersisted(binding: ContextDraftBinding, threadId: string, turnId: string): void {
+    const spent = this.spent.get(binding.nonce);
+    if (!spent || !equal(spent.binding, binding) || spent.threadId !== threadId || spent.turnId !== turnId) throw fail();
+    delete spent.context;
   }
   readDraft(binding: ContextDraftBinding): TaskContextEvidence { return copyTaskContextEvidence(this.current(binding).context); }
   private cancelCapture(draft: Draft): void {
