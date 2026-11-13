@@ -6,7 +6,7 @@ import type { Thread } from "../../shared/types.js";
 import type { Store } from "./store.js";
 import type { ThreadRunner } from "./runner.js";
 import type { AttachmentStore } from "./attachments.js";
-import { PendingSends, type PendingSendInput, type PendingSendRecord, type PendingTarget, type PendingSnapshot } from "./pending-sends.js";
+import { PendingSends, PENDING_CONTEXT_BYTES, PENDING_CONTEXT_NODES, type PendingSendInput, type PendingSendRecord, type PendingTarget, type PendingSnapshot } from "./pending-sends.js";
 import { ComposerRecoveryWriter, UpdateRecovery, copyComposerRecovery } from "./update-recovery.js";
 import { AttachmentDocuments, type AttachmentDocument } from "./attachment-documents.js";
 import { AttachmentTransferJournal } from "./attachment-transfer-journal.js";
@@ -96,7 +96,8 @@ export class NativeDrafts {
     const matches = this.options.store.items(record.target.threadId).filter(item => item.id === record.id);
     const item = matches[0];
     return matches.length === 1 && item?.kind === "user" && item.text === record.rawText && item.at === record.createdAt
-      && equal(item.attachments ?? [], record.files) && (!record.execution || equal(item.execution, record.execution));
+      && equal(item.attachments ?? [], record.files) && (!record.execution || equal(item.execution, record.execution))
+      && (record.context ? recoveryJSON(item.contextEvidence, PENDING_CONTEXT_BYTES, PENDING_CONTEXT_NODES) === recoveryJSON(record.context.evidence, PENDING_CONTEXT_BYTES, PENDING_CONTEXT_NODES) : item.contextEvidence === undefined);
   }
   private current(session: string): AttachmentDocument {
     if (!this.document || session !== this.session) throw fail();
@@ -247,12 +248,14 @@ export class NativeDrafts {
     const existing = input?.source?.kind === "thread" ? this.options.store.thread(input.source.threadId) : undefined;
     const destination = existing ?? input?.configuration?.settings;
     if (!destination) throw fail();
+    const context = input.contextDraft !== undefined ? this.options.runner.snapshotContextForPending(input.contextDraft, input.source) : undefined;
     const pending = this.pending.begin(input, record => {
       if (this.current(session) !== document || !this.ownerExists(record.source)) return false;
       for (const other of this.records()) if (key(other.owner) === key(record.source)
         || other.files.some(file => record.files.some(selected => selected.id === file.id))) return false;
       return record.files.every(file => this.documents.validate(document, record.source, file));
-    }, this.execution(destination));
+    }, this.execution(destination), context);
+    if (input.contextDraft !== undefined) this.options.runner.closeContextDraft(input.contextDraft);
     if (!this.documents.refreshRetention()) throw fail();
     return { id: pending.value!.id };
   }
@@ -271,7 +274,7 @@ export class NativeDrafts {
     this.assertExecution(record, thread);
     const target = { threadId: thread.id, projectId: thread.projectId, createdAt: thread.createdAt };
     if (!this.proveTarget(target)) throw fail();
-    this.pending.bind(intentId, () => target);
+    this.pending.bind(intentId, () => target, context => this.options.runner.pendingContextForThread(context, thread!.id));
     // An explicit retry can revive a retired source only from the strictly
     // persisted original. A late picker still holds its revoked old handle.
     this.documents.restorePending(document, record.owner, record.files);
@@ -322,7 +325,7 @@ export class NativeDrafts {
     if (!thread) throw fail();
     this.assertExecution(record, thread);
     await this.options.runner.sendDurably(record.target.threadId, record.rawText, record.files, {
-      id: record.id, at: record.createdAt, committed: () => {
+      id: record.id, at: record.createdAt, ...(record.context ? { contextEvidence: record.context.evidence } : {}), committed: () => {
         if (this.current(session) !== document) throw fail();
         this.pending.complete(intentId, value => this.proveUser(value));
         this.documents.discard(this.documents.capture(document, record.owner), record.files.map(file => file.id));

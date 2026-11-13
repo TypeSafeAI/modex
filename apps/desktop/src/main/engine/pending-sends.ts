@@ -1,3 +1,4 @@
+import { isContextDraftBinding, isPendingTaskContext, taskContextBelongsTo, type PendingTaskContext } from "../../shared/task-context-evidence.js";
 import { threadTarget } from "../../shared/local-models.js";
 import { isBackendId } from "../../shared/types.js";
 import type { PendingExecutionBinding } from "../../shared/native-drafts.js";
@@ -12,7 +13,18 @@ import { AttachmentRecoveryFile, RecoveryFileWriteError, parseRecoveryJSON, reco
 export const PENDING_TEXT_CHARACTERS = 1024 * 1024;
 // Composer accepts up to 2 MiB encoded snapshots, including escaping/UTF-8.
 // Add bounded intent identity/configuration metadata without narrowing that text.
-export const PENDING_RECORD_BYTES = 2 * 1024 * 1024 + 64 * 1024;
+export const PENDING_BASE_BYTES = 2 * 1024 * 1024 + 64 * 1024;
+// A <=2 MiB selected snapshot may gain one unavailable thread-workspace
+// observation per file when a project intent binds its first target. Every
+// selected ref already has a capture, so reserve a second bounded snapshot's
+// worth of metadata without borrowing from the composer's text allowance.
+export const PENDING_CONTEXT_BYTES = 4 * 1024 * 1024 + 4096;
+export const PENDING_RECORD_BYTES = PENDING_BASE_BYTES + PENDING_CONTEXT_BYTES;
+// Context contains many small typed receipts. Its separate node allowance does
+// not change the existing composer's 20,000-node validation below.
+export const PENDING_CONTEXT_NODES = 512000;
+export const PENDING_RECORD_NODES = PENDING_CONTEXT_NODES + 20000;
+export const pendingRecordJSON = (value: unknown): string => recoveryJSON(value, PENDING_RECORD_BYTES, PENDING_RECORD_NODES);
 const MAX_PENDING = 1000;
 const uuid = (value: unknown): value is string => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value);
 const id = (value: unknown): value is string => typeof value === "string" && value.length <= 128 && /^[A-Za-z0-9_-]+$/.test(value) && value !== "staging";
@@ -20,7 +32,7 @@ const fail = () => new Error("Pending message recovery requires attention; origi
 export type { PendingTarget, PendingCreation, PendingSendRecord, PendingSendInput } from "../../shared/native-drafts.js";
 import type { PendingTarget, PendingSendRecord } from "../../shared/native-drafts.js";
 export type PendingSnapshot = RecoveryFileSnapshot<PendingSendRecord>;
-const equal = (left: unknown, right: unknown) => recoveryJSON(left, PENDING_RECORD_BYTES) === recoveryJSON(right, PENDING_RECORD_BYTES);
+const equal = (left: unknown, right: unknown) => pendingRecordJSON(left) === pendingRecordJSON(right);
 function shape(value: unknown, keys: string[]): asserts value is Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).length !== keys.length || keys.some(key => !Object.hasOwn(value, key))) throw fail();
 }
@@ -43,6 +55,7 @@ function validateTarget(value: unknown): asserts value is PendingTarget {
 function validateRecord(value: unknown): asserts value is PendingSendRecord {
   const keys = ["schema", "id", "createdAt", "source", "owner", "rawText", "configuration", "files", "creation", "target"];
   if (value && typeof value === "object" && Object.hasOwn(value, "execution")) keys.push("execution");
+  if (value && typeof value === "object" && Object.hasOwn(value, "context")) keys.push("context");
   shape(value, keys);
   if (Object.hasOwn(value, "execution")) {
     const binding = value.execution;
@@ -53,6 +66,11 @@ function validateRecord(value: unknown): asserts value is PendingSendRecord {
       if (parsed.kind !== "local" || parsed.target.model.id !== binding.model || binding.account !== null || !Number.isSafeInteger(binding.localContextTokens) || (binding.localContextTokens as number) < 4096 || (binding.localContextTokens as number) > 262144) throw fail();
     } else if (binding.localContextTokens !== null) throw fail();
   }
+  if (Object.hasOwn(value, "context")) {
+    if (!isPendingTaskContext(value.context)) throw fail();
+    recoveryJSON(value.context, PENDING_CONTEXT_BYTES, PENDING_CONTEXT_NODES);
+    const { context: _context, ...base } = value; recoveryJSON(base, PENDING_BASE_BYTES);
+  } else recoveryJSON(value, PENDING_BASE_BYTES);
   if (value.schema !== 1 || !uuid(value.id) || typeof value.rawText !== "string") throw fail();
   date(value.createdAt); owner(value.source); owner(value.owner);
   if (value.rawText.length > PENDING_TEXT_CHARACTERS) throw fail();
@@ -82,9 +100,16 @@ function validateRecord(value: unknown): asserts value is PendingSendRecord {
       || value.target.projectId !== value.source.projectId)) throw fail();
   } else if (value.creation !== null || (value.target && value.target.threadId !== value.source.threadId)) throw fail();
   if (!equal(value.owner, value.source) && (value.owner.kind !== "thread" || !value.target || value.owner.threadId !== value.target.threadId)) throw fail();
+  if (value.context) {
+    const context = value.context as PendingTaskContext;
+    if (!equal(context.owner, value.source) || (value.source.kind === "project" && context.projectId !== value.source.projectId)
+      || (value.target && context.projectId !== value.target.projectId)) throw fail();
+    const threadId = value.target?.threadId ?? value.creation?.threadId ?? (value.source.kind === "thread" ? value.source.threadId : "");
+    if (!taskContextBelongsTo(context.evidence, threadId as string, value.id as string, context.projectId)) throw fail();
+  }
 }
 function copyRecord(value: unknown): PendingSendRecord {
-  const copied = parseRecoveryJSON(recoveryJSON(value, PENDING_RECORD_BYTES), PENDING_RECORD_BYTES);
+  const copied = parseRecoveryJSON(pendingRecordJSON(value), PENDING_RECORD_BYTES, PENDING_RECORD_NODES);
   validateRecord(copied); return copied;
 }
 
@@ -134,7 +159,7 @@ export class PendingSends {
     if (!file) {
       file = new AttachmentRecoveryFile(this.directory, `${id}.json`, PENDING_RECORD_BYTES, value => {
         validateRecord(value); if (value.id !== id) throw fail();
-      });
+      }, PENDING_RECORD_NODES);
       this.files.set(id, file);
     }
     return file;
@@ -150,14 +175,21 @@ export class PendingSends {
       this.file(id).checkpoint(expected);
     });
   }
-  begin(input: unknown, authorize: (record: NonNullable<PendingSnapshot["value"]>) => boolean, execution?: PendingExecutionBinding): PendingSnapshot {
+  begin(input: unknown, authorize: (record: NonNullable<PendingSnapshot["value"]>) => boolean, execution?: PendingExecutionBinding, context?: PendingTaskContext): PendingSnapshot {
     return this.operation(() => {
       const copied: unknown = parseRecoveryJSON(recoveryJSON(input, PENDING_RECORD_BYTES), PENDING_RECORD_BYTES);
-      shape(copied, ["source", "rawText", "configuration", "files"]); owner(copied.source);
+      const keys = ["source", "rawText", "configuration", "files"];
+      if (copied && typeof copied === "object" && Object.hasOwn(copied, "contextDraft")) keys.push("contextDraft");
+      shape(copied, keys); owner(copied.source);
+      const provided = Object.hasOwn(copied, "contextDraft");
+      if (provided ? !isContextDraftBinding(copied.contextDraft) || !context : context !== undefined) throw fail();
+      if (context && (!isPendingTaskContext(context) || !equal(context.owner, copied.source) || !equal((copied.contextDraft as { owner: unknown }).owner, copied.source))) throw fail();
+      const { contextDraft: _editable, ...message } = copied;
+      recoveryJSON(message, PENDING_BASE_BYTES);
       const id = randomUUID(), createdAt = new Date().toISOString();
-      const record = copyRecord({ schema: 1, id, createdAt, ...copied, ...(execution ? { execution } : {}), owner: copied.source,
+      const record = copyRecord({ schema: 1, id, createdAt, ...message, ...(execution ? { execution } : {}), ...(context ? { context } : {}), owner: copied.source,
         creation: copied.source.kind === "project" ? { threadId: randomUUID(), createdAt } : null, target: null });
-      const admitted = JSON.parse(recoveryJSON(record, PENDING_RECORD_BYTES)) as PendingSendRecord;
+      const admitted = JSON.parse(pendingRecordJSON(record)) as PendingSendRecord;
       const freeze = (value: unknown): void => { if (value && typeof value === "object") { for (const child of Object.values(value)) freeze(child); Object.freeze(value); } };
       freeze(admitted);
       if (authorize(admitted) !== true || this.reentered) throw fail();
@@ -168,13 +200,14 @@ export class PendingSends {
     });
   }
   /** resolve is a main-only Store checkpoint/result lookup, never IPC input. */
-  bind(id: string, resolve: (record: NonNullable<PendingSnapshot["value"]>) => PendingTarget): PendingSnapshot {
+  bind(id: string, resolve: (record: NonNullable<PendingSnapshot["value"]>) => PendingTarget, contextForTarget?: (context: PendingTaskContext, target: PendingTarget) => PendingTaskContext): PendingSnapshot {
     return this.operation(() => {
       const file = this.file(id), before = file.read(); if (!before.value) throw fail();
       const target: unknown = parseRecoveryJSON(recoveryJSON(resolve(before.value), 2048), 2048);
       validateTarget(target); if (this.reentered) throw fail();
       if (before.value.target && !equal(before.value.target, target)) throw fail();
-      const next = copyRecord({ ...before.value, target });
+      const context = !before.value.target && before.value.context && contextForTarget ? contextForTarget(structuredClone(before.value.context) as PendingTaskContext, target) : before.value.context;
+      const next = copyRecord({ ...before.value, target, ...(context ? { context } : {}) });
       return equal(before.value, next) ? before : file.write(before, next);
     });
   }

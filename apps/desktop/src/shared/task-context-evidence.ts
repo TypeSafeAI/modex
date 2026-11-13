@@ -3,6 +3,8 @@ import type { ExecutionOutcome, ItemOrigin, TurnRef } from "./conversation-event
 
 export type ContextDraftOwner = { kind: "thread"; threadId: string } | { kind: "project"; projectId: string; key: string };
 export interface ContextDraftBinding { owner: ContextDraftOwner; nonce: string; revision: number }
+/** Main-owned recovery metadata; no editable nonce or attachment capability is persisted here. */
+export interface PendingTaskContext { owner: ContextDraftOwner; projectId: string; evidence: TaskContextEvidence }
 
 export type ContextTarget = { kind: "file"; path: string } | { kind: "note"; pageId: string } | { kind: "notes-file"; id: string };
 export type ContextSource =
@@ -68,13 +70,21 @@ const one = (v: unknown, values: readonly string[]): boolean => typeof v === "st
 const refIdentity = (v: unknown): v is string => text(v, 8192) && !/^(?:[\\/]|[A-Za-z]:[\\/])/.test(v);
 const ids = (v: unknown): v is string[] => Array.isArray(v) && v.every(refIdentity) && new Set(v).size === v.length;
 /** Editable bindings are minted by main; a provided malformed value is never an absent selection. */
+export function isContextDraftOwner(v: unknown): v is ContextDraftOwner {
+  if (!object(v)) return false;
+  if (v.kind === "thread") return shape(v, ["kind", "threadId"]) && identity(v.threadId);
+  if (!shape(v, ["kind", "projectId", "key"]) || v.kind !== "project" || !identity(v.projectId) || typeof v.key !== "string") return false;
+  const match = v.key.match(/^draft:(0|[1-9]\d*):/);
+  return Boolean(match && Number.isSafeInteger(Number(match[1])) && v.key === `draft:${match[1]}:${v.projectId}`);
+}
 export function isContextDraftBinding(v: unknown): v is ContextDraftBinding {
-  if (!shape(v, ["owner", "nonce", "revision"]) || typeof v.nonce !== "string" || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(v.nonce) || !integer(v.revision) || !object(v.owner)) return false;
-  const owner = v.owner;
-  if (owner.kind === "thread") return shape(owner, ["kind", "threadId"]) && identity(owner.threadId);
-  if (!shape(owner, ["kind", "projectId", "key"]) || owner.kind !== "project" || !identity(owner.projectId) || typeof owner.key !== "string") return false;
-  const match = owner.key.match(/^draft:(0|[1-9]\d*):/);
-  return Boolean(match && Number.isSafeInteger(Number(match[1])) && owner.key === `draft:${match[1]}:${owner.projectId}`);
+  return shape(v, ["owner", "nonce", "revision"]) && typeof v.nonce === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(v.nonce) && integer(v.revision) && isContextDraftOwner(v.owner);
+}
+export function isPendingTaskContext(v: unknown): v is PendingTaskContext {
+  return shape(v, ["owner", "projectId", "evidence"]) && isContextDraftOwner(v.owner) && identity(v.projectId) && isTaskContextEvidence(v.evidence)
+    && v.evidence.checks.length === 0
+    && v.evidence.refs.every(ref => ref.captureIds.length > 0 && ref.relations.length > 0 && ref.relations.every(r => r.kind === "relevant" && r.provenance === "user-confirmed" && r.source.kind === "human"))
+    && v.evidence.captures.every(c => c.phase === "selected" && c.source.kind === "human" && c.workspace?.projectId === v.projectId);
 }
 function target(v: unknown): v is ContextTarget {
   if (!object(v)) return false;

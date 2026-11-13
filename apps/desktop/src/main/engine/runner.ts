@@ -1,6 +1,6 @@
 import { TaskContextCapture } from "./task-context-capture.js";
 import { TaskContextService } from "./task-context-service.js";
-import { describeTaskContext, isContextDraftBinding, type ContextDraftOwner, type ContextDraftBinding, type ContextTarget, type TaskContextEvidence } from "../../shared/task-context-evidence.js";
+import { describeTaskContext, isContextDraftBinding, isTaskContextEvidence, taskContextBelongsTo, copyTaskContextEvidence, type ContextDraftOwner, type ContextDraftBinding, type ContextTarget, type TaskContextEvidence, type PendingTaskContext } from "../../shared/task-context-evidence.js";
 import { executionBinding } from "./execution-binding.js";
 import { resolveCli } from "./cli-path.js";
 import type { LocalExecution } from "./local-models/execution.js";
@@ -53,6 +53,7 @@ type UserItem = Extract<ThreadItem, { kind: "user" }>;
 export interface DurableSendAdmission {
   readonly id: string;
   readonly at: string;
+  readonly contextEvidence?: TaskContextEvidence;
   /** Main-only synchronous callback; never IPC data. Called after the raw user
    * item is durable and before routing/backend work. No automatic replay. */
   readonly committed: (item: Readonly<Omit<UserItem, "attachments">> & { readonly attachments?: readonly Readonly<Attachment>[] }) => void;
@@ -410,6 +411,11 @@ export class ThreadRunner {
     return this.background.run(() => this.contextDrafts.selectTaskContext(binding, targets));
   }
   closeContextDraft(binding: ContextDraftBinding): void { this.contextDrafts.closeContextDraft(binding); }
+  snapshotContextForPending(binding: ContextDraftBinding, owner: ContextDraftOwner): PendingTaskContext {
+    this.assertContextEditing(owner); return this.contextDrafts.snapshotForPending(binding, owner);
+  }
+  pendingContextForThread(context: PendingTaskContext, threadId: string): PendingTaskContext { return this.contextDrafts.pendingForThread(context, threadId); }
+
 
   /**
    * Saves a turn's task record (shared/task-context.ts) to the thread's project notes, at a person's
@@ -719,13 +725,13 @@ export class ThreadRunner {
   /** Native durable adapter only. Files have already crossed its journaled
    * ownership transaction. Existing generic send and explicit Retry stay separate. */
   async sendDurably(threadId: string, rawText: string, attachments: readonly Readonly<Attachment>[], admission: DurableSendAdmission): Promise<void> {
-    const id = admission.id, at = admission.at, committed = admission.committed;
+    const id = admission.id, at = admission.at, committed = admission.committed, contextEvidence = admission.contextEvidence;
     if (!this.o.store.supportsDurableAdmission) throw new Error("Durable native message admission is unavailable.");
     if (typeof rawText !== "string" || rawText.length > 1024 * 1024 || !/^[A-Za-z0-9_-]{1,128}$/.test(id)
       || typeof at !== "string" || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(at)
       || !Number.isFinite(Date.parse(at)) || typeof committed !== "function") throw new Error("Invalid durable message admission.");
     const files = attachments.map(file => ({ ...file }));
-    await this.start(threadId, rawText.trim(), undefined, files, Object.freeze({ id, at, committed, rawText }));
+    await this.start(threadId, rawText.trim(), undefined, files, Object.freeze({ id, at, committed, rawText, ...(contextEvidence !== undefined ? { contextEvidence } : {}) }));
   }
 
   /**
@@ -777,6 +783,7 @@ export class ThreadRunner {
     l.completed = false;
 
     if (prepared) {
+      if (prepared.contextEvidence !== undefined && (!isTaskContextEvidence(prepared.contextEvidence) || !taskContextBelongsTo(prepared.contextEvidence, threadId, prepared.id, thread.projectId))) throw new Error("Prepared task context does not belong to this message.");
       if (reuse !== undefined || l.items.some(item => item.id === prepared.id)) throw new Error("This message was already admitted. Use Retry explicitly.");
       const checkpoint = this.o.store.checkpointThread(threadId);
       if (checkpoint.projectId !== savedThread.projectId || checkpoint.createdAt !== savedThread.createdAt) throw new Error("Prepared message target changed.");
@@ -834,7 +841,7 @@ export class ThreadRunner {
     // The Modex turn is the user message it answers: Retry runs the same turn again as a new attempt.
     if (!retry) {
       const item: UserItem = { id: turnId, kind: "user", text: prepared?.rawText ?? text, execution: admittedExecution,
-        at: prepared?.at ?? new Date().toISOString(), ...(files.length ? { attachments: files } : {}), ...(contextAdmission ? { contextEvidence: contextAdmission.context } : {}) };
+        at: prepared?.at ?? new Date().toISOString(), ...(files.length ? { attachments: files } : {}), ...(contextAdmission ? { contextEvidence: contextAdmission.context } : prepared?.contextEvidence !== undefined ? { contextEvidence: copyTaskContextEvidence(prepared.contextEvidence) } : {}) };
       this.addItem(threadId, item, prepared || contextAdmission ? () => {
         contextAdmission?.commit();
         if (contextDraft) this.contextDrafts.contextPersisted(contextDraft, threadId, turnId);

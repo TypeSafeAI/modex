@@ -4,7 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { Attachment, AttachmentDraftOwner } from "../../shared/attachments.js";
 import type { ComposerRecovery, UpdateRecoveryRecord } from "../../shared/update-recovery.js";
 import type { AttachmentStore } from "./attachments.js";
-import { PENDING_RECORD_BYTES, type PendingSends, type PendingSnapshot, type PendingTarget } from "./pending-sends.js";
+import { pendingRecordJSON, type PendingSends, type PendingSnapshot, type PendingTarget } from "./pending-sends.js";
 import { copyComposerRecovery, copyUpdateRecoveryRecord, type ComposerRecoveryWriter, type DraftTransactionReceipt, type UpdateRecovery } from "./update-recovery.js";
 import { AttachmentRecoveryFile, parseRecoveryJSON, recoveryJSON, type RecoveryFileSnapshot } from "./attachment-recovery-file.js";
 
@@ -15,6 +15,7 @@ class UnstartedRefusal extends Error {
   constructor(cause: unknown) { super("Attachment transfer request was refused before starting.", { cause }); }
 }
 const digest = (value: unknown, limit = JOURNAL_BYTES) => createHash("sha256").update(recoveryJSON(value, limit)).digest("hex");
+const pendingDigest = (value: unknown) => createHash("sha256").update(pendingRecordJSON(value)).digest("hex");
 const equal = (a: unknown, b: unknown) => recoveryJSON(a, JOURNAL_BYTES) === recoveryJSON(b, JOURNAL_BYTES);
 const hash = (v: unknown): v is string => typeof v === "string" && /^[a-f0-9]{64}$/.test(v);
 const id = (v: unknown): v is string => typeof v === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(v) && v !== "staging";
@@ -150,7 +151,7 @@ export class AttachmentTransferJournal {
         const journal: Journal = { schema: 1, id: randomUUID(), intentId,
           source: { ...source }, target: { ...target }, files: entries,
           recovery: { beforeSha: proof.sha256, beforeRevision: before.revision, afterSha: digest(after, RECORD_BYTES), after },
-          intent: { beforeSha: intent.sha256!, afterSha: digest(preview.after, PENDING_RECORD_BYTES), files: claimedIntent } };
+          intent: { beforeSha: intent.sha256!, afterSha: pendingDigest(preview.after), files: claimedIntent } };
         // Fully validate and bound the journal before the first ownership write.
         validate(journal); recoveryJSON(journal, JOURNAL_BYTES);
         const sealed = this.file.write(empty, journal);
@@ -205,7 +206,7 @@ export class AttachmentTransferJournal {
     let nextIntent: unknown;
     if (ib) {
       const preview = pending.adoption(j.intentId, j.intent.files);
-      if (preview.before.sha256 !== i.sha256 || digest(preview.after, PENDING_RECORD_BYTES) !== j.intent.afterSha) throw fail();
+      if (preview.before.sha256 !== i.sha256 || pendingDigest(preview.after) !== j.intent.afterSha) throw fail();
       nextIntent = preview.after;
     }
     if (transitions && beforeCount === transitions) {

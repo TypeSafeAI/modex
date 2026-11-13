@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Store } from "./store.js";
 import type { TaskContextCapture, CapturedNoteInput } from "./task-context-capture.js";
-import { contextRefId, copyTaskContextEvidence, isContextDraftBinding, taskContextBelongsTo, type ContextCapture, type ContextDraftOwner, type ContextDraftBinding, type ContextTarget, type TaskContextEvidence } from "../../shared/task-context-evidence.js";
+import { contextRefId, copyTaskContextEvidence, isContextDraftBinding, taskContextBelongsTo, type ContextCapture, type ContextDraftOwner, type ContextDraftBinding, type ContextTarget, type TaskContextEvidence, type PendingTaskContext } from "../../shared/task-context-evidence.js";
 
 interface Scope { projectId: string; cwd: string; identity: string }
 interface Draft { binding: ContextDraftBinding; scope: Scope; context: TaskContextEvidence; abort: AbortController; generation: number; created?: { id: string; at: string } }
@@ -109,6 +109,30 @@ export class TaskContextService {
     const draft = this.current(binding), thread = this.options.store.thread(threadId);
     if (binding.owner.kind !== "project" || !thread || thread.retired || thread.projectId !== draft.scope.projectId || (draft.created && (draft.created.id !== thread.id || draft.created.at !== thread.createdAt))) throw new Error("The created thread is not bound to this project draft.");
     draft.created = { id: thread.id, at: thread.createdAt };
+  }
+  snapshotForPending(binding: ContextDraftBinding, owner: ContextDraftOwner): PendingTaskContext {
+    const draft = this.current(binding);
+    if (!equal(draft.binding.owner, owner)) throw fail();
+    return { owner: structuredClone(draft.binding.owner), projectId: draft.scope.projectId, evidence: copyTaskContextEvidence(draft.context) };
+  }
+  /** A recovered project intent cannot attest to the newly bound thread's input bytes. */
+  pendingForThread(context: PendingTaskContext, threadId: string): PendingTaskContext {
+    const thread = this.options.store.thread(threadId);
+    if (!thread || thread.retired || thread.projectId !== context.projectId) throw fail();
+    const result = structuredClone(context);
+    if (result.owner.kind === "thread") {
+      if (result.owner.threadId !== threadId) throw fail();
+      return result;
+    }
+    const at = new Date().toISOString(), source = { kind: "human" as const, actionId: randomUUID(), at };
+    for (const ref of result.evidence.refs) if (ref.target.kind === "file") {
+      const capture: ContextCapture = { id: randomUUID(), target: { ...ref.target }, source, phase: "selected", startedAt: at, finishedAt: at,
+        repository: { state: "unavailable", reason: "not-captured" }, revision: { state: "unavailable", reason: "not-captured" },
+        workspace: { kind: "thread", projectId: thread.projectId, threadId } };
+      result.evidence.captures.push(capture); ref.captureIds.push(capture.id);
+    }
+    result.evidence.revision++;
+    return result;
   }
   creationFor(binding: ContextDraftBinding, projectId: string): string | undefined {
     const draft = this.current(binding);

@@ -15,6 +15,7 @@ export interface PendingExecutionBinding {
 export interface PendingSendRecord {
   schema: 1;
   execution?: PendingExecutionBinding;
+  context?: import("./task-context-evidence.js").PendingTaskContext;
   id: string;
   createdAt: string;
   source: AttachmentDraftOwner;
@@ -27,7 +28,7 @@ export interface PendingSendRecord {
   creation: PendingCreation | null;
   target: PendingTarget | null;
 }
-export interface PendingSendInput { source: AttachmentDraftOwner; rawText: string; configuration: Pick<NonNullable<ComposerRecovery["draft"]>, "worktree" | "settings">; files: Attachment[] }
+export interface PendingSendInput { source: AttachmentDraftOwner; rawText: string; configuration: Pick<NonNullable<ComposerRecovery["draft"]>, "worktree" | "settings">; files: Attachment[]; contextDraft?: import("./task-context-evidence.js").ContextDraftBinding }
 
 export interface NativeTransferRequest { id: string; sequence: number; snapshot: ComposerRecovery; intentId: string; files: Attachment[] }
 export type NativeTransferReply = { status: "committed"; revision: number; files: Attachment[] } | { status: "unchanged" | "stale"; revision: number };
