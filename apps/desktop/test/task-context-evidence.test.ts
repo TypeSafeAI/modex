@@ -48,8 +48,26 @@ test("snapshot refuses foreign links, forged source combinations and private bod
     (d: ReturnType<typeof evidence>) => { d.refs[0]!.target.path = "../other/source.ts"; },
     (d: ReturnType<typeof evidence>) => { d.captures[0]!.revision.digest = "made up"; },
     (d: ReturnType<typeof evidence>) => { d.captures[0]!.finishedAt = "not a time"; },
+    (d: ReturnType<typeof evidence>) => { d.captures[0]!.phase = "after-notes-read"; },
   ];
   for (const mutate of cases) { const d = evidence(); mutate(d); assert.equal(tasks.isTaskSnapshot(snapshot(d)), false); }
+});
+
+test("returned Notes captures require their method, target and exact returned version to agree", () => {
+  const make = (): tasks.TaskContextEvidence => {
+    const source = { kind: "notes-read" as const, turn: { thread: "T", turn: "U", attempt: "A", backend: "codex" as const }, leaseId: "L", receiptId: "P", requestId: 1, method: "history" as const, at };
+    return { revision: 1, refs: [{ id: "r", target: { kind: "note", pageId: "N" }, relations: [{ kind: "read", provenance: "observed", source }], captureIds: ["c"] }], captures: [{ id: "c", target: { kind: "note", pageId: "N" }, source, phase: "after-notes-read", startedAt: at, finishedAt: at, repository: { state: "unavailable", reason: "not-repository" }, revision: { state: "available", algorithm: "sha256", digest: "b".repeat(64), bytes: 12, noteRevision: 8 }, noteVersion: { via: "history", revision: 8, updatedAt: at } }], checks: [] };
+  };
+  assert.equal(tasks.isTaskSnapshot(snapshot(make())), true);
+  const mutations: ((d: tasks.TaskContextEvidence) => void)[] = [
+    d => { delete d.captures[0]!.noteVersion; },
+    d => { d.captures[0]!.noteVersion!.via = "read"; },
+    d => { const rev = d.captures[0]!.revision; if (rev.state === "available") rev.noteRevision = 4; },
+    d => { const source = d.captures[0]!.source; if (source.kind === "notes-read") source.method = "read_file"; },
+  ];
+  for (const mutate of mutations) { const d = make(); mutate(d); assert.equal(tasks.isTaskSnapshot(snapshot(d)), false); }
+  const unavailable = make(); unavailable.captures[0]!.revision = { state: "unavailable", reason: "budget" };
+  assert.equal(tasks.isTaskSnapshot(snapshot(unavailable)), true, "budget exhaustion retains the independently returned revision");
 });
 
 test("snapshot keeps every ref beyond the display limit and validates unavailable history receipts", () => {

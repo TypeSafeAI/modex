@@ -8,14 +8,20 @@ import type { PagesChange, PagesConnection } from "../../shared/pages.js";
 import { pageTitle } from "../../shared/space.js";
 import type { SpacePagesStore } from "./space-store.js";
 import type { NotesStore } from "./notes-store.js";
+import { TaskContextCapture, type CapturedNoteInput } from "./task-context-capture.js";
+import type { TurnRef } from "../../shared/conversation-events.js";
+import type { ContextCapture, ContextSource, ContextTarget } from "../../shared/task-context-evidence.js";
+
+export interface PagesReadReceipt { source: Extract<ContextSource, { kind: "notes-read" }>; captures: ContextCapture[] }
+export interface PagesReadObserver { attempt: TurnRef; cwd: string; isCurrent(): boolean; observed(receipt: PagesReadReceipt): void | Promise<void> }
 
 type Turn = Pick<Thread, "id" | "projectId" | "mode" | "plan">;
 /** A project's own notes: its notes project's id and folder. Agents of that project see nothing outside it. */
 export type PagesScope = { id: string; rel: string };
-type Active = { turn: Turn; projectId: string; readOnly: boolean; available: boolean; scope?: PagesScope; error?: string; changed(change: PagesChange): void };
+type Active = { turn: Turn; projectId: string; readOnly: boolean; available: boolean; closed: AbortController; scope?: PagesScope; error?: string; observer?: PagesReadObserver; leaseId?: string; changed(change: PagesChange): void };
 type TreeNotes = Pick<NotesStore, "tree" | "pageRels" | "createFolder" | "moveNodes" | "readFile">;
 type Route = { token: string; active?: Active };
-export type PagesLease = { connection: PagesConnection; close(): Promise<void> };
+export type PagesLease = { connection: PagesConnection; leaseId?: string; close(): Promise<void> };
 const string = { type: "string" };
 const id = { type: "string", description: "Page ID returned by search/read/create." };
 const revision = { type: "integer", minimum: 1, description: "Current revision from read. Stale writes fail; read and reconcile before retrying." };
@@ -53,6 +59,7 @@ export class PagesAgents {
   private readonly server: http.Server;
   private listening?: Promise<string>;
   private disposed = false;
+  private readonly capture: Pick<TaskContextCapture, "captureNotes">;
   constructor(private readonly options: {
     space: SpacePagesStore; enabled(projectId: string): boolean; updated?(): void;
     /**
@@ -62,7 +69,9 @@ export class PagesAgents {
      */
     scope?(projectId: string, create: boolean): PagesScope | null | undefined;
     notes?: TreeNotes;
+    capture?: Pick<TaskContextCapture, "captureNotes">;
   }) {
+    this.capture = options.capture ?? new TaskContextCapture();
     this.server = http.createServer((req, res) => { void this.handle(req, res).catch(() => { if (!res.headersSent) res.writeHead(500); res.end(); }); });
   }
   private listen(): Promise<string> {
@@ -74,10 +83,12 @@ export class PagesAgents {
       });
     });
   }
-  async prepare(turn: Turn, changed: Active["changed"], signal?: AbortSignal): Promise<PagesLease> {
+  async prepare(turn: Turn, changed: Active["changed"], signal?: AbortSignal, observer?: PagesReadObserver): Promise<PagesLease> {
     // Capture authority before the first await; Store mutates thread objects in place.
     const readOnly = turn.plan || turn.mode === "chat";
     const projectId = turn.projectId;
+    const bound = observer ? { ...observer, attempt: structuredClone(observer.attempt) } : undefined;
+    if (bound && (bound.attempt.thread !== turn.id || !bound.isCurrent())) throw new Error("Notes observation does not belong to this active attempt.");
     // A notes folder that cannot be read must not fail the turn. The lease stays attached and
     // refuses every call, rather than running unscoped and showing other projects' notes.
     let scope: PagesScope | undefined, error: string | undefined;
@@ -91,14 +102,22 @@ export class PagesAgents {
     const base = await this.listen();
     signal?.throwIfAborted();
     if (this.disposed) throw new Error("Pages agents are shutting down.");
-    const route = this.routes.get(turn.id) ?? { token: randomUUID() };
-    if (route.active) throw new Error("Pages is already attached to this turn.");
-    this.routes.set(turn.id, route);
-    const active: Active = { turn, projectId, readOnly, available: true, ...(scope ? { scope } : {}), ...(error ? { error } : {}), changed };
+    if ([...this.routes.values()].some(route => route.active?.available && route.active.turn.id === turn.id)) throw new Error("Pages is already attached to this turn.");
+    const leaseId = bound ? randomUUID() : undefined, key = leaseId ? `attempt:${leaseId}` : turn.id;
+    const route = this.routes.get(key) ?? { token: randomUUID() };
+    this.routes.set(key, route);
+    const active: Active = { turn, projectId, readOnly, available: true, closed: new AbortController(), ...(bound ? { observer: bound, leaseId } : {}), ...(scope ? { scope } : {}), ...(error ? { error } : {}), changed };
     route.active = active;
+    const close = () => {
+      active.available = false; active.closed.abort();
+      if (route.active === active) route.active = undefined;
+      if (leaseId && this.routes.get(key) === route) this.routes.delete(key);
+      signal?.removeEventListener("abort", close);
+    };
+    signal?.addEventListener("abort", close, { once: true }); if (signal?.aborted) close();
     return {
       connection: { url: `${base}/mcp/${route.token}`, instructions: pagesInstructions(this.writable(active)) },
-      close: async () => { active.available = false; if (route.active === active) route.active = undefined; },
+      ...(leaseId ? { leaseId } : {}), close: async () => close(),
     };
   }
   private writable(active: Active): boolean {
@@ -114,9 +133,10 @@ export class PagesAgents {
     const requestActive = route.active;
     const mcp = new Server({ name: "modex-pages", version: "1" }, { capabilities: { tools: {} } });
     mcp.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
-    mcp.setRequestHandler(CallToolRequestSchema, async request => {
+    mcp.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
       try {
-        const result = this.call(requestActive, request.params.name, request.params.arguments ?? {});
+        const args = request.params.arguments ?? {};
+        const result = await this.observeRead(requestActive, request.params.name, args, this.call(requestActive, request.params.name, args), extra.requestId, extra.signal, route.token);
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (error) { return { isError: true, content: [{ type: "text", text: (error as Error).message }] }; }
     });
@@ -125,8 +145,61 @@ export class PagesAgents {
     await mcp.connect(transport);
     await transport.handleRequest(req, res);
   }
+  private assertReadActive(active: Active, targets: ContextTarget[], signal: AbortSignal): void {
+    signal.throwIfAborted();
+    if (!active.available || active.closed.signal.aborted || this.disposed || !active.observer?.isCurrent()) throw new Error("Notes observation ended with this attempt.");
+    if (!this.options.enabled(active.projectId)) throw new Error("Agent notes access is disabled for this project.");
+    const scope = active.scope, notes = this.options.notes;
+    if (scope && notes) {
+      const nodes = notes.tree().nodes, home = nodes.find(node => node.id === scope.id && node.kind === "project")?.rel;
+      if (home === undefined) throw new Error("This project's notes are no longer available.");
+      const rels = notes.pageRels(), within = (rel: string | undefined) => rel !== undefined && (rel === home || rel.startsWith(`${home}/`));
+      for (const target of targets) {
+        const rel = target.kind === "note" ? rels.get(target.pageId) : target.kind === "notes-file" ? nodes.find(node => node.kind === "file" && node.id === target.id)?.rel : undefined;
+        if (!within(rel)) throw new Error("This note is outside this project's notes.");
+      }
+    }
+  }
+  private async observeRead(active: Active | undefined, name: string, args: Record<string, unknown>, result: unknown, requestId: string | number, requestSignal: AbortSignal, token: string): Promise<unknown> {
+    if (!active?.observer || !["read", "history", "read_file"].includes(name)) return result;
+    if ((typeof requestId === "string" && (!requestId || requestId.length > 512 || /[\u0000-\u001f\u007f\ud800-\udfff]/u.test(requestId) || /^(?:[\\/]|[A-Za-z]:[\\/])/.test(requestId) || requestId.includes(token)))
+      || (typeof requestId === "number" && !Number.isSafeInteger(requestId))) throw new Error("Invalid Notes read request identity.");
+    const signal = AbortSignal.any([requestSignal, active.closed.signal]);
+    this.assertReadActive(active, [], signal);
+    // Snapshot before the first await: later edits cannot change either the
+    // returned response or the exact bodies/revisions used for its receipts.
+    const snapshot = structuredClone(result);
+    const source: PagesReadReceipt["source"] = { kind: "notes-read", turn: structuredClone(active.observer.attempt), leaseId: active.leaseId!, receiptId: randomUUID(), requestId, method: name as PagesReadReceipt["source"]["method"], at: new Date().toISOString() };
+    const notes: CapturedNoteInput[] = [];
+    const pageBody = (value: unknown, via: "read" | "history") => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) { if (via === "read") throw new Error("Invalid Notes read response."); return; }
+      const page = value as { id?: unknown; markdown?: unknown; revision?: unknown; updatedAt?: unknown };
+      if (page.id !== args.id) throw new Error("History returned a different Note identity.");
+      if (typeof page.markdown !== "string") { if (via === "read") throw new Error("Notes read did not return a body."); return; }
+      if (!Number.isSafeInteger(page.revision) || (page.revision as number) < 1 || typeof page.updatedAt !== "string" || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(page.updatedAt) || !Number.isFinite(Date.parse(page.updatedAt)) || new Date(page.updatedAt).toISOString() !== page.updatedAt) throw new Error("Invalid returned Note revision.");
+      notes.push({ target: { kind: "note", pageId: args.id as string }, source, text: page.markdown, version: { via, revision: page.revision as number, updatedAt: page.updatedAt } });
+    };
+    if (name === "read") pageBody(snapshot, "read");
+    else if (name === "history") {
+      const versions = (snapshot as { versions?: unknown })?.versions;
+      if (!Array.isArray(versions)) throw new Error("Invalid Notes history response.");
+      for (const version of versions) pageBody(version?.page, "history");
+    } else {
+      const file = snapshot as { id?: unknown; text?: unknown };
+      if (!file || file.id !== args.id || typeof file.text !== "string") throw new Error("Invalid Notes file response.");
+      notes.push({ target: { kind: "notes-file", id: args.id as string }, source, text: file.text });
+    }
+    if (!notes.length) return snapshot;
+    this.assertReadActive(active, notes.map(note => note.target), signal);
+    const captures = (await this.capture.captureNotes(active.observer.cwd, notes, "after-notes-read", signal)).map(capture => ({ ...capture, workspace: { kind: "thread" as const, projectId: active.projectId, threadId: source.turn.thread } }));
+    this.assertReadActive(active, notes.map(note => note.target), signal);
+    await active.observer.observed({ source: structuredClone(source), captures });
+    this.assertReadActive(active, notes.map(note => note.target), signal);
+    return snapshot;
+  }
   private call(active: Active | undefined, name: string, args: Record<string, unknown>): unknown {
     if (!active?.available) throw new Error("Pages access ended with this turn.");
+    if (active.observer && !active.observer.isCurrent()) throw new Error("Pages access ended with this attempt.");
     if (!this.options.enabled(active.projectId)) throw new Error("Agent notes access is disabled for this project. Enable it in Space.");
     if (active.error) throw new Error(`This project's notes are unavailable: ${active.error}`);
     validate(name, args);
@@ -240,7 +313,7 @@ export class PagesAgents {
   }
   async dispose(): Promise<void> {
     this.disposed = true;
-    for (const route of this.routes.values()) if (route.active) route.active.available = false;
+    for (const route of this.routes.values()) if (route.active) { route.active.available = false; route.active.closed.abort(); }
     if (this.listening) { await this.listening; this.server.closeAllConnections(); await new Promise<void>(resolve => this.server.close(() => resolve())); }
     this.routes.clear();
   }

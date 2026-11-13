@@ -22,7 +22,7 @@ export interface ContextCapture {
   id: string;
   target: ContextTarget;
   source: ContextSource;
-  phase: "selected" | "check-start-observed" | "check-end-observed" | "after-native-result";
+  phase: "selected" | "check-start-observed" | "check-end-observed" | "after-native-result" | "after-notes-read";
   startedAt: string;
   finishedAt: string;
   repository: { state: "available"; head: string } | { state: "unavailable"; reason: "not-repository" | "budget" | "unreadable" | "not-captured" };
@@ -138,7 +138,7 @@ function relation(v: unknown): boolean {
   }
 }
 function capture(v: unknown): v is ContextCapture {
-  if (!shape(v, ["id", "target", "source", "phase", "startedAt", "finishedAt", "repository", "revision"], ["noteVersion", "workspace"]) || !identity(v.id) || !target(v.target) || !source(v.source) || !one(v.phase, ["selected", "check-start-observed", "check-end-observed", "after-native-result"]) || !date(v.startedAt) || !date(v.finishedAt) || v.finishedAt < v.startedAt) return false;
+  if (!shape(v, ["id", "target", "source", "phase", "startedAt", "finishedAt", "repository", "revision"], ["noteVersion", "workspace"]) || !identity(v.id) || !target(v.target) || !source(v.source) || !one(v.phase, ["selected", "check-start-observed", "check-end-observed", "after-native-result", "after-notes-read"]) || !date(v.startedAt) || !date(v.finishedAt) || v.finishedAt < v.startedAt) return false;
   const repo = v.repository, rev = v.revision;
   if (!object(repo) || !(repo.state === "available" ? shape(repo, ["state", "head"]) && typeof repo.head === "string" && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(repo.head) : shape(repo, ["state", "reason"]) && repo.state === "unavailable" && one(repo.reason, ["not-repository", "budget", "unreadable", "not-captured"]))) return false;
   if (!object(rev) || !(rev.state === "available" ? shape(rev, ["state", "algorithm", "digest", "bytes"], ["noteRevision"]) && rev.algorithm === "sha256" && typeof rev.digest === "string" && /^[a-f0-9]{64}$/.test(rev.digest) && integer(rev.bytes) && (rev.noteRevision === undefined || (v.target.kind === "note" && integer(rev.noteRevision))) : shape(rev, ["state", "reason"]) && rev.state === "unavailable" && one(rev.reason, ["missing", "outside", "not-regular", "too-large", "changed-during-read", "budget", "not-captured", "unreadable"]))) return false;
@@ -147,6 +147,13 @@ function capture(v: unknown): v is ContextCapture {
     if (!object(w) || !identity(w.projectId) || !(w.kind === "project" ? shape(w, ["kind", "projectId"]) : w.kind === "thread" && shape(w, ["kind", "projectId", "threadId"]) && identity(w.threadId))) return false;
   }
   if (v.noteVersion !== undefined && !(v.target.kind === "note" && shape(v.noteVersion, ["via", "updatedAt", "revision"]) && one(v.noteVersion.via, ["read", "history"]) && date(v.noteVersion.updatedAt) && integer(v.noteVersion.revision))) return false;
+  if (v.phase === "after-notes-read") {
+    if (v.source.kind !== "notes-read") return false;
+    if (v.source.method === "read_file") {
+      if (v.target.kind !== "notes-file" || v.noteVersion !== undefined) return false;
+    } else if (v.target.kind !== "note" || !object(v.noteVersion) || v.noteVersion.via !== v.source.method || !integer(v.noteVersion.revision) || v.noteVersion.revision < 1
+      || (rev.state === "available" && rev.noteRevision !== v.noteVersion.revision)) return false;
+  }
   return true;
 }
 function check(v: unknown): v is TaskCheckEvidence {
