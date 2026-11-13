@@ -7,6 +7,8 @@
  */
 import { finalAnswerIndex, type ExecutionOutcome, type PlanSource, type PlanStep } from "./conversation-events.js";
 import type { ThreadItem } from "./types.js";
+import { copyTaskContextEvidence, isTaskContextEvidence, taskContextBelongsTo, type TaskContextEvidence } from "./task-context-evidence.js";
+export * from "./task-context-evidence.js";
 
 export interface TaskCommand { command: string; outcome: ExecutionOutcome; exitCode?: number | null }
 
@@ -54,6 +56,8 @@ export interface TaskRecord {
   /** The project files the turn touched, by what the CLI reported. */
   context?: TaskContext;
   answer?: string;
+  /** Main-owned timed provenance, frozen at Save; omitted for legacy turns. */
+  contextEvidence?: TaskContextEvidence;
 }
 
 /**
@@ -107,7 +111,8 @@ export function isTaskSnapshot(value: unknown): value is TaskSnapshot {
     && (r.verification === undefined || (typeof r.verification.state === "string" && Array.isArray(r.verification.checks) && r.verification.checks.every((c) => typeof c?.command === "string")))
     && (r.context === undefined || (Array.isArray(r.context.files) && r.context.files.every((f) => typeof f?.path === "string" && strings(f.relations)) && Number.isInteger(r.context.outside)
       && (r.context.unlisted === undefined || strings(r.context.unlisted))))
-    && (r.answer === undefined || typeof r.answer === "string");
+    && (r.answer === undefined || typeof r.answer === "string")
+    && (r.contextEvidence === undefined || (isTaskContextEvidence(r.contextEvidence) && taskContextBelongsTo(r.contextEvidence, v.threadId, v.turnId)));
 }
 
 /** A question the CLI asked, with the answer as its card shows it. Nothing is filled in that the card does not hold. */
@@ -150,7 +155,7 @@ function proposedPlan(item: ThreadItem): boolean {
   return item.kind === "assistant" && item.nativePhase === "plan" && Boolean(item.text.trim());
 }
 
-export function taskRecord(items: readonly ThreadItem[], opts: { threadId: string; title: string; cwd: string }): TaskRecord {
+export function taskRecord(items: readonly ThreadItem[], opts: { threadId: string; title: string; cwd: string; contextEvidence?: TaskContextEvidence }): TaskRecord {
   const user = items.find((item) => item.kind === "user");
   const rest = items.filter((item) => item.kind !== "user");
   const plan = [...rest].reverse().find((item) => item.kind === "plan");
@@ -177,11 +182,14 @@ export function taskRecord(items: readonly ThreadItem[], opts: { threadId: strin
     }
     if (item.exec) commands.push({ command: item.exec.command, outcome: item.outcome ?? (item.ok === true ? "succeeded" : "unknown"), ...(item.exitCode !== undefined ? { exitCode: item.exitCode } : {}) });
   }
+  const evidence = opts.contextEvidence ?? (user?.kind === "user" ? user.contextEvidence : undefined);
+  if (evidence !== undefined && (!isTaskContextEvidence(evidence) || !user || !taskContextBelongsTo(evidence, opts.threadId, user.id))) throw new Error("Task context does not belong to this request.");
   const final = finalAnswerIndex(rest);
   const answer = final >= 0 ? rest[final] : undefined;
   const missing = noPlan(rest);
   const proposed = [...rest].reverse().find(proposedPlan);
   return {
+    ...(evidence !== undefined ? { contextEvidence: copyTaskContextEvidence(evidence) } : {}),
     title: opts.title, threadId: opts.threadId, request: user?.kind === "user" ? user.text : "",
     ...(plan?.kind === "plan" ? { plan: { steps: plan.steps, from: plan.from, revision: plan.revision } } : {}),
     ...(proposed?.kind === "assistant" ? { proposedPlan: proposed.text.trim() } : {}),

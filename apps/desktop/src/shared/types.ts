@@ -123,7 +123,7 @@ export type AnswerResult = { ok: true } | { ok: false; reason: Refusal; error?: 
 
 export type ThreadItem =
   /** `attachments` are the files sent with the message; main keeps them under its attachments folder. */
-  | { id: string; kind: "user"; execution?: PendingExecutionBinding; text: string; at: string; attachments?: import("./attachments.js").Attachment[] }
+  | { id: string; kind: "user"; execution?: PendingExecutionBinding; text: string; at: string; attachments?: import("./attachments.js").Attachment[]; contextEvidence?: import("./task-context-evidence.js").TaskContextEvidence }
   /**
    * `origin`, `phase`, `outcome` (and `reasoning` on thinking items) come from the conversation-event
    * contract (shared/conversation-events.ts). Items saved before it have none; read them through `itemFacts`.

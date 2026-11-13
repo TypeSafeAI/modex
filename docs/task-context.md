@@ -269,3 +269,10 @@ the turn touched and its verification, as the save recorded them. It is read-onl
   that link, and inferring it would break "nothing is inferred". Steps stay "Reported done", and the
   turn's verification line is the verified signal. A native link from the CLI would reopen it:
   [decision](reviews/2026-10-22-cf7-step-linking-decision.md).
+
+
+## Context provenance completion in progress
+
+The CF-7 completion branch introduces optional, body-free `contextEvidence` on a user message and its saved task record. The shared validator keeps model-proposed relevance, explicit human confirmation, native requested operations and observed results distinct, checks all reference/capture links and refuses malformed supplied metadata. Captures retain their actual time, phase, repository HEAD observation, available SHA-256 or explicit unavailable reason. Inspected Note versions keep their returned revision even when no hash can be captured. HEAD is not a complete dirty-tree revision, and equal observed hashes are not proof of every byte a check consumed.
+
+This data-model slice preserves legacy records without inventing provenance and copies metadata into the saved record without rereading files. It does not yet provide scoped selection, bounded capture, native observations, the model-proposal channel, relevance-aware checks or the context UI; those remain part of the full CF-7 implementation. Save/reopen and native/human acceptance remain separate gates. Retired plan-step check linking stays retired.
