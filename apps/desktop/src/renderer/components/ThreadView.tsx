@@ -21,6 +21,7 @@ import { ReasoningItem } from "./transcript/ReasoningItem";
 import { EvidenceCard } from "./transcript/EvidenceCard";
 import { QuestionCard } from "./transcript/QuestionCard";
 import { SaveTaskNote, TaskContextLine, TaskNoPlanLine, TaskPlanCard, TaskVerificationLine } from "./transcript/TaskPlanCard";
+import { TaskContextPanel } from "./transcript/TaskContextPanel";
 import { OUTPUT_PREVIEW_BYTES, PATCH_TOOLS, formatBytes, type NativeWebSearch } from "../../shared/evidence";
 import { ToolLog } from "./transcript/ToolLog";
 import { MessageActions } from "./transcript/MessageActions";
@@ -32,6 +33,8 @@ export { formatElapsed } from "./transcript/TurnContent";
 const EAGER_TURNS = 8;
 
 interface Props {
+  contextControls?: React.ReactNode;
+  contextBusy?: boolean;
   thread: Thread;
   project: Project;
   items: ThreadItem[];
@@ -82,7 +85,7 @@ export function tailPath(p: string, max = 40): string {
   return "…" + (out || p.slice(-(max - 1)));
 }
 
-export function ThreadView({ thread, project, items, text, onText, attachments, attachmentActions, onSend, onStop, onAnswer, onAnswerQuestion, onUpdate, onRetry, onFix, onUnarchive, models, modelsError, onRetryModels, openModelPickerRequest, local, inputRef, branch }: Props) {
+export function ThreadView({ contextControls, contextBusy, thread, project, items, text, onText, attachments, attachmentActions, onSend, onStop, onAnswer, onAnswerQuestion, onUpdate, onRetry, onFix, onUnarchive, models, modelsError, onRetryModels, openModelPickerRequest, local, inputRef, branch }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const reader = useMemo(() => readerStateFor(thread.id), [thread.id]);
   const restored = useRef(false);
@@ -228,7 +231,7 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
         {turns.map((turn, i) => (
           <DeferMarkdown.Provider key={turn.user?.id ?? `pre-${i}`} value={i < turns.length - EAGER_TURNS ? scroller : null}>
           <TurnContent key={turn.user?.id ?? `pre-${i}`} turn={turn} status={i === lastUser && busy ? thread.status : undefined}
-            footer={(t) => <><MessageActions threadId={thread.id} turn={t} readOnly={Boolean(thread.retired)} noteSaved={Boolean(thread.taskNotes?.[t.user!.id])} /><TaskNoPlanLine items={t.rest} /><TaskVerificationLine items={t.user ? [t.user, ...t.rest] : t.rest} /><TaskContextLine items={t.user ? [t.user, ...t.rest] : t.rest} cwd={thread.cwd} /></>}
+            footer={(t, revealItem) => <><MessageActions threadId={thread.id} turn={t} readOnly={Boolean(thread.retired)} noteSaved={Boolean(thread.taskNotes?.[t.user!.id])} /><TaskNoPlanLine items={t.rest} /><TaskVerificationLine items={t.user ? [t.user, ...t.rest] : t.rest} /><TaskContextLine items={t.user ? [t.user, ...t.rest] : t.rest} cwd={thread.cwd} /><TaskContextPanel context={t.user?.contextEvidence} threadId={thread.id} turnId={t.user?.id} readOnly={Boolean(thread.retired)} onRevealItem={revealItem} /></>}
             render={(item, live) => <Item key={item.id} item={item} live={live} onAnswer={onAnswer} onAnswerQuestion={onAnswerQuestion} onPolicy={(approvals) => onUpdate({ approvals })} onFix={onFix} onRetry={!thread.retired && !busy && item.id === retryId ? onRetry : undefined} onReply={!thread.retired && !busy && item.id === askId ? (text) => void onSend(text) : undefined} />} />
           </DeferMarkdown.Provider>
         ))}
@@ -250,6 +253,8 @@ export function ThreadView({ thread, project, items, text, onText, attachments, 
         <button type="button" className="btn small" data-testid="archived-restore" onClick={onUnarchive}>Unarchive</button>
       </div>}
       {thread.retired ? <p className="notice" data-testid="retired-notice">Pull request #{thread.retired.pr} merged. This task is finished; start a new thread to continue.</p> : <Composer
+        contextControls={contextControls}
+        sendBlocked={contextBusy}
         text={text}
         onText={onText}
         attachments={attachments}
@@ -569,7 +574,7 @@ function ToolItem({ item }: { item: Extract<ThreadItem, { kind: "tool" }> }) {
   const status = toolStatusLabel(item);
   const outcome = count !== undefined ? `${count} ${count === 1 ? "result" : "results"}` : status.toLowerCase();
   return (
-    <div className={`tool ${item.status} ${item.ok === false ? "failed" : ""}`} data-testid="item" data-item-kind="tool" data-status={item.status} data-ok={item.ok === false ? "false" : "true"}>
+    <div className={`tool ${item.status} ${item.ok === false ? "failed" : ""}`} data-testid="item" data-item-kind="tool" data-item-id={item.id} tabIndex={-1} data-status={item.status} data-ok={item.ok === false ? "false" : "true"}>
       <button className="tool-head" data-testid="item-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={`${status}: ${summary}`} title={summary}>
         <span className="tool-icon">{icon}</span>
         <code className="tool-title" data-testid="tool-title"><span data-testid="tool-summary">{summary}</span></code>

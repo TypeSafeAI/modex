@@ -1093,3 +1093,20 @@ button.turn-label:hover { color: var(--text-2); }
 .ui-size-options { display: inline-flex; gap: 4px; padding: 3px; border-radius: 10px; background: var(--bg-composer); }
 .ui-size-options button { height: 28px; padding: 0 14px; border: 0; border-radius: 7px; background: transparent; color: var(--text-2); font: inherit; font-size: 13px; cursor: pointer; }
 .ui-size-options button[aria-checked="true"] { background: var(--bg-row-selected); color: var(--text-1); }
+
+.task-context-select { font-size: 12px; padding: 4px 0; }
+.task-context-select > button { color: var(--muted); }
+.task-context-panel { max-height: 340px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin: 6px 0; text-align: left; }
+.task-context-panel p { margin: 6px 0; }
+.task-context-panel button { margin: 4px 8px 4px 0; }
+.task-context-candidates { display: grid; gap: 6px; }
+.task-context-candidates label { display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
+.task-context-refs { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 10px; }
+.task-context-refs li { display: grid; gap: 4px; overflow-wrap: anywhere; }
+.task-context-refs li > span { color: var(--muted); }
+.task-context-refs code { overflow-wrap: anywhere; }
+
+.task-view > .task-context-turn { display: block; min-width: 0; }
+.task-context-panel { box-sizing: border-box; width: 100%; min-width: 0; }
+.task-context-confirm { display: flex; align-items: center; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
+.task-context-panel fieldset { min-width: 0; margin: 8px 0; border: 1px solid var(--line); border-radius: 6px; padding: 8px; }

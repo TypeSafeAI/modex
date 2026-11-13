@@ -50,6 +50,10 @@ export class TaskContextService {
     this.owners.set(key(owner), binding.nonce);
     return structuredClone(binding);
   }
+  draftTaskContext(binding: ContextDraftBinding): TaskContextEvidence { return copyTaskContextEvidence(this.current(binding).context); }
+  assertReferenceScope(projectId: string, targets: ContextTarget[]): void {
+    for (const target of targets) if (target.kind !== "file" && !this.noteInScope(projectId, target)) throw new Error("This note is outside this project's notes.");
+  }
   async candidates(binding: ContextDraftBinding): Promise<TaskContextCandidates> {
     const draft = this.current(binding), generation = draft.generation;
     const listed = await (this.options.listFiles ?? listWorkspaceFiles)(draft.scope.cwd);

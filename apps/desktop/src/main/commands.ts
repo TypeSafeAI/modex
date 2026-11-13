@@ -103,7 +103,9 @@ export function registerCommands(handle: RegisterCommand, {
   handle("task:context-draft-select", ({ binding, targets }) => runner.selectTaskContext(binding, targets));
   handle("task:context-draft-close", ({ binding }) => runner.closeContextDraft(binding));
   handle("task:context-candidates", ({ binding }) => runner.taskContextCandidates(binding));
+  handle("task:context-draft", ({ binding }) => runner.draftTaskContext(binding));
   handle("task:context", ({ threadId, turnId }) => runner.taskContext(threadId, turnId));
+  handle("task:context-confirm", ({ threadId, turnId, expectedRevision, refIds }) => runner.confirmTaskContext(threadId, turnId, expectedRevision, refIds));
   handle("task:check-confirm", ({ threadId, turnId, expectedRevision, itemId, refIds }) => runner.confirmTaskCheck(threadId, turnId, expectedRevision, itemId, refIds));
   handle("task:save-note", ({ threadId, turnId }) => runner.saveTaskNote(threadId, turnId));
   handle("task:note", ({ pageId }) => runner.taskNote(pageId));

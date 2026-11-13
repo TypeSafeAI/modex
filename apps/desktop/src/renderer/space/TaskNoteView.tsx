@@ -1,3 +1,4 @@
+import { TaskContextPanel } from "../components/transcript/TaskContextPanel";
 import { useEffect, useState } from "react";
 import type { SpacePage } from "../../shared/space";
 import { CONTEXT_SHOWN, PROPOSED_WORDS, clarificationLine, contextCount, type TaskNoteView as View } from "../../shared/task-context";
@@ -73,6 +74,7 @@ export function TaskNoteView({ view, onOpenThread, onClose }: { view: View; onOp
       {context.unlisted?.length ? <UnlistedCommands commands={context.unlisted} testId="task-view-unlisted" /> : null}</>}
     {verification && (verification.checks.length > 0 || verification.edits > 0) && <><h3>Verification</h3>
       <div className="task-verification" data-testid="task-view-verification" data-state={verification.state}><VerificationText v={verification} /></div></>}
+    <TaskContextPanel context={record.contextEvidence} readOnly />
     {record.answer && <><h3>Answer</h3><p className="task-view-answer">{record.answer}</p></>}
   </section>;
 }

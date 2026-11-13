@@ -423,6 +423,26 @@ export class ThreadRunner {
     return this.background.run(() => this.contextDrafts.selectTaskContext(binding, targets));
   }
   closeContextDraft(binding: ContextDraftBinding): void { this.contextDrafts.closeContextDraft(binding); }
+  draftTaskContext(binding: ContextDraftBinding): TaskContextEvidence {
+    this.assertContextEditing(binding?.owner); return this.contextDrafts.draftTaskContext(binding);
+  }
+  confirmTaskContext(threadId: string, turnId: string, expectedRevision: number, refIds: string[]): TaskContextEvidence {
+    this.assertContextEditing({ kind: "thread", threadId });
+    const thread = this.o.store.thread(threadId)!, context = this.taskContext(threadId, turnId);
+    if (!Number.isSafeInteger(expectedRevision) || context.revision !== expectedRevision) throw new Error("Task context changed; review it again.");
+    if (!Array.isArray(refIds) || refIds.length > context.refs.length || new Set(refIds).size !== refIds.length || refIds.some(id => !context.refs.some(ref => ref.id === id))) throw new Error("Choose existing references from this task.");
+    this.contextDrafts.assertReferenceScope(thread.projectId, context.refs.filter(ref => refIds.includes(ref.id)).map(ref => ref.target));
+    const source = { kind: "human" as const, actionId: newId(), at: new Date().toISOString() };
+    this.updateTaskContext(threadId, this.slot(threadId), { thread: threadId, turn: turnId, attempt: source.actionId, backend: thread.backend }, thread.projectId, evidence => {
+      if (evidence.revision !== expectedRevision) throw new Error("Task context changed; review it again.");
+      for (const ref of evidence.refs) {
+        ref.relations = ref.relations.filter(relation => relation.provenance !== "user-confirmed");
+        if (refIds.includes(ref.id)) ref.relations.push({ kind: "relevant", provenance: "user-confirmed", source });
+      }
+      evidence.revision++;
+    });
+    return this.taskContext(threadId, turnId);
+  }
   taskContext(threadId: string, turnId: string): TaskContextEvidence {
     const thread = this.o.store.thread(threadId);
     if (!thread || !this.o.store.project(thread.projectId)) throw new Error("Task context project is unavailable.");
@@ -437,7 +457,7 @@ export class ThreadRunner {
     const thread = this.o.store.thread(threadId)!;
     const context = this.taskContext(threadId, turnId);
     if (!Number.isSafeInteger(expectedRevision) || context.revision !== expectedRevision) throw new Error("Task context changed; review it again.");
-    if (!Array.isArray(refIds) || !refIds.length || refIds.length > context.refs.length || refIds.some(id => typeof id !== "string") || new Set(refIds).size !== refIds.length
+    if (!Array.isArray(refIds) || refIds.length > context.refs.length || refIds.some(id => typeof id !== "string") || new Set(refIds).size !== refIds.length
       || refIds.some(id => !context.refs.some(ref => ref.id === id))) throw new Error("Choose existing references from this task.");
     const items = this.items(threadId), start = items.findIndex(item => item.kind === "user" && item.id === turnId);
     const next = items.findIndex((item, i) => i > start && item.kind === "user");
@@ -449,7 +469,7 @@ export class ThreadRunner {
     this.updateTaskContext(threadId, this.slot(threadId), check.origin, thread.projectId, evidence => {
       if (evidence.revision !== expectedRevision) throw new Error("Task context changed; review it again.");
       const current = evidence.checks.find(c => c.itemId === itemId)!;
-      current.relevantRefIds = [...refIds]; current.relevance = "user-confirmed"; evidence.revision++;
+      current.relevantRefIds = [...refIds]; current.relevance = refIds.length ? "user-confirmed" : "unestablished"; evidence.revision++;
     });
     return this.taskContext(threadId, turnId);
   }

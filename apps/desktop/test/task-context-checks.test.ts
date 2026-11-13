@@ -76,4 +76,10 @@ for (const boundary of ["both", "missing-start", "late-start", "outside", "unkno
   assert.deepEqual(store.space.taskSnapshot(frozen.pageId), snapshot, "an explicit Save remains frozen");
   const record = taskRecord(runner.items(thread.id), { threadId: thread.id, title: "Task", cwd: thread.cwd });
   assert.equal(record.verification!.state === "verified", boundary === "both" || boundary === "large-confirmation");
+  if (boundary === "both") {
+    const cleared = confirm!.call(runner, thread.id, user.id, confirmed.revision, check.itemId, []);
+    assert.equal(cleared.checks[0]!.relevance, "unestablished");
+    assert.deepEqual(cleared.checks[0]!.relevantRefIds, []);
+    assert.deepEqual(cleared.captures, confirmed.captures, "clearing relevance never refreshes observations");
+  }
 });
