@@ -1,4 +1,5 @@
 import { TaskContextCapture } from "./task-context-capture.js";
+import { TaskContextAttempt } from "./task-context-attempt.js";
 import { TaskContextService } from "./task-context-service.js";
 import { describeTaskContext, isContextDraftBinding, isTaskContextEvidence, taskContextBelongsTo, copyTaskContextEvidence, type ContextDraftOwner, type ContextDraftBinding, type ContextTarget, type TaskContextEvidence, type PendingTaskContext } from "../../shared/task-context-evidence.js";
 import { executionBinding } from "./execution-binding.js";
@@ -95,6 +96,8 @@ interface Live {
 }
 
 export interface RunnerOptions {
+  /** Main shares draft, native and Notes capture scheduling through one engine. */
+  contextCapture?: TaskContextCapture;
   /** Runs threads with a local target through their own Codex children (#379). Without it, such threads refuse to run. */
   localExecution?: LocalExecution;
   beforeSend?(thread: Thread): void;
@@ -164,9 +167,12 @@ export class ThreadRunner {
   /** Raw output of tools that outgrew the transcript's preview (main/engine/tool-logs.ts). */
   readonly toolLogs: ToolLogStore;
   private readonly contextDrafts: TaskContextService;
+  private readonly contextCapture: TaskContextCapture;
+  private readonly contextAttempts = new Map<string, TaskContextAttempt>();
 
   constructor(private readonly o: RunnerOptions) {
-    this.contextDrafts = new TaskContextService({ store: o.store, capture: new TaskContextCapture() });
+    this.contextCapture = o.contextCapture ?? new TaskContextCapture();
+    this.contextDrafts = new TaskContextService({ store: o.store, capture: this.contextCapture });
     this.attachments = o.attachments ?? new AttachmentStore(path.join(o.home, "attachments"));
     this.toolLogs = new ToolLogStore(path.join(o.home, "app", "tool-logs"));
     const s = () => o.store.settings;
@@ -966,22 +972,6 @@ export class ThreadRunner {
     try {
       this.o.beforeSend?.(thread);
       if (thread.imageJobId && this.o.images) images = await this.o.images.prepare(thread, abort.signal);
-      // Prepare Pages first: snapshot the turn's read-only ceiling before knowledge setup awaits.
-      // Always attach its stable route, including when the project's setting currently disables it.
-      // Modex's note and knowledge tools are not offered to a local model until they are qualified for it.
-      if (!local && thread.backend !== "mock" && this.o.pages) {
-        pages = await this.o.pages.prepare(connectionTurn, change => this.addItem(threadId, {
-          id: newId(), kind: "notice", level: "info", text: `Note updated: ${change.summary}`, pages: change, at: new Date().toISOString(),
-        }), abort.signal);
-        if (abort.signal.aborted) { this.setStatus(threadId, "idle"); return; }
-      }
-      if (!local && thread.backend !== "mock" && this.o.knowledge) {
-        knowledge = await this.o.knowledge.prepare(connectionTurn, change => this.addItem(threadId, {
-          id: newId(), kind: "notice", level: "info", text: `Knowledge updated: ${change.summary}`, knowledge: change, at: new Date().toISOString(),
-        }), abort.signal);
-        if (knowledge.warning) sink.notice("warn", knowledge.warning);
-        if (abort.signal.aborted) { this.setStatus(threadId, "idle"); return; }
-      }
       // Preserve Codex's admitted identity across asynchronous setup; Claude keeps its account-pool binding.
       const bound = threadAccount(thread);
       const account = !local && (thread.backend === "codex" || thread.backend === "claude") && backend.identity
@@ -991,15 +981,39 @@ export class ThreadRunner {
       if (account && !bound) this.o.store.updateThread(threadId, thread.backend === "codex" ? { codexAccount: account } : { claudeAccount: account });
       const accountFor = (ran: Thread) => threadAccount(ran) ?? account;
       const freshConversation = !thread.sessionHandle;
-      const turnFiles: TurnAttachment[] = files.map((f) => {
-        const file = this.attachments.resolve(f.rel);
-        if (!file) throw new Error(`Attachment ${f.name} is missing or changed. Attach it again before retrying.`);
-        return { name: f.name, mime: f.mime, kind: f.kind, path: file };
-      });
       // Each run of the backend is one attempt with its own sink; ending it settles whatever it left open.
       const runOn = async (ran: Thread): Promise<TurnResult> => {
-        const attempt = this.beginAttempt(threadId, l, { thread: threadId, turn: turnId, attempt: newId(), backend: ran.backend, ...(accountFor(ran) ? { account: accountFor(ran) } : {}) });
+        const codingCwd = ran.cwd, projectId = ran.projectId;
+        const actualTurn: TurnRef = { thread: threadId, turn: turnId, attempt: newId(), backend: ran.backend, ...(accountFor(ran) ? { account: accountFor(ran) } : {}) };
+        const attempt = this.beginAttempt(threadId, l, actualTurn);
+        const context = new TaskContextAttempt({ turn: actualTurn, cwd: codingCwd, projectId, signal: abort.signal, capture: this.contextCapture,
+          current: () => {
+            const current = this.o.store.thread(threadId);
+            return this.live.get(threadId) === l && l.abort === abort && l.attempt === actualTurn.attempt && Boolean(current)
+              && current!.projectId === projectId && current!.cwd === codingCwd && current!.backend === actualTurn.backend && (threadAccount(current!) ?? null) === (actualTurn.account ?? null)
+              && !this.deleting.has(threadId) && !this.removingProjects.has(projectId);
+          },
+          update: change => this.updateTaskContext(threadId, l, actualTurn, projectId, change),
+        });
+        this.contextAttempts.set(actualTurn.attempt, context);
         try {
+          if (!local && ran.backend !== "mock" && this.o.pages) {
+            pages = await this.o.pages.prepare(connectionTurn, change => this.addItem(threadId, {
+              id: newId(), kind: "notice", level: "info", text: `Note updated: ${change.summary}`, pages: change, at: new Date().toISOString(),
+            }), context.signal, { attempt: actualTurn, cwd: codingCwd, isCurrent: () => context.current(), observed: receipt => context.observedNotes(receipt) });
+          }
+          if (!knowledge && !local && thread.backend !== "mock" && this.o.knowledge) {
+            knowledge = await this.o.knowledge.prepare(connectionTurn, change => this.addItem(threadId, {
+              id: newId(), kind: "notice", level: "info", text: `Knowledge updated: ${change.summary}`, knowledge: change, at: new Date().toISOString(),
+            }), abort.signal);
+            if (knowledge.warning) sink.notice("warn", knowledge.warning);
+          }
+          if (abort.signal.aborted) return { status: "interrupted" };
+          const turnFiles: TurnAttachment[] = files.map((f) => {
+            const file = this.attachments.resolve(f.rel);
+            if (!file) throw new Error(`Attachment ${f.name} is missing or changed. Attach it again before retrying.`);
+            return { name: f.name, mime: f.mime, kind: f.kind, path: file };
+          });
           const result = await backend.runTurn(
             describeAttachments(describeTaskContext(text, contextAdmission?.context ?? (l.items.find(item => item.id === turnId && item.kind === "user") as UserItem | undefined)?.contextEvidence), turnFiles),
             {
@@ -1012,10 +1026,17 @@ export class ThreadRunner {
             abort.signal,
           );
           attempt.end(abort.signal.aborted ? "interrupted" : ATTEMPT_OUTCOME[result.status]);
+          if (pages) { const closing = pages; pages = undefined; await closing.close(); }
+          const drain = context.flush();
+          if (drain) await drain;
           return result;
         } catch (err) {
           attempt.end(abort.signal.aborted ? "interrupted" : "failed");
           throw err;
+        } finally {
+          context.close();
+          this.contextAttempts.delete(actualTurn.attempt);
+          if (pages) { const closing = pages; pages = undefined; await closing.close(); }
         }
       };
       let replacementBlocked = false;
@@ -1558,6 +1579,26 @@ export class ThreadRunner {
       const patch = Object.fromEntries(Object.entries(item).filter(([key, value]) => (old as Record<string, unknown>)[key] !== value));
       this.patchItem(threadId, item.id, patch as Partial<ThreadItem>, { persist });
     });
+    if (event.type === "tool.start" || event.type === "tool.done") {
+      const id = toolItemId(after, event.turn, event.native);
+      const item = id ? l.items.find(item => item.id === id) : undefined;
+      if (item?.kind === "tool") this.contextAttempts.get(event.turn.attempt)?.accepted(event, item);
+    }
+  }
+
+  /** Context publication is transactional: failed storage never changes live metadata or emits success. */
+  private updateTaskContext(threadId: string, l: Live, turn: TurnRef, projectId: string, change: (context: TaskContextEvidence) => void): void {
+    const index = l.items.findIndex(item => item.kind === "user" && item.id === turn.turn);
+    const user = l.items[index];
+    if (user?.kind !== "user") throw new Error("Task context user item is missing.");
+    const next = user.contextEvidence ? copyTaskContextEvidence(user.contextEvidence) : { revision: 0, refs: [], captures: [], checks: [] };
+    change(next);
+    const contextEvidence = copyTaskContextEvidence(next);
+    if (!taskContextBelongsTo(contextEvidence, threadId, turn.turn, projectId)) throw new Error("Task context scope changed.");
+    const items = l.items.map((item, i) => i === index ? { ...user, contextEvidence } : item);
+    this.o.store.saveItems(threadId, items);
+    l.items = items;
+    this.o.emit({ threadId, type: "item_update", id: user.id, patch: { contextEvidence } });
   }
 
   /** A sink for the running turn. One bound to `attempt` goes inert, every method of it, once another attempt starts. */

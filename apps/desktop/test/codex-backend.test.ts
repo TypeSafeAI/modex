@@ -81,6 +81,22 @@ function fakeServer(proc: FakeProcess, opts: { threadId?: string; turnId?: strin
   return { seen, threadId, turnId };
 }
 
+test("Codex completion retains final structured patch paths when the started item had no changes", async () => {
+  const proc = new FakeProcess(), { threadId, turnId } = fakeServer(proc), backend = new CodexBackend("codex", fakeSpawn(proc).spawn), collected = collectSink();
+  try {
+    const run = backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "" }, collected.sink, new AbortController().signal);
+    await proc.waitFor(line => line.includes('"turn/start"'));
+    proc.emitLine({ method: "item/started", params: { threadId, turnId, item: { type: "fileChange", id: "late-files", changes: [], status: "inProgress" } } });
+    proc.emitLine({ method: "item/completed", params: { threadId, turnId, item: { type: "fileChange", id: "late-files", changes: [{ path: "/repo/old.ts", kind: { type: "update", move_path: "/repo/new.ts" }, diff: "-old\n+new" }], status: "completed" } } });
+    proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } });
+    assert.equal((await run).status, "completed");
+    const done = collected.observations.find(event => event.type === "tool.done");
+    assert.ok(done?.type === "tool.done");
+    assert.deepEqual(done.progress?.args?.files, [{ path: "/repo/old.ts", kind: "update", movePath: "/repo/new.ts", lines: 2 }]);
+    assert.equal(done.progress?.args?.patch, "-old\n+new", "final structured arguments retain the existing diff preview");
+  } finally { await backend.dispose(); }
+});
+
 test("Codex receives attached images as localImage inputs after the text; other files ride in the text", async () => {
   const proc = new FakeProcess();
   const { threadId, turnId, seen } = fakeServer(proc);

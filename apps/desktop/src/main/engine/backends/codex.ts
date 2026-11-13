@@ -615,6 +615,7 @@ export class CodexBackend implements Backend {
               const total = Math.max(t.bytes, byteLength(output));
               const shown = boundOutput(output).text;
               sink.observe({ type: "tool.done", native: native(item.id), outcome: codexOutcome(item), progress: {
+                ...(item.type === "fileChange" ? { args: { patch: (item.changes ?? []).map(c => c.diff).join("\n"), files: (item.changes ?? []).map(patchFile) } } : {}),
                 ...(search ? { search, ...(search.query ? { title: `search ${search.query}` } : {}) } : {}),
                 ...(shown ? { output: shown } : {}), ...(total > byteLength(shown) ? { outputBytes: total, outputTruncated: true } : {}),
                 ...(item.type === "commandExecution" && "exitCode" in item ? { exitCode: item.exitCode ?? null } : {}),
