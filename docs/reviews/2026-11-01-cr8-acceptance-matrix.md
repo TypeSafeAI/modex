@@ -17,6 +17,8 @@ Columns as in the baseline: **Fixture** (Node tests, or real Electron with synth
 **Authenticated** (read-only through a real `gh` login), **Live provider / write** (an authorized native-CLI turn,
 #325; an authorized write on a disposable target, #326), **Human** (a person, keyboard/VoiceOver or references).
 
+**Dated follow-up, 2026-11-13.** The [real-PR benchmark](2026-11-13-cr-real-pr-benchmark.md) now records ten public PR comparisons on source `f9bef70`, whose complete tree matches protected main `967b703` delivered through #520. Real instructions/Escape focus restoration, pointer/keyboard resizing and nine narrow-window controls also passed. The [protected delivery receipt](2026-11-13-cr-inline-integration.md#actual-protected-delivery) keeps full source and merge-group counts separate. The dated baseline rows below retain their original evidence; this follow-up neither replaces historical failures nor accepts human, real-provider/write, original-reference wording or default activation gates.
+
 ## Environments added since the baseline
 
 | ID | What ran | SHA | Result |
@@ -45,7 +47,7 @@ Status values: *built*, *unavailable*, *deviation Dn*, *needs decision N*, *unch
 inventory left a control out. "unverified" in a Fixture cell means the control is in the code but no spec was
 found that asserts it; it is not a pass. Since 2026-11-04 no status is *needs decision N*. A Human cell that
 reads "open: reference comparison" names a comparison Val retired on 2026-11-04; it stays open until the
-benchmark on real pull requests is recorded and the issue text that names the comparison is met or changed.
+benchmark on real pull requests is recorded and the issue text that names the comparison is met or changed. The [2026-11-13 benchmark](2026-11-13-cr-real-pr-benchmark.md) supplies new authenticated evidence; literal issue-text reconciliation remains open.
 
 | ID | Control | Owner | Status | Fixture | Authenticated | Live provider / write | Human |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -184,7 +186,7 @@ and C07 is removed.
 
 | AC | Where it stands on `0a8c513` |
 | --- | --- |
-| AC1 R1–R4 in real Electron | All four reached through real controls over production reads with synthetic `gh` (`F-1101` journey). The original references are gone. On 2026-11-04 Val retired the comparison in favour of a benchmark on real pull requests against GitHub's pages; that benchmark has not run, and this does not tick a box whose text still requires the comparison. |
+| AC1 R1–R4 in real Electron | All four reached through real controls over production reads with synthetic `gh` (`F-1101` journey). The original references are gone. On 2026-11-04 Val retired the comparison in favour of a benchmark on real pull requests against GitHub's pages; the [new ten-PR benchmark](2026-11-13-cr-real-pr-benchmark.md) and real instructions/narrow controls are now recorded on the tree delivered as `967b703`. This does not tick a box whose literal text still requires the original comparison. |
 | AC2 every visible control has behaviour or an explicit unavailable state | Partial: C07 is removed and C65 is built (decisions 6 and 5). C58 attachment and C59 reasoning effort are approved omissions (Val, 2026-11-04). The other controls are mapped above; seven built controls also lack an asserting spec (follow-ups below). |
 | AC3 isolation, injection, incomplete data, at-most-once | Met at fixture: read regressions, native denial on 2.1.316 (`N`), agent stop/unknown/restart, write at-most-once and reconciliation (`F-1101`). **Open:** the live smoke (#325) and live canary (#326). |
 | AC4 local Changes, navigation, conversation and approvals intact | `S-1101`: unit green; the local E2E had one non-Code-Review failure that passed alone, so it is not counted as green. The hosted required check passed on `c1f74c7`. |
