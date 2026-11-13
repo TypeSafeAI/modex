@@ -144,6 +144,8 @@ if (method === "PATCH" || (method === "POST" && (route === "graphql" || /\/reque
       && value && value.base && value.head && value.base.sha === comparison[2] && value.head.sha === comparison[3]);
     if (declared) found = { base_commit: { sha: comparison[2] }, merge_base_commit: { sha: comparison[2] } };
   }
+  // A declared pull request with no line comments listed has none.
+  if (found === undefined && /\/pulls\/\d+\/comments$/.test(route) && world.routes[route.replace(/\/comments$/, "")]) found = [];
   if (found && /\/pulls\/\d+$/.test(route)) found = changed(route, found);
   if (found && /\/pulls\/\d+$/.test(route) && mergedAs(route)) {
     found = { ...found, state: "closed", merged: true, merged_at: "2026-10-18T20:40:00Z", merged_by: { ...world.user, type: "User" },

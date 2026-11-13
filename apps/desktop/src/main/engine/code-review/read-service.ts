@@ -4,7 +4,7 @@ import {
   type PrStack, type PrActivity, type PrCheck, type PrContext, type PrFiles, type PrKey, type PrOverview, type PrRevision, type PrSummary, type ReadResult, type ResolvedPr, type Unavailable,
 } from "../../../shared/code-review.js";
 import { ghHostsStamp, ghTransport, type GhAnswer, type GhCall, type GhTransport } from "./gh.js";
-import { deployment, changedFile, checkRun, commitStatus, hasNext, json, pull, repository, searchRow, timeline, type Pull, type Repository } from "./github.js";
+import { deployment, lineComment, changedFile, checkRun, commitStatus, hasNext, json, pull, repository, searchRow, timeline, type Pull, type Repository } from "./github.js";
 
 /**
  * Main's Code Review reads (#321): narrow GETs through the person's `gh` login, each bound to the
@@ -794,9 +794,10 @@ export class CodeReviewService {
     if (pr) {
       activity.unshift({ kind: "opened", id: `pr-${pr.id}`, at: pr.createdAt, actor: pr.author });
       // Asked only once the timeline has arrived: a failed timeline costs GitHub no further request.
-      const read = await this.deployments(context, key, pr);
-      activity.push(...read.records);
-      deploymentFailure = read.failure;
+      // Line comments are not in the timeline; they are their own list. Both reads run together.
+      const [read, comments] = await Promise.all([this.deployments(context, key, pr), this.lineComments(context, key)]);
+      activity.push(...read.records, ...comments.records);
+      deploymentFailure = read.failure ?? comments.failure;
     }
     const more = hasNext(fetched.headers.link);
     const next = more && number < TIMELINE_PAGES ? `p${number + 1}` : null;
@@ -807,6 +808,30 @@ export class CodeReviewService {
     if (dropped) return { state: "partial", value: activity, fetchedAt, reason: "failed", coverage };
     if (more && !next) return { state: "partial", value: activity, fetchedAt, reason: "capped", coverage };
     return { state: "ready", value: activity, fetchedAt, coverage };
+  }
+
+  /**
+   * The first page of comments on lines of the diff (100, oldest first). A failure is reported, not thrown,
+   * unless the read was cancelled or the account is gone; more than one page is reported as capped.
+   */
+  private async lineComments(context: Context, key: PrKey): Promise<{ records: PrActivity[]; failure: Unavailable | "capped" | null }> {
+    const records: PrActivity[] = [];
+    let failure: Unavailable | "capped" | null = null;
+    try {
+      const fetched = await this.get(context, `${repoPath(this.repoFor(key))}/pulls/${key.number}/comments?per_page=${PAGE}&page=1`, { maxBytes: 8 * MB });
+      const listed: unknown = json(fetched.body);
+      if (!Array.isArray(listed)) throw new ReadFailure("failed", DETAIL.failed);
+      if (hasNext(fetched.headers.link)) failure = "capped";
+      for (const item of listed.slice(0, PAGE)) {
+        const mapped = lineComment(item);
+        if (mapped) records.push(mapped); else failure = "failed";
+      }
+    } catch (error) {
+      const caught = this.failure(error);
+      if (caught.cancelled || caught.reason === "signed-out") throw error;
+      failure = caught.reason;
+    }
+    return { records, failure };
   }
 
   /**

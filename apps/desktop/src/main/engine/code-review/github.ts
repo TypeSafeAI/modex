@@ -191,6 +191,16 @@ export function hasNext(header: string | undefined): boolean {
   return typeof header === "string" && /<[^>]+>;\s*rel="next"/.test(header);
 }
 
+/** One comment on a line of the diff, from `pulls/{n}/comments`. Null when malformed. */
+export function lineComment(value: unknown): Extract<PrActivity, { kind: "line-comment" }> | null {
+  const item = object(value);
+  const commentId = id(item?.id), at = time(item?.created_at), who = actor(item?.user);
+  if (!item || !commentId || !at || !who || typeof item.path !== "string" || !item.path || item.path.length > 4096) return null;
+  const line = count(item.line) || null;
+  return { kind: "line-comment", id: commentId, at, actor: who, body: text(item.body, 262_144), path: item.path, line,
+    side: item.side === "LEFT" ? "LEFT" : "RIGHT", replyTo: id(item.in_reply_to_id) };
+}
+
 /** Provider deployment + its latest status; a comment URL never enters this mapping. */
 export function deployment(value: unknown, latest: unknown): Extract<PrActivity, { kind: "deployment" }> | null {
   const record = object(value), status = object(latest);
