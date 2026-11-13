@@ -1,6 +1,9 @@
 /** Serializable, body-free task provenance. Captures are timed observations, never input attestations. */
 import type { ExecutionOutcome, ItemOrigin, TurnRef } from "./conversation-events.js";
 
+export type ContextDraftOwner = { kind: "thread"; threadId: string } | { kind: "project"; projectId: string; key: string };
+export interface ContextDraftBinding { owner: ContextDraftOwner; nonce: string; revision: number }
+
 export type ContextTarget = { kind: "file"; path: string } | { kind: "note"; pageId: string } | { kind: "notes-file"; id: string };
 export type ContextSource =
   | { kind: "native"; itemId: string; origin: ItemOrigin }
@@ -22,6 +25,7 @@ export interface ContextCapture {
   finishedAt: string;
   repository: { state: "available"; head: string } | { state: "unavailable"; reason: "not-repository" | "budget" | "unreadable" | "not-captured" };
   revision: { state: "available"; algorithm: "sha256"; digest: string; bytes: number; noteRevision?: number } | { state: "unavailable"; reason: "missing" | "outside" | "not-regular" | "too-large" | "changed-during-read" | "budget" | "not-captured" | "unreadable" };
+  workspace?: { kind: "project"; projectId: string } | { kind: "thread"; projectId: string; threadId: string };
   noteVersion?: { via: "read" | "history"; updatedAt: string; revision: number };
 }
 export interface TaskCheckEvidence {
@@ -102,10 +106,14 @@ function relation(v: unknown): boolean {
   }
 }
 function capture(v: unknown): v is ContextCapture {
-  if (!shape(v, ["id", "target", "source", "phase", "startedAt", "finishedAt", "repository", "revision"], ["noteVersion"]) || !identity(v.id) || !target(v.target) || !source(v.source) || !one(v.phase, ["selected", "check-start-observed", "check-end-observed", "after-native-result"]) || !date(v.startedAt) || !date(v.finishedAt) || v.finishedAt < v.startedAt) return false;
+  if (!shape(v, ["id", "target", "source", "phase", "startedAt", "finishedAt", "repository", "revision"], ["noteVersion", "workspace"]) || !identity(v.id) || !target(v.target) || !source(v.source) || !one(v.phase, ["selected", "check-start-observed", "check-end-observed", "after-native-result"]) || !date(v.startedAt) || !date(v.finishedAt) || v.finishedAt < v.startedAt) return false;
   const repo = v.repository, rev = v.revision;
   if (!object(repo) || !(repo.state === "available" ? shape(repo, ["state", "head"]) && typeof repo.head === "string" && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(repo.head) : shape(repo, ["state", "reason"]) && repo.state === "unavailable" && one(repo.reason, ["not-repository", "budget", "unreadable", "not-captured"]))) return false;
   if (!object(rev) || !(rev.state === "available" ? shape(rev, ["state", "algorithm", "digest", "bytes"], ["noteRevision"]) && rev.algorithm === "sha256" && typeof rev.digest === "string" && /^[a-f0-9]{64}$/.test(rev.digest) && integer(rev.bytes) && (rev.noteRevision === undefined || (v.target.kind === "note" && integer(rev.noteRevision))) : shape(rev, ["state", "reason"]) && rev.state === "unavailable" && one(rev.reason, ["missing", "outside", "not-regular", "too-large", "changed-during-read", "budget", "not-captured", "unreadable"]))) return false;
+  if (v.workspace !== undefined) {
+    const w = v.workspace;
+    if (!object(w) || !identity(w.projectId) || !(w.kind === "project" ? shape(w, ["kind", "projectId"]) : w.kind === "thread" && shape(w, ["kind", "projectId", "threadId"]) && identity(w.threadId))) return false;
+  }
   if (v.noteVersion !== undefined && !(v.target.kind === "note" && shape(v.noteVersion, ["via", "updatedAt", "revision"]) && one(v.noteVersion.via, ["read", "history"]) && date(v.noteVersion.updatedAt) && integer(v.noteVersion.revision))) return false;
   return true;
 }
@@ -136,8 +144,8 @@ export function copyTaskContextEvidence(value: TaskContextEvidence): TaskContext
 }
 
 /** A persisted turn cannot borrow another turn's native or MCP receipts. */
-export function taskContextBelongsTo(value: TaskContextEvidence, threadId: string, turnId: string): boolean {
+export function taskContextBelongsTo(value: TaskContextEvidence, threadId: string, turnId: string, projectId?: string): boolean {
   const matches = (t: TurnRef) => t.thread === threadId && t.turn === turnId;
   const owns = (s: ContextSource) => s.kind === "native" ? matches(s.origin) : s.kind === "model-proposal" || s.kind === "notes-read" ? matches(s.turn) : true;
-  return value.refs.every(r => r.relations.every(rel => owns(rel.source))) && value.captures.every(c => owns(c.source)) && value.checks.every(c => !c.origin || matches(c.origin));
+  return value.refs.every(r => r.relations.every(rel => owns(rel.source))) && value.captures.every(c => owns(c.source) && (!c.workspace || ((projectId === undefined || c.workspace.projectId === projectId) && (c.workspace.kind !== "thread" || c.workspace.threadId === threadId)))) && value.checks.every(c => !c.origin || matches(c.origin));
 }

@@ -112,7 +112,7 @@ export function isTaskSnapshot(value: unknown): value is TaskSnapshot {
     && (r.context === undefined || (Array.isArray(r.context.files) && r.context.files.every((f) => typeof f?.path === "string" && strings(f.relations)) && Number.isInteger(r.context.outside)
       && (r.context.unlisted === undefined || strings(r.context.unlisted))))
     && (r.answer === undefined || typeof r.answer === "string")
-    && (r.contextEvidence === undefined || (isTaskContextEvidence(r.contextEvidence) && taskContextBelongsTo(r.contextEvidence, v.threadId, v.turnId)));
+    && (r.contextEvidence === undefined || (isTaskContextEvidence(r.contextEvidence) && taskContextBelongsTo(r.contextEvidence, v.threadId, v.turnId, v.projectId)));
 }
 
 /** A question the CLI asked, with the answer as its card shows it. Nothing is filled in that the card does not hold. */

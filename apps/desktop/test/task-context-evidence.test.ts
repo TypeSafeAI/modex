@@ -121,3 +121,13 @@ test("main transcript storage and journal replay preserve provenance without mig
     assert.deepEqual(record.contextEvidence, evidence(), "projection uses the original receipts despite the missing project");
   } finally { journal.close(); }
 });
+
+test("saved context cannot borrow a different project's or thread's capture workspace", () => {
+  const d = evidence();
+  Object.assign(d.captures[0]!, { workspace: { kind: "project", projectId: "OTHER" } });
+  assert.equal(tasks.isTaskSnapshot(snapshot(d)), false);
+  Object.assign(d.captures[0]!, { workspace: { kind: "project", projectId: "P" } });
+  assert.equal(tasks.isTaskSnapshot(snapshot(d)), true);
+  Object.assign(d.captures[0]!, { workspace: { kind: "thread", projectId: "P", threadId: "FOREIGN" } });
+  assert.equal(tasks.isTaskSnapshot(snapshot(d)), false);
+});
