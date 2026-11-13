@@ -17,6 +17,8 @@ export interface ContextRelation {
   kind: "read" | "changed" | "searched" | "relevant";
   provenance: "observed" | "model-proposed" | "user-confirmed" | "native-requested";
   source: ContextSource;
+  /** Model-proposed classification only; never detected coverage or inspection. Absent in older receipts. */
+  role?: "file" | "test" | "note";
 }
 export interface ContextCapture {
   id: string;
@@ -128,7 +130,8 @@ function source(v: unknown): v is ContextSource {
   return true;
 }
 function relation(v: unknown): boolean {
-  if (!shape(v, ["kind", "provenance", "source"]) || !one(v.kind, ["read", "changed", "searched", "relevant"]) || !source(v.source)) return false;
+  if (!shape(v, ["kind", "provenance", "source"], ["role"]) || !one(v.kind, ["read", "changed", "searched", "relevant"]) || !source(v.source)
+    || (v.role !== undefined && (v.provenance !== "model-proposed" || !one(v.role, ["file", "test", "note"])))) return false;
   switch (v.provenance) {
     case "model-proposed": return v.kind === "relevant" && v.source.kind === "model-proposal";
     case "user-confirmed": return v.kind === "relevant" && v.source.kind === "human";
@@ -170,6 +173,8 @@ export function isTaskContextEvidence(v: unknown): v is TaskContextEvidence {
   for (const ref of v.refs) {
     if (!shape(ref, ["id", "target", "relations", "captureIds"]) || !refIdentity(ref.id) || !target(ref.target) || !Array.isArray(ref.relations) || !ref.relations.every(relation) || !ids(ref.captureIds)) return false;
     const key = contextRefId(ref.target);
+    const fileTarget = ref.target.kind === "file";
+    if (ref.relations.some(rel => rel.role !== undefined && (fileTarget === (rel.role === "note")))) return false;
     if (refs.has(ref.id) || targets.has(key)) return false;
     refs.add(ref.id); targets.add(key);
     if (!ref.captureIds.every(id => captures.has(id) && contextRefId(captures.get(id)!.target) === key)) return false;

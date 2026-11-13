@@ -1,5 +1,6 @@
 import { TaskContextCapture } from "./task-context-capture.js";
 import { TaskContextAttempt } from "./task-context-attempt.js";
+import type { TaskContextAgents } from "./task-context-agents.js";
 import { TaskContextService } from "./task-context-service.js";
 import { describeTaskContext, isContextDraftBinding, isTaskContextEvidence, taskContextBelongsTo, copyTaskContextEvidence, type ContextDraftOwner, type ContextDraftBinding, type ContextTarget, type TaskContextEvidence, type PendingTaskContext } from "../../shared/task-context-evidence.js";
 import { executionBinding } from "./execution-binding.js";
@@ -96,6 +97,7 @@ interface Live {
 }
 
 export interface RunnerOptions {
+  taskContext?: Pick<TaskContextAgents, "prepare">;
   /** Main shares draft, native and Notes capture scheduling through one engine. */
   contextCapture?: TaskContextCapture;
   /** Runs threads with a local target through their own Codex children (#379). Without it, such threads refuse to run. */
@@ -962,9 +964,11 @@ export class ThreadRunner {
     const turnStart = l.items.length;
     let knowledge: KnowledgeLease | undefined;
     let pages: PagesLease | undefined;
+    let taskContext: import("./task-context-agents.js").TaskContextLease | undefined;
     let images: import("./images/agent.js").ImagesLease | undefined;
     const revokeConnections = () => {
       void pages?.close().catch(() => {});
+      void taskContext?.close().catch(() => {});
       void images?.close().catch(() => {});
       void knowledge?.close().catch(() => {});
     };
@@ -997,6 +1001,9 @@ export class ThreadRunner {
         });
         this.contextAttempts.set(actualTurn.attempt, context);
         try {
+          if (!local && (ran.backend === "claude" || ran.backend === "codex") && this.o.taskContext) {
+            taskContext = await this.o.taskContext.prepare({ turn: actualTurn, cwd: codingCwd, projectId, isCurrent: () => context.current(), accept: proposal => context.proposed(proposal) }, context.signal);
+          }
           if (!local && ran.backend !== "mock" && this.o.pages) {
             pages = await this.o.pages.prepare(connectionTurn, change => this.addItem(threadId, {
               id: newId(), kind: "notice", level: "info", text: `Note updated: ${change.summary}`, pages: change, at: new Date().toISOString(),
@@ -1020,12 +1027,13 @@ export class ThreadRunner {
               cwd: ran.cwd, mode: ran.mode, plan: ran.plan, model: ran.model, effort: ran.effort, fast, ...(conserveCredits ? { conserveCredits: true } : {}), resume: ran.sessionHandle, account: accountFor(ran),
               // Files the CLI reads by path sit outside cwd; --add-dir keeps that from prompting.
               addDirs: turnFiles.some((f) => f.kind === "file") ? [path.join(this.attachments.root, threadId)] : [],
-              ...(turnFiles.length ? { attachments: turnFiles } : {}), ...(knowledge ? { knowledge: knowledge.connection } : {}), ...(pages ? { pages: pages.connection } : {}), ...(images ? { images: images.connection } : {}),
+              ...(turnFiles.length ? { attachments: turnFiles } : {}), ...(knowledge ? { knowledge: knowledge.connection } : {}), ...(pages ? { pages: pages.connection } : {}), ...(taskContext ? { taskContext: taskContext.connection } : {}), ...(images ? { images: images.connection } : {}),
             },
             attempt.sink,
             abort.signal,
           );
           attempt.end(abort.signal.aborted ? "interrupted" : ATTEMPT_OUTCOME[result.status]);
+          if (taskContext) { const closing = taskContext; taskContext = undefined; await closing.close(); }
           if (pages) { const closing = pages; pages = undefined; await closing.close(); }
           const drain = context.flush();
           if (drain) await drain;
@@ -1036,6 +1044,7 @@ export class ThreadRunner {
         } finally {
           context.close();
           this.contextAttempts.delete(actualTurn.attempt);
+          if (taskContext) { const closing = taskContext; taskContext = undefined; await closing.close(); }
           if (pages) { const closing = pages; pages = undefined; await closing.close(); }
         }
       };
@@ -1150,6 +1159,7 @@ export class ThreadRunner {
       await Promise.all([
         images?.close().catch(err => sink.notice("warn", `Images connection could not close: ${(err as Error).message}`)),
         pages?.close().catch(err => sink.notice("warn", `Pages connection could not close: ${(err as Error).message}`)),
+        taskContext?.close().catch(err => sink.notice("warn", `Task context connection could not close: ${(err as Error).message}`)),
         knowledge?.close().catch(err => sink.notice("warn", `Knowledge connection could not close: ${(err as Error).message}`)),
       ]);
       // Attempts settle their own items. An item from before the conversation contract can still be

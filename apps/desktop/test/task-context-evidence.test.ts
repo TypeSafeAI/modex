@@ -29,6 +29,13 @@ test("saved task refuses malformed context rather than reopening it as trusted l
   assert.equal(tasks.isTaskSnapshot(snapshot({ revision: 3, refs: "forged", captures: [], checks: [] })), false);
 });
 
+test("model proposal roles survive strict snapshots but cannot claim native or human provenance", () => {
+  const context = evidence(); Object.assign(context.refs[0]!.relations[0]!, { role: "test" });
+  assert.equal(tasks.isTaskSnapshot(snapshot(context)), true);
+  Object.assign(context.refs[0]!.relations[1]!, { role: "file" }); assert.equal(tasks.isTaskSnapshot(snapshot(context)), false);
+  const wrong = evidence(); Object.assign(wrong.refs[0]!.relations[0]!, { role: "note" }); assert.equal(tasks.isTaskSnapshot(snapshot(wrong)), false);
+});
+
 test("task record preserves one turn's provenance separately and without mutable aliases", () => {
   const contextEvidence = evidence();
   const user = Object.assign({ kind: "user", id: "U", text: "Check", at }, { contextEvidence }) as ThreadItem;

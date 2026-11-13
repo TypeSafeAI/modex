@@ -2,6 +2,7 @@ import { codexQuota, type QuotaSnapshot } from "../routing/quota.js";
 import { requestedPermissions } from "./codex-permissions.js";
 import { AgentTracker } from "./agents.js";
 import { PAGES_TOOLS } from "../../../shared/pages.js";
+import { TASK_CONTEXT_TOOLS } from "../../../shared/task-context-tools.js";
 import { KNOWLEDGE_TOOLS } from "../../../shared/knowledge.js";
 import type { CliExecutable } from "../cli-path.js";
 import { generateTitle } from "../titles.js";
@@ -40,6 +41,7 @@ export class CodexBackend implements Backend {
   private readonly subscribers = new Set<(msg: RpcMessage) => void>();
   private readonly disconnects = new Set<(error: Error) => void>();
   private readonly loaded = new Set<string>();
+  private readonly metadataConnections = new Map<string, { pages?: string; taskContext?: string }>();
   /** The model Codex chose for each loaded thread, from thread/start or thread/resume: a Plan turn's collaboration mode needs one. */
   private readonly threadModels = new Map<string, string>();
   /** File paths of in-flight file changes, keyed `threadId:itemId`, so an approval can name them without the patch. */
@@ -88,6 +90,7 @@ export class CodexBackend implements Backend {
       this.child = child;
       this.generation = randomUUID();
       this.loaded.clear();
+      this.metadataConnections.clear();
       this.threadModels.clear();
       const lines = new LineBuffer();
       let stderr = "";
@@ -121,6 +124,7 @@ export class CodexBackend implements Backend {
     this.child = null;
     this.ready = null;
     this.loaded.clear();
+    this.metadataConnections.clear();
     this.threadModels.clear();
     for (const request of this.openRequests.values()) request.controller.abort();
     this.openRequests.clear();
@@ -322,7 +326,10 @@ export class CodexBackend implements Backend {
     // but avoid a second sandbox_apply inside the parent's macOS sandbox.
     if (this.configuration?.local?.externalSandbox) pol.sandboxPolicy = { type: "externalSandbox", networkAccess: "restricted" };
     // Only these scoped adapter tools are preapproved. Main enforces project/turn permissions.
-    const config = { ...(this.configuration?.local ? {} : THREAD_CONFIG), ...(opts.images ? { "mcp_servers.modex_images": { url: opts.images.url, enabled_tools: ["register"], tools: { register: { approval_mode: "approve" } } } } : {}), ...(opts.knowledge ? { "mcp_servers.modex_knowledge": {
+    const taskContext = this.configuration?.local ? undefined : opts.taskContext;
+    const config: Record<string, unknown> = { ...(this.configuration?.local ? {} : THREAD_CONFIG), ...(taskContext ? { "mcp_servers.modex_task_context": {
+      url: taskContext.url, enabled_tools: [...TASK_CONTEXT_TOOLS], tools: Object.fromEntries(TASK_CONTEXT_TOOLS.map(name => [name, { approval_mode: "approve" }])),
+    } } : {}), ...(opts.images ? { "mcp_servers.modex_images": { url: opts.images.url, enabled_tools: ["register"], tools: { register: { approval_mode: "approve" } } } } : {}), ...(opts.knowledge ? { "mcp_servers.modex_knowledge": {
       url: opts.knowledge.url, enabled_tools: [...KNOWLEDGE_TOOLS],
       tools: Object.fromEntries(KNOWLEDGE_TOOLS.map(name => [name, { approval_mode: "approve" }])),
     } } : {}), ...(opts.pages ? { "mcp_servers.modex_pages": {
@@ -330,6 +337,10 @@ export class CodexBackend implements Backend {
       tools: Object.fromEntries(PAGES_TOOLS.map(name => [name, { approval_mode: "approve" }])),
     } } : {}) };
     let threadId = opts.resume;
+    const metadata = { pages: opts.pages?.url, taskContext: taskContext?.url }, priorMetadata = threadId ? this.metadataConnections.get(threadId) : undefined;
+    const rebindMetadata = Boolean(threadId && this.loaded.has(threadId) && JSON.stringify(priorMetadata ?? {}) !== JSON.stringify(metadata));
+    if (priorMetadata?.pages && !opts.pages) config["mcp_servers.modex_pages"] = { enabled: false };
+    if (priorMetadata?.taskContext && !taskContext) config["mcp_servers.modex_task_context"] = { enabled: false };
     const local = this.configuration?.local;
     // The child's effective configuration, as Codex itself resolved it across every layer, is checked before any
     // thread is opened: confirming the provider's name on open does not say where its requests go (#380).
@@ -355,9 +366,10 @@ export class CodexBackend implements Backend {
       if (local && (r.model !== local.model || r.modelProvider !== local.provider)) throw new CodexError("Codex did not confirm the selected local model and provider.", { confirmedModel: r.model, confirmedProvider: r.modelProvider });
     };
     try {
-      if (threadId && !this.loaded.has(threadId)) {
+      if (threadId && (!this.loaded.has(threadId) || rebindMetadata)) {
         const r = await duringSetup(this.request<{ thread: { id: string }; model?: unknown; modelProvider?: unknown }>("thread/resume", { threadId, cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null, ...pinned, config }), signal);
         confirmed(r);
+        if (rebindMetadata && r.thread.id !== threadId) throw new CodexError("Codex changed conversation identity while rebinding metadata connections.", { stage: "bind metadata connections" });
         threadId = r.thread.id;
         if (typeof r.model === "string" && r.model) this.threadModels.set(threadId, r.model);
       } else if (!threadId) {
@@ -367,14 +379,16 @@ export class CodexBackend implements Backend {
         if (typeof r.model === "string" && r.model) this.threadModels.set(threadId, r.model);
       }
     } catch (err) {
-      return failed(err, { stage: "open thread", codexThreadId: opts.resume });
+      return { ...failed(err, { stage: rebindMetadata ? "bind metadata connections" : "open thread", codexThreadId: opts.resume }),
+        ...((taskContext || priorMetadata?.taskContext) ? { taskContextCapability: { state: "unavailable" as const, reason: "configuration-not-bound" as const } } : {}) };
     }
     if (signal.aborted) return { status: "interrupted" };
     this.loaded.add(threadId);
+    this.metadataConnections.set(threadId, metadata);
     sink.session(threadId);
 
     const tid = threadId;
-    const context = [opts.knowledge?.instructions, opts.pages?.instructions, opts.images?.instructions, text].filter(value => value !== undefined).join("\n\n");
+    const context = [opts.knowledge?.instructions, opts.pages?.instructions, taskContext?.instructions, opts.images?.instructions, text].filter(value => value !== undefined).join("\n\n");
     // Plan mode runs in Codex's native plan collaboration mode (codex-cli 0.163.0, experimental): Codex's own plan
     // instructions, its question tool offered by default, and the plan as a `plan` item. The mode overrides the
     // turn's model and effort, so it carries Modex's. Without a model to name, or when Codex refuses the mode,

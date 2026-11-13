@@ -115,6 +115,7 @@ export interface TurnAttachment {
 }
 
 export interface TurnOptions {
+  taskContext?: import("../../../shared/task-context-tools.js").TaskContextConnection;
   /** Images travel inline (base64 or local path); the prompt text already names the other files by path. */
   attachments?: TurnAttachment[];
   images?: import("../../../shared/images.js").ImagesConnection;
@@ -162,6 +163,7 @@ export interface TurnUsage {
 }
 
 export interface TurnResult {
+  taskContextCapability?: import("../../../shared/task-context-tools.js").TaskContextCapability;
   status: "completed" | "interrupted" | "failed";
   error?: string;
   /** Backend facts behind a failure (exit code, stderr tail, RPC method and code, CLI build, ids) for the debug report. */

@@ -56,7 +56,7 @@ import { codexCall } from "../src/main/engine/backends/usage.js";
 import { OUTPUT_PREVIEW_BYTES } from "../src/shared/evidence.js";
 
 /** Minimal scripted app-server: answers initialize, thread/start|resume, turn/start, model/list. */
-function fakeServer(proc: FakeProcess, opts: { threadId?: string; turnId?: string; provider?: string | null; acknowledgeInterruptOnly?: boolean } = {}) {
+function fakeServer(proc: FakeProcess, opts: { threadId?: string; turnId?: string; provider?: string | null; acknowledgeInterruptOnly?: boolean; resumeError?: string } = {}) {
   const threadId = opts.threadId ?? "thr-1";
   const turnId = opts.turnId ?? "turn-1";
   const seen: { method: string; params: Record<string, unknown> }[] = [];
@@ -68,6 +68,7 @@ function fakeServer(proc: FakeProcess, opts: { threadId?: string; turnId?: strin
       if (msg.method === "initialize") proc.emitLine({ id: msg.id, result: { userAgent: "fake" } });
       else if (msg.method === "model/list") proc.emitLine({ id: msg.id, result: { data: [{ id: "gpt-6-astra", displayName: "GPT-6-Astra", hidden: false, isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: "low" }, { reasoningEffort: "high" }], defaultReasoningEffort: "medium" }, { id: "secret", displayName: "hidden", hidden: true, isDefault: false }], nextCursor: null } });
       // Like codex-cli 0.164.0, the open reply names the model and provider the thread got; `provider` scripts a server that disagrees.
+      else if (msg.method === "thread/resume" && opts.resumeError) proc.emitLine({ id: msg.id, error: { code: -32602, message: opts.resumeError } });
       else if (msg.method === "thread/start" || msg.method === "thread/resume") proc.emitLine({ id: msg.id, result: { thread: { id: threadId }, model: msg.params?.model, modelProvider: Object.hasOwn(opts, "provider") ? opts.provider : msg.params?.modelProvider } });
       else if (msg.method === "turn/start") {
         proc.emitLine({ id: msg.id, result: { turn: { id: turnId } } });
@@ -80,6 +81,42 @@ function fakeServer(proc: FakeProcess, opts: { threadId?: string; turnId?: strin
   });
   return { seen, threadId, turnId };
 }
+
+test("Codex metadata connections rotate on a loaded resume and removed channels are explicitly disabled", async () => {
+  const proc = new FakeProcess(), { threadId, turnId, seen } = fakeServer(proc), backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  try {
+    for (const index of [0, 1, 2]) {
+      const before = seen.length, taskContext = index < 2 ? { url: `http://127.0.0.1:1234/mcp/proposal-${index}`, instructions: "Only candidate relevance" } : undefined;
+      const pages = index < 2 ? { url: `http://127.0.0.1:1234/mcp/pages-${index}`, instructions: "Scoped Notes" } : undefined;
+      const run = backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "", ...(index ? { resume: threadId } : {}), taskContext, pages }, collectSink().sink, new AbortController().signal);
+      await proc.waitFor(line => line.includes('"turn/start"') && seen.filter(s => s.method === "turn/start").length === index + 1);
+      proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } }); assert.equal((await run).status, "completed");
+      const current = seen.slice(before), opening = current.find(s => s.method === (index ? "thread/resume" : "thread/start"));
+      assert.ok(opening, "a loaded conversation must rebind fresh metadata connections before turn/start");
+      assert.ok(current.indexOf(opening) < current.findIndex(s => s.method === "turn/start"));
+      const config = opening.params.config as Record<string, unknown>;
+      assert.deepEqual(config["mcp_servers.modex_task_context"], index < 2 ? { url: taskContext!.url, enabled_tools: ["propose_refs"], tools: { propose_refs: { approval_mode: "approve" } } } : { enabled: false });
+      if (index === 2) assert.deepEqual(config["mcp_servers.modex_pages"], { enabled: false });
+      else assert.match(JSON.stringify(current.find(s => s.method === "turn/start")?.params.input), /Only candidate relevance/);
+    }
+  } finally { await backend.dispose(); }
+});
+
+test("Codex refuses to start another turn when a loaded metadata rebind fails", async () => {
+  const proc = new FakeProcess(), behavior: { resumeError?: string } = {}, { threadId, turnId, seen } = fakeServer(proc, behavior), backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  const opts = { cwd: "/repo", mode: "agent" as const, plan: false, model: "", taskContext: { url: "http://127.0.0.1:1234/mcp/A", instructions: "Candidates" } };
+  try {
+    const first = backend.runTurn("first", opts, collectSink().sink, new AbortController().signal); await proc.waitFor(line => line.includes('"turn/start"'));
+    proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } }); await first;
+    behavior.resumeError = "metadata connection refused";
+    const second = backend.runTurn("second", { ...opts, resume: threadId, taskContext: { ...opts.taskContext, url: "http://127.0.0.1:1234/mcp/B" } }, collectSink().sink, new AbortController().signal);
+    await proc.waitFor(line => line.includes('"thread/resume"') || (line.includes('"turn/start"') && seen.filter(s => s.method === "turn/start").length === 2));
+    if (seen.filter(s => s.method === "turn/start").length === 2) proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } });
+    const result = await second;
+    assert.equal(result.status, "failed"); assert.deepEqual(result.taskContextCapability, { state: "unavailable", reason: "configuration-not-bound" });
+    assert.equal(seen.filter(s => s.method === "turn/start").length, 1);
+  } finally { await backend.dispose(); }
+});
 
 test("Codex completion retains final structured patch paths when the started item had no changes", async () => {
   const proc = new FakeProcess(), { threadId, turnId } = fakeServer(proc), backend = new CodexBackend("codex", fakeSpawn(proc).spawn), collected = collectSink();

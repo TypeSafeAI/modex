@@ -36,6 +36,18 @@ test("ClaudeBackend writes attached images into the stream-json user message", a
   assert.equal((await run).status, "completed");
 });
 
+test("Claude exposes only propose_refs for metadata in Plan/Chat and refreshes config on resume", () => {
+  for (const resume of [undefined, "previous-session"]) for (const plan of [false, true]) {
+    const taskContext = { url: `http://127.0.0.1:1234/mcp/${resume ?? "fresh"}-${plan}`, instructions: "Candidates only" };
+    const args = ClaudeBackend.args({ cwd: "/repo", mode: "chat", plan, model: "", resume, taskContext });
+    assert.ok(args.includes("--mcp-config"));
+    assert.deepEqual(JSON.parse(args[args.indexOf("--mcp-config") + 1]!), { mcpServers: { modex_task_context: { type: "http", url: taskContext.url } } });
+    assert.deepEqual(args.slice(args.indexOf("--allowedTools") + 1), ["mcp__modex_task_context__propose_refs"]);
+    assert.equal(args[args.indexOf("--append-system-prompt") + 1], "Candidates only");
+    assert.equal(args[args.indexOf("--permission-mode") + 1], plan ? "plan" : "manual");
+  }
+});
+
 test("Claude attaches Pages and knowledge together with exact session tool allowlists", () => {
   const pages = { url: "http://127.0.0.1:1234/mcp/pages", instructions: "Maintain Space notes" };
   const knowledge = { url: "http://127.0.0.1:1234/mcp/knowledge", instructions: "Maintain verified knowledge" };

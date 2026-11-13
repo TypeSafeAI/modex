@@ -7,6 +7,7 @@ import { Store } from "../src/main/engine/store.js";
 import { ThreadRunner } from "../src/main/engine/runner.js";
 import { TaskContextCapture } from "../src/main/engine/task-context-capture.js";
 import { PagesAgents } from "../src/main/engine/pages-agents.js";
+import { TaskContextAgents } from "../src/main/engine/task-context-agents.js";
 import type { Backend, TurnSink } from "../src/main/engine/backends/types.js";
 import type { ThreadEvent } from "../src/shared/types.js";
 import type { TaskContextEvidence } from "../src/shared/task-context-evidence.js";
@@ -16,8 +17,9 @@ function setup(t: TestContext, run: Backend["runTurn"], capture = new TaskContex
   const home = tmpdir("modex-context-runner-"), store = new Store(home), project = store.addProject(gitRepo()), events: ThreadEvent[] = [];
   const pages = new PagesAgents({ space: store.space, notes: store.space, capture, enabled: id => store.project(id)?.pagesMaintenance === true,
     scope: id => { const p = store.space.projectFor(id); return p ? { id: p.id, rel: p.rel } : null; } });
-  const runner = new ThreadRunner({ home, store, contextCapture: capture, pages, emit: event => events.push(structuredClone(event)), backends: { [backendId]: { id: backendId, identity: () => "cli", listModels: async () => [], dispose: async () => {}, runTurn: (text: string, opts: Parameters<Backend["runTurn"]>[1], sink: TurnSink, signal: AbortSignal) => text === "Check" ? run(text, opts, sink, signal) : Promise.resolve({ status: "completed" as const }) } } });
-  t.after(async () => { await runner.dispose(); await pages.dispose(); });
+  const proposals = new TaskContextAgents({ store });
+  const runner = new ThreadRunner({ home, store, contextCapture: capture, pages, taskContext: proposals, emit: event => events.push(structuredClone(event)), backends: { [backendId]: { id: backendId, identity: () => "cli", listModels: async () => [], dispose: async () => {}, runTurn: (text: string, opts: Parameters<Backend["runTurn"]>[1], sink: TurnSink, signal: AbortSignal) => text === "Check" || text.startsWith("Check\n\nModex selected") ? run(text, opts, sink, signal) : Promise.resolve({ status: "completed" as const }) } } });
+  t.after(async () => { await runner.dispose(); await pages.dispose(); await proposals.dispose(); });
   return { home, store, project, runner, events };
 }
 function user(home: string, threadId: string) {
@@ -53,6 +55,36 @@ test("accepted native read intent precedes success; duplicate completion records
   const tool = h.runner.items(thread.id).find(item => item.kind === "tool"); assert.ok(tool?.kind === "tool" && tool.origin);
   assert.deepEqual(context.captures[0]!.source, { kind: "native", itemId: tool.id, origin: tool.origin });
   assert.equal(JSON.stringify(context).includes("private-file-body-f621"), false); assert.equal(context.refs[0]!.relations.some(r => r.kind === "relevant"), false);
+});
+
+test("independent model proposals persist roles before reply and return opaque IDs without changing a frozen task", async t => {
+  let enter!: () => void, release!: () => void, result: { refIds: string[]; accepted: number } | undefined;
+  const entered = new Promise<void>(r => { enter = r; }), held = new Promise<void>(r => { release = r; });
+  const h = setup(t, async (_text, opts) => {
+    enter(); await held; assert.ok(opts.taskContext, "runner must attach the independent proposal channel");
+    const response = await fetch(opts.taskContext.url, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: "proposal-1", method: "tools/call", params: { name: "propose_refs", arguments: { refs: [
+      { target: { kind: "file", path: "README.md" }, role: "file" }, { target: { kind: "file", path: "README.md" }, role: "test" }, { target: { kind: "note", pageId: note.id }, role: "note" },
+    ] } } }) });
+    const body = await response.json() as { result: { isError?: boolean; content: { text: string }[] } };
+    assert.equal(body.result.isError, undefined); result = JSON.parse(body.result.content[0]!.text);
+    const durable = user(h.home, thread.id).contextEvidence!;
+    assert.equal(durable.refs.length, 2, "metadata must be on disk before the proposal reply");
+    return { status: "completed" };
+  });
+  const note = h.store.space.create({ containerId: h.store.space.projectFor(h.project.id)!.id, title: "Candidate", markdown: "unread-private-note-body" });
+  const thread = await h.runner.createThread(h.project.id, { backend: "claude", auto: false });
+  const selected = await h.runner.selectTaskContext(h.runner.openContextDraft({ kind: "thread", threadId: thread.id }), [{ kind: "file", path: "README.md" }]);
+  const running = h.runner.send(thread.id, "Check", [], "desktop", selected.binding); t.after(async () => { release(); await running; }); await entered;
+  const initial = user(h.home, thread.id), saved = h.runner.saveTaskNote(thread.id, initial.id), frozen = structuredClone(h.store.space.taskSnapshot(saved.pageId));
+  release(); await running;
+  assert.ok(result); assert.equal(result.accepted, 2); assert.equal(new Set(result.refIds).size, 2);
+  assert.ok(result.refIds.every(id => /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(id)));
+  const context = user(h.home, thread.id).contextEvidence!;
+  assert.deepEqual(context.refs.map(ref => ref.id).sort(), [...result.refIds].sort()); assert.equal(context.captures.length, 1); assert.deepEqual(context.checks, []);
+  assert.deepEqual(context.refs.flatMap(ref => ref.relations.filter(r => r.provenance === "model-proposed").map(r => "role" in r ? r.role : undefined)), ["file", "test", "note"]);
+  assert.equal(context.refs.some(ref => ref.relations.some(r => r.provenance === "observed")), false);
+  assert.equal(JSON.stringify(context).includes("unread-private-note-body"), false); assert.deepEqual(h.store.space.taskSnapshot(saved.pageId), frozen);
+  assert.equal(h.store.project(h.project.id)!.pagesMaintenance, undefined);
 });
 
 test("native path identity survives transcript argument preview truncation", async t => {

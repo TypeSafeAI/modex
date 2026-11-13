@@ -5,6 +5,7 @@ import type { ThreadItem } from "../../shared/types.js";
 import { contextRefId, type ContextCapture, type ContextRelation, type ContextTarget, type TaskContextEvidence } from "../../shared/task-context-evidence.js";
 import type { TaskContextCapture } from "./task-context-capture.js";
 import type { PagesReadReceipt } from "./pages-agents.js";
+import type { TaskContextProposal, TaskContextProposalResult } from "../../shared/task-context-tools.js";
 
 type Tool = Extract<ThreadItem, { kind: "tool" }>;
 type Operation = { target: ContextTarget; kind: "read" | "changed" | "searched" };
@@ -18,6 +19,7 @@ export class TaskContextAttempt {
   /** Normalized targets only, never retained raw arguments or tool bodies. */
   private readonly requested = new Map<string, Operation[]>();
   private readonly notes = new Map<string, string>();
+  private readonly proposals = new Map<string, { signature: string; result: TaskContextProposalResult }>();
   private readonly pending = new Set<Promise<void>>();
   private readonly errors: unknown[] = [];
   constructor(private readonly o: {
@@ -128,5 +130,26 @@ export class TaskContextAttempt {
       }
     });
     this.notes.set(key, signature);
+  }
+  proposed(proposal: TaskContextProposal): TaskContextProposalResult {
+    if (!this.current()) throw new Error("Task context attempt is no longer current.");
+    const signature = JSON.stringify(proposal), prior = this.proposals.get(proposal.receiptId);
+    if (prior) { if (prior.signature !== signature) throw new Error("Task context proposal receipt changed."); return structuredClone(prior.result); }
+    const source = { kind: "model-proposal" as const, turn: structuredClone(this.o.turn), leaseId: proposal.leaseId, receiptId: proposal.receiptId, requestId: proposal.requestId, at: proposal.at };
+    let result: TaskContextProposalResult | undefined;
+    this.change(context => {
+      // Public acceptedRefIds must never expose legacy tuple/path keys. Only this mutable user graph changes.
+      const remap = new Map<string, string>();
+      for (const ref of context.refs) {
+        if (/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(ref.id)) continue;
+        const id = randomUUID(); remap.set(ref.id, id); ref.id = id;
+      }
+      for (const check of context.checks) check.relevantRefIds = check.relevantRefIds.map(id => remap.get(id) ?? id);
+      const accepted = new Set<string>();
+      for (const { target, role } of proposal.refs) accepted.add(this.ref(context, target, { kind: "relevant", provenance: "model-proposed", role, source }).id);
+      result = { receiptId: proposal.receiptId, accepted: accepted.size, refIds: [...accepted] };
+    });
+    if (!result) throw new Error("Task context attempt is no longer current.");
+    this.proposals.set(proposal.receiptId, { signature, result }); return structuredClone(result);
   }
 }
