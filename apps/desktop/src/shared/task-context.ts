@@ -173,7 +173,7 @@ export function taskRecord(items: readonly ThreadItem[], opts: { threadId: strin
     // A question the agent asked in its message has no answer in this turn: the next message is the answer.
     if (item.kind === "assistant") for (const ask of item.asks ?? []) clarifications.push({ question: ask.title, answer: null, closed: "message" });
     if (item.kind !== "tool") continue;
-    if (PATCH_TOOLS.has(item.name)) {
+    if (PATCH_TOOLS.has(item.name) && !item.displayOnlyInputs) {
       for (const file of patchFiles(item)) {
         const rel = relative(file, opts.cwd);
         if (rel === null) outsideFiles++;
@@ -184,6 +184,7 @@ export function taskRecord(items: readonly ThreadItem[], opts: { threadId: strin
   }
   const evidence = opts.contextEvidence ?? (user?.kind === "user" ? user.contextEvidence : undefined);
   if (evidence !== undefined && (!isTaskContextEvidence(evidence) || !user || !taskContextBelongsTo(evidence, opts.threadId, user.id))) throw new Error("Task context does not belong to this request.");
+  const context = taskContext(items, opts.cwd, evidence);
   const final = finalAnswerIndex(rest);
   const answer = final >= 0 ? rest[final] : undefined;
   const missing = noPlan(rest);
@@ -194,7 +195,7 @@ export function taskRecord(items: readonly ThreadItem[], opts: { threadId: strin
     ...(plan?.kind === "plan" ? { plan: { steps: plan.steps, from: plan.from, revision: plan.revision } } : {}),
     ...(proposed?.kind === "assistant" ? { proposedPlan: proposed.text.trim() } : {}),
     ...(missing ? { noPlan: missing } : {}),
-    files: [...files], outsideFiles, commands, clarifications, verification: verification(rest), context: taskContext(rest, opts.cwd),
+    files: evidence === undefined ? [...files] : context.files.filter(file => file.relations.includes("changed")).map(file => file.path), outsideFiles, commands, clarifications, verification: verification(rest), context,
     ...(answer?.kind === "assistant" && answer !== proposed && answer.text.trim() ? { answer: answer.text.trim() } : {}),
   };
 }
@@ -536,10 +537,22 @@ const SEARCH_ARGS: Record<string, string> = { Grep: "path", Glob: "path", LS: "p
  * have written files without naming them is listed in `unlisted`, once, so the map never reads as complete
  * when it might not be.
  */
-export function taskContext(items: readonly ThreadItem[], cwd: string): TaskContext {
+export function taskContext(items: readonly ThreadItem[], cwd: string, evidence?: TaskContextEvidence): TaskContext {
   const files = new Map<string, ContextFile>();
   const outsidePaths = new Set<string>();
   const unlisted: string[] = [];
+  type Relation = TaskContextEvidence["refs"][number]["relations"][number];
+  const native = new Map<string, { relation: Relation; path: string }[]>();
+  for (const user of items) {
+    if (user.kind !== "user") continue;
+    const context = evidence ?? user.contextEvidence;
+    if (!context || !isTaskContextEvidence(context)) continue;
+    for (const ref of context.refs) for (const relation of ref.relations) {
+      if (ref.target.kind !== "file" || relation.source.kind !== "native" || relation.source.origin.turn !== user.id) continue;
+      const rows = native.get(relation.source.itemId) ?? [];
+      rows.push({ relation, path: ref.target.path }); native.set(relation.source.itemId, rows);
+    }
+  }
   const add = (raw: unknown, relation: ContextFile["relations"][number], commandCwd = cwd) => {
     if (typeof raw !== "string" || !raw.trim()) return;
     const path = relative(raw.trim(), cwd, commandCwd);
@@ -561,6 +574,17 @@ export function taskContext(items: readonly ThreadItem[], cwd: string): TaskCont
     // A failed command can have written before failing; keep that uncertainty without guessing paths.
     if (command && !EDIT_TOOLS.has(item.name) && mayWrite(command) && !unlisted.includes(command)) unlisted.push(command);
     if (outcome === "failed") continue;
+    const recorded = (native.get(item.id) ?? []).filter(({ relation }) => {
+      if (relation.source.kind !== "native" || !item.origin) return false;
+      const a = relation.source.origin, b = item.origin;
+      return a.thread === b.thread && a.turn === b.turn && a.attempt === b.attempt && a.backend === b.backend && a.account === b.account
+        && a.native.runtime === b.native.runtime && a.native.item === b.native.item && a.native.thread === b.native.thread && a.native.turn === b.native.turn && a.native.part === b.native.part;
+    });
+    if (recorded.length) {
+      for (const { relation, path } of recorded) if (relation.provenance === "observed" && relation.kind !== "relevant") add(path, relation.kind);
+      continue;
+    }
+    if (item.displayOnlyInputs) continue;
     if (EDIT_TOOLS.has(item.name)) {
       for (const file of patchFiles(item)) add(file, "changed");
       if (item.name === "write_file") add(item.args.path, "changed");

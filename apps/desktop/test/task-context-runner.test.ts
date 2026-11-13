@@ -11,6 +11,7 @@ import { TaskContextAgents } from "../src/main/engine/task-context-agents.js";
 import type { Backend, TurnSink } from "../src/main/engine/backends/types.js";
 import type { ThreadEvent } from "../src/shared/types.js";
 import type { TaskContextEvidence } from "../src/shared/task-context-evidence.js";
+import { taskRecord } from "../src/shared/task-context.js";
 import { gitRepo, tmpdir } from "./helpers.js";
 
 function setup(t: TestContext, run: Backend["runTurn"], capture = new TaskContextCapture(), backendId: "claude" | "codex" = "claude") {
@@ -20,7 +21,7 @@ function setup(t: TestContext, run: Backend["runTurn"], capture = new TaskContex
   const proposals = new TaskContextAgents({ store });
   const runner = new ThreadRunner({ home, store, contextCapture: capture, pages, taskContext: proposals, emit: event => events.push(structuredClone(event)), backends: { [backendId]: { id: backendId, identity: () => "cli", listModels: async () => [], dispose: async () => {}, runTurn: (text: string, opts: Parameters<Backend["runTurn"]>[1], sink: TurnSink, signal: AbortSignal) => text === "Check" || text.startsWith("Check\n\nModex selected") ? run(text, opts, sink, signal) : Promise.resolve({ status: "completed" as const }) } } });
   t.after(async () => { await runner.dispose(); await pages.dispose(); await proposals.dispose(); });
-  return { home, store, project, runner, events };
+  return { home, store, project, runner, events, proposals };
 }
 function user(home: string, threadId: string) {
   const item = new Store(home).items(threadId).find(item => item.kind === "user"); assert.ok(item?.kind === "user"); return item;
@@ -98,6 +99,97 @@ test("native path identity survives transcript argument preview truncation", asy
   const context = user(h.home, thread.id).contextEvidence!;
   assert.deepEqual(context.refs.map(r => r.target), [{ kind: "file", path: relative }]);
   assert.deepEqual(context.captures[0]!.target, { kind: "file", path: relative });
+  assert.deepEqual(taskRecord(h.runner.items(thread.id), { threadId: thread.id, title: "Task", cwd: h.project.path }).context?.files.map(file => file.path), [relative]);
+});
+
+test("private attempt connections stay out of native streams, raw logs, diagnostics, session IDs and request cards", async t => {
+  const secrets: string[] = []; let deniedWrites = 0;
+  const h = setup(t, async (_text, opts, sink) => {
+    assert.ok(opts.taskContext && opts.pages);
+    for (const url of [opts.taskContext.url, opts.pages.url]) secrets.push(url, new URL(url).pathname.split("/").at(-1)!);
+    const message = { runtime: "fixture", item: "message" }, reasoning = { runtime: "fixture", item: "reasoning" };
+    sink.observe({ type: "message.start", native: message, phase: "final" });
+    for (const secret of secrets) { sink.observe({ type: "message.delta", native: message, text: `before ${secret.slice(0, 11)}` }); sink.observe({ type: "message.delta", native: message, text: `${secret.slice(11)} after. ` }); }
+    sink.observe({ type: "message.done", native: message });
+    sink.observe({ type: "reasoning.start", native: reasoning });
+    sink.observe({ type: "reasoning.delta", native: reasoning, representation: "summary", index: 0, text: secrets[1]!.slice(0, 17) });
+    sink.observe({ type: "reasoning.delta", native: reasoning, representation: "summary", index: 0, text: `${secrets[1]!.slice(17)}.` });
+    sink.observe({ type: "reasoning.done", native: reasoning });
+    sink.observe({ type: "tool.start", native, tool: { name: "Read", title: `read ${secrets[0]}`, args: { file_path: "README.md", echoedConfiguration: secrets[0] } } });
+    sink.output?.(native, "x".repeat(300000) + secrets[0]!.slice(0, 25)); sink.output?.(native, secrets[0]!.slice(25) + " done.");
+    sink.observe({ type: "tool.update", native, progress: { output: secrets[2]!.slice(0, 23) } });
+    sink.observe({ type: "tool.done", native, outcome: "succeeded", progress: { output: `result ${secrets[2]}` } });
+    const control = new AbortController(), request = { runtime: "fixture", request: "private-approval" };
+    const answer = sink.approval({ native: request, question: `Allow ${secrets[0]}?`, canAlways: true, action: { backend: "claude", tool: "Bash", title: "echo connection", input: { command: `echo ${secrets[1]}` } } }, control.signal);
+    queueMicrotask(() => control.abort()); assert.equal(await answer, "no");
+    await sink.deliverRequest?.(request, async () => { deniedWrites++; });
+    const withdrawal = new AbortController();
+    const question = sink.question?.({ native: { runtime: "fixture", request: "private-question" }, blocking: true, questions: [{ id: "q", header: "Context", text: secrets[2]!, options: null, allowOther: true, secret: false }] }, withdrawal.signal);
+    queueMicrotask(() => withdrawal.abort()); await question;
+    sink.notice("warn", `native diagnostic ${secrets[3]}`); sink.session(secrets[0]!);
+    return { status: "failed", error: `reconnect ${secrets[0]}`, detail: { connection: secrets[2] }, recovery: [secrets[1]!] };
+  });
+  const thread = await h.runner.createThread(h.project.id, { backend: "claude", auto: false }); await h.runner.send(thread.id, "Check");
+  const items = h.runner.items(thread.id), tool = items.find(item => item.kind === "tool"); assert.ok(tool?.kind === "tool");
+  let logs = "", offset = 0;
+  for (;;) { const page = h.runner.toolLogs.read(thread.id, tool.id, offset); assert.ok(page); logs += page.text; if (page.next === null) break; offset = page.next; }
+  const published = JSON.stringify([items, new Store(h.home).items(thread.id), h.store.thread(thread.id), h.events, logs]);
+  for (const secret of secrets) assert.equal(published.includes(secret), false, "private connection escaped through a native publication path");
+  assert.equal(h.store.thread(thread.id)!.sessionHandle, undefined); assert.equal(items.some(item => item.kind === "approval" || item.kind === "question"), false);
+  assert.equal(deniedWrites, 1); assert.deepEqual(user(h.home, thread.id).contextEvidence!.refs.map(ref => ref.target), [{ kind: "file", path: "README.md" }]);
+  assert.deepEqual(taskRecord(items, { threadId: thread.id, title: "Task", cwd: h.project.path }).context?.files.map(file => file.path), ["README.md"]);
+});
+
+test("secret-bearing native targets and another lease's token cannot become invented or model-proposed refs", async t => {
+  const h = setup(t, async (_text, opts, sink) => {
+    assert.ok(opts.pages && opts.taskContext); const token = new URL(opts.pages.url).pathname.split("/").at(-1)!;
+    start(sink, `src/${token}.ts`); sink.observe({ type: "tool.done", native, outcome: "succeeded" });
+    const response = await fetch(opts.taskContext.url, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: "cross-lease-token", method: "tools/call", params: { name: "propose_refs", arguments: { refs: [{ target: { kind: "file", path: `src/${token}.ts` }, role: "file" }] } } }) });
+    const body = await response.json() as { result: { isError?: boolean } }; assert.equal(body.result.isError, true);
+    return { status: "completed" };
+  });
+  const thread = await h.runner.createThread(h.project.id, { backend: "claude", auto: false }); await h.runner.send(thread.id, "Check");
+  assert.equal(user(h.home, thread.id).contextEvidence?.refs.length ?? 0, 0, "redacting display must not invent a different target identity");
+  assert.deepEqual(taskRecord(h.runner.items(thread.id), { threadId: thread.id, title: "Task", cwd: h.project.path }).context?.files, [], "portable legacy context must not infer targets from redacted display input");
+});
+
+test("backend completion seals Notes admission before a different lease's asynchronous cleanup", async t => {
+  let releaseHash!: () => void, hashEntered!: () => void, releaseCleanup!: () => void, cleanupEntered!: () => void;
+  const heldHash = new Promise<void>(r => { releaseHash = r; }), hashing = new Promise<void>(r => { hashEntered = r; });
+  const heldCleanup = new Promise<void>(r => { releaseCleanup = r; }), cleaning = new Promise<void>(r => { cleanupEntered = r; });
+  const capture = new TaskContextCapture(), actualCapture = capture.captureNotes.bind(capture); let reply!: Promise<{ result?: { isError?: boolean } }>;
+  t.mock.method(capture, "captureNotes", async (...args: Parameters<TaskContextCapture["captureNotes"]>) => { hashEntered(); await heldHash; return actualCapture(...args); });
+  const h = setup(t, async (_text, opts) => {
+    assert.ok(opts.pages);
+    reply = fetch(opts.pages.url, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: "late-read", method: "tools/call", params: { name: "read", arguments: { id: note.id } } }) }).then(response => response.json() as Promise<{ result?: { isError?: boolean } }>);
+    await hashing; return { status: "completed" };
+  }, capture);
+  h.store.setPagesMaintenance(h.project.id, true);
+  const note = h.store.space.create({ containerId: h.store.space.projectFor(h.project.id)!.id, title: "Late", markdown: "actual returned body" });
+  const prepare = h.proposals.prepare.bind(h.proposals);
+  t.mock.method(h.proposals, "prepare", async (...args: Parameters<TaskContextAgents["prepare"]>) => {
+    const lease = await prepare(...args); return { ...lease, close: async () => { await lease.close(); cleanupEntered(); await heldCleanup; } };
+  });
+  const thread = await h.runner.createThread(h.project.id, { backend: "claude", auto: false }), running = h.runner.send(thread.id, "Check");
+  try {
+    await cleaning; releaseHash(); const response = await reply;
+    assert.equal(response.result?.isError, true, "a successful backend result ends admission before cleanup awaits");
+    assert.equal(user(h.home, thread.id).contextEvidence?.refs.length ?? 0, 0);
+  } finally { releaseHash(); releaseCleanup(); await running; }
+});
+
+test("a connection cleanup failure after a backend exception cannot expose the private URL", async t => {
+  let url = "";
+  const h = setup(t, async (_text, opts) => { url = opts.taskContext!.url; throw new Error("Synthetic backend exception"); });
+  const prepare = h.proposals.prepare.bind(h.proposals);
+  t.mock.method(h.proposals, "prepare", async (...args: Parameters<TaskContextAgents["prepare"]>) => {
+    const lease = await prepare(...args); return { ...lease, close: async () => { await lease.close(); throw new Error(`Synthetic close failure ${lease.connection.url}`); } };
+  });
+  const thread = await h.runner.createThread(h.project.id, { backend: "claude", auto: false }); await h.runner.send(thread.id, "Check");
+  assert.ok(url); const published = JSON.stringify([h.runner.items(thread.id), h.events]);
+  assert.equal(published.includes(url), false); assert.equal(published.includes(new URL(url).pathname.split("/").at(-1)!), false);
+  assert.match(published, /Synthetic close failure/, "preserve the failure without its private connection");
+  assert.match(published, /Synthetic backend exception/, "retain the first failure as well as cleanup evidence");
 });
 
 test("successful Claude changes and structured searches retain separate operation relations without parsing output", async t => {

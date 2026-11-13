@@ -1,5 +1,6 @@
 import { TaskContextCapture } from "./task-context-capture.js";
 import { TaskContextAttempt } from "./task-context-attempt.js";
+import { ContextPrivacy } from "./context-privacy.js";
 import type { TaskContextAgents } from "./task-context-agents.js";
 import { TaskContextService } from "./task-context-service.js";
 import { describeTaskContext, isContextDraftBinding, isTaskContextEvidence, taskContextBelongsTo, copyTaskContextEvidence, type ContextDraftOwner, type ContextDraftBinding, type ContextTarget, type TaskContextEvidence, type PendingTaskContext } from "../../shared/task-context-evidence.js";
@@ -40,7 +41,7 @@ import type { PendingCreation, PendingSendRecord } from "./pending-sends.js";
 import { copyComposerRecovery } from "./update-recovery.js";
 import { parseRecoveryJSON, recoveryJSON } from "./attachment-recovery-file.js";
 import type { DraftRemovalScope } from "../../shared/native-drafts.js";
-import { boundOutput } from "../../shared/evidence.js";
+import { boundOutput, type Exec } from "../../shared/evidence.js";
 import { taskMarkdown, taskRecord, type TaskNoteView } from "../../shared/task-context.js";
 import { openingTitle } from "./titles.js";
 import { actionDigest, emptyRequests, publicAnswers, register as registerRequest, resolve as resolveRequest, settle as settleRequest, validateAnswers, withdraw as withdrawRequests, type Question, type RequestBinding, type RequestsState, type Resolution } from "../../shared/human-requests.js";
@@ -94,6 +95,8 @@ interface Live {
   followUp?: { key: string; abort: AbortController; result: Promise<FollowUp | null> };
   /** Processes a Stop asked to end that never confirmed their exit; their thread's files stay while one lives. */
   unconfirmed?: Set<number>;
+  /** Known context capabilities survive retries/turns while this live thread exists; never serialized. */
+  privateConnections?: Set<string>;
 }
 
 export interface RunnerOptions {
@@ -989,8 +992,10 @@ export class ThreadRunner {
       const runOn = async (ran: Thread): Promise<TurnResult> => {
         const codingCwd = ran.cwd, projectId = ran.projectId;
         const actualTurn: TurnRef = { thread: threadId, turn: turnId, attempt: newId(), backend: ran.backend, ...(accountFor(ran) ? { account: accountFor(ran) } : {}) };
-        const attempt = this.beginAttempt(threadId, l, actualTurn);
+        const privacy = new ContextPrivacy(l.privateConnections ??= new Set());
+        const attempt = this.beginAttempt(threadId, l, actualTurn, privacy);
         const context = new TaskContextAttempt({ turn: actualTurn, cwd: codingCwd, projectId, signal: abort.signal, capture: this.contextCapture,
+          privateValue: value => privacy.contains(value),
           current: () => {
             const current = this.o.store.thread(threadId);
             return this.live.get(threadId) === l && l.abort === abort && l.attempt === actualTurn.attempt && Boolean(current)
@@ -1000,28 +1005,31 @@ export class ThreadRunner {
           update: change => this.updateTaskContext(threadId, l, actualTurn, projectId, change),
         });
         this.contextAttempts.set(actualTurn.attempt, context);
+        let failed = false, failure: unknown;
         try {
           if (!local && (ran.backend === "claude" || ran.backend === "codex") && this.o.taskContext) {
-            taskContext = await this.o.taskContext.prepare({ turn: actualTurn, cwd: codingCwd, projectId, isCurrent: () => context.current(), accept: proposal => context.proposed(proposal) }, context.signal);
+            taskContext = await this.o.taskContext.prepare({ turn: actualTurn, cwd: codingCwd, projectId, isCurrent: () => context.accepting(), accept: proposal => context.proposed(proposal) }, context.signal);
+            privacy.addConnection(taskContext.connection.url);
           }
           if (!local && ran.backend !== "mock" && this.o.pages) {
             pages = await this.o.pages.prepare(connectionTurn, change => this.addItem(threadId, {
               id: newId(), kind: "notice", level: "info", text: `Note updated: ${change.summary}`, pages: change, at: new Date().toISOString(),
-            }), context.signal, { attempt: actualTurn, cwd: codingCwd, isCurrent: () => context.current(), observed: receipt => context.observedNotes(receipt) });
+            }), context.signal, { attempt: actualTurn, cwd: codingCwd, isCurrent: () => context.accepting(), observed: receipt => context.observedNotes(receipt) });
+            privacy.addConnection(pages.connection.url);
           }
           if (!knowledge && !local && thread.backend !== "mock" && this.o.knowledge) {
             knowledge = await this.o.knowledge.prepare(connectionTurn, change => this.addItem(threadId, {
               id: newId(), kind: "notice", level: "info", text: `Knowledge updated: ${change.summary}`, knowledge: change, at: new Date().toISOString(),
             }), abort.signal);
-            if (knowledge.warning) sink.notice("warn", knowledge.warning);
+            if (knowledge.warning) attempt.sink.notice("warn", knowledge.warning);
           }
-          if (abort.signal.aborted) return { status: "interrupted" };
+          if (abort.signal.aborted) { context.seal(); privacy.finish(); attempt.end("interrupted"); return { status: "interrupted" }; }
           const turnFiles: TurnAttachment[] = files.map((f) => {
             const file = this.attachments.resolve(f.rel);
             if (!file) throw new Error(`Attachment ${f.name} is missing or changed. Attach it again before retrying.`);
             return { name: f.name, mime: f.mime, kind: f.kind, path: file };
           });
-          const result = await backend.runTurn(
+          const result = privacy.redact(await backend.runTurn(
             describeAttachments(describeTaskContext(text, contextAdmission?.context ?? (l.items.find(item => item.id === turnId && item.kind === "user") as UserItem | undefined)?.contextEvidence), turnFiles),
             {
               cwd: ran.cwd, mode: ran.mode, plan: ran.plan, model: ran.model, effort: ran.effort, fast, ...(conserveCredits ? { conserveCredits: true } : {}), resume: ran.sessionHandle, account: accountFor(ran),
@@ -1031,7 +1039,8 @@ export class ThreadRunner {
             },
             attempt.sink,
             abort.signal,
-          );
+          ));
+          context.seal(); privacy.finish();
           attempt.end(abort.signal.aborted ? "interrupted" : ATTEMPT_OUTCOME[result.status]);
           if (taskContext) { const closing = taskContext; taskContext = undefined; await closing.close(); }
           if (pages) { const closing = pages; pages = undefined; await closing.close(); }
@@ -1039,13 +1048,18 @@ export class ThreadRunner {
           if (drain) await drain;
           return result;
         } catch (err) {
+          failed = true; failure = err;
+          context.seal(); privacy.finish();
           attempt.end(abort.signal.aborted ? "interrupted" : "failed");
-          throw err;
+          throw privacy.error(err);
         } finally {
+          context.seal(); privacy.finish();
           context.close();
           this.contextAttempts.delete(actualTurn.attempt);
-          if (taskContext) { const closing = taskContext; taskContext = undefined; await closing.close(); }
-          if (pages) { const closing = pages; pages = undefined; await closing.close(); }
+          const closing = [taskContext, pages]; taskContext = undefined; pages = undefined;
+          const closed = await Promise.allSettled(closing.filter(lease => lease !== undefined).map(lease => Promise.resolve().then(() => lease.close())));
+          const errors = closed.flatMap(result => result.status === "rejected" ? [privacy.error(result.reason).message] : []);
+          if (errors.length) throw new Error(`${failed ? `${privacy.error(failure).message} ` : ""}Connection cleanup failed: ${errors.join("; ")}`);
         }
       };
       let replacementBlocked = false;
@@ -1550,7 +1564,7 @@ export class ThreadRunner {
    * with an id, its ingress order and time, and projects it into transcript items. Starting an
    * attempt makes every earlier attempt's sink inert.
    */
-  private beginAttempt(threadId: string, l: Live, turn: TurnRef): { sink: TurnSink; end: (outcome: SettledOutcome) => void } {
+  private beginAttempt(threadId: string, l: Live, turn: TurnRef, privacy?: ContextPrivacy): { sink: TurnSink; end: (outcome: SettledOutcome) => void } {
     l.attempt = turn.attempt;
     let seq = 0;
     const seen = new Set<string>();
@@ -1565,17 +1579,18 @@ export class ThreadRunner {
         if (seen.has(observation.source)) return;
         seen.add(observation.source);
       }
-      this.project(threadId, l, stamp(redactObservation(observation)), observation.type === "tool.start" ? observation.tool.args : observation.type === "tool.done" ? observation.progress?.args : undefined);
+      const original = privacy?.original(observation);
+      this.project(threadId, l, stamp(redactObservation(observation)), original?.args ?? (observation.type === "tool.start" ? observation.tool.args : observation.type === "tool.done" ? observation.progress?.args : undefined), original?.exec);
     });
     this.project(threadId, l, stamp({ type: "attempt.start" }));
-    return { sink, end: (outcome) => {
+    return { sink: privacy ? privacy.wrap(sink) : sink, end: (outcome) => {
       this.toolLogs.endThread(threadId);
       if (this.live.get(threadId) === l) this.project(threadId, l, stamp({ type: "attempt.end", outcome }));
     } };
   }
 
   /** Applies one event to the turn's conversation and emits what changed as item events. */
-  private project(threadId: string, l: Live, event: ConversationEvent, nativeArgs?: Record<string, unknown>): void {
+  private project(threadId: string, l: Live, event: ConversationEvent, nativeArgs?: Record<string, unknown>, nativeExec?: Exec): void {
     const before = l.conversation;
     const after = applyConversationEvent(before, event);
     if (after === before) return;
@@ -1592,7 +1607,7 @@ export class ThreadRunner {
     if (event.type === "tool.start" || event.type === "tool.done") {
       const id = toolItemId(after, event.turn, event.native);
       const item = id ? l.items.find(item => item.id === id) : undefined;
-      if (item?.kind === "tool") this.contextAttempts.get(event.turn.attempt)?.accepted(event, item, nativeArgs);
+      if (item?.kind === "tool") this.contextAttempts.get(event.turn.attempt)?.accepted(event, item, nativeArgs, nativeExec);
     }
   }
 

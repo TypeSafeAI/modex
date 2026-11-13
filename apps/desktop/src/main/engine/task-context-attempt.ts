@@ -6,6 +6,7 @@ import { contextRefId, type ContextCapture, type ContextRelation, type ContextTa
 import type { TaskContextCapture } from "./task-context-capture.js";
 import type { PagesReadReceipt } from "./pages-agents.js";
 import type { TaskContextProposal, TaskContextProposalResult } from "../../shared/task-context-tools.js";
+import type { Exec } from "../../shared/evidence.js";
 
 type Tool = Extract<ThreadItem, { kind: "tool" }>;
 type Operation = { target: ContextTarget; kind: "read" | "changed" | "searched" };
@@ -22,14 +23,18 @@ export class TaskContextAttempt {
   private readonly proposals = new Map<string, { signature: string; result: TaskContextProposalResult }>();
   private readonly pending = new Set<Promise<void>>();
   private readonly errors: unknown[] = [];
+  private sealed = false;
   constructor(private readonly o: {
     turn: TurnRef; cwd: string; projectId: string; signal: AbortSignal;
     capture: Pick<TaskContextCapture, "capture">;
+    privateValue?(value: unknown): boolean;
     current(): boolean;
     update(change: (context: TaskContextEvidence) => void): void;
   }) { this.signal = AbortSignal.any([o.signal, this.abort.signal]); }
 
   current(): boolean { return !this.signal.aborted && this.o.current(); }
+  accepting(): boolean { return !this.sealed && this.current(); }
+  seal(): void { this.sealed = true; }
   close(): void { this.abort.abort(); }
   flush(): Promise<void> | undefined {
     if (!this.pending.size) { if (this.errors.length) throw this.errors[0]; return; }
@@ -51,6 +56,7 @@ export class TaskContextAttempt {
     const operations: Operation[] = [];
     const add = (value: unknown, kind: "read" | "changed" | "searched", cwd?: string) => {
       if (typeof value !== "string" || !value || /[\u0000-\u001f\u007f\\]/.test(value) || (!path.isAbsolute(value) && !cwd)) return;
+      if (this.o.privateValue?.(value)) return;
       const relative = path.relative(this.o.cwd, path.resolve(cwd ?? this.o.cwd, value));
       if (!relative || relative.length > 4096 || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative) || /^[A-Za-z]:/.test(relative)) return;
       const target: ContextTarget = { kind: "file", path: relative.split(path.sep).join("/") };
@@ -73,14 +79,14 @@ export class TaskContextAttempt {
     }
     return operations;
   }
-  accepted(event: ConversationEvent, item: Tool, nativeArgs?: Record<string, unknown>): void {
-    if (!this.current() || !item.origin || !sameTurn(item.origin, this.o.turn) || (event.type !== "tool.start" && event.type !== "tool.done")) return;
+  accepted(event: ConversationEvent, item: Tool, nativeArgs?: Record<string, unknown>, nativeExec?: Exec): void {
+    if (!this.accepting() || !item.origin || !sameTurn(item.origin, this.o.turn) || (event.type !== "tool.start" && event.type !== "tool.done")) return;
     const key = JSON.stringify([item.id, event.type]);
     if (this.native.has(key)) return;
     // Display previews may truncate strings; derive identities from accepted native arguments instead.
     const operations = event.type === "tool.done" && nativeArgs === undefined
-      ? this.requested.get(item.id) ?? this.operations(item)
-      : this.operations(nativeArgs === undefined ? item : { ...item, args: nativeArgs });
+      ? this.requested.get(item.id) ?? []
+      : this.operations({ ...item, ...(nativeArgs === undefined ? {} : { args: nativeArgs }), ...(nativeExec === undefined ? {} : { exec: nativeExec }) });
     if (!operations.length) return;
     const targets = [...new Map(operations.map(op => [contextRefId(op.target), op.target])).values()];
     const source = { kind: "native" as const, itemId: item.id, origin: item.origin };
@@ -118,7 +124,8 @@ export class TaskContextAttempt {
     this.pending.add(pending);
   }
   observedNotes(receipt: PagesReadReceipt): void {
-    if (!this.current()) throw new Error("Task context attempt is no longer current.");
+    if (!this.accepting()) throw new Error("Task context attempt is no longer accepting Notes receipts.");
+    if (this.o.privateValue?.(receipt)) throw new Error("Notes context receipt contains a private connection.");
     if (!sameTurn(receipt.source.turn, this.o.turn) || receipt.captures.some(c => c.phase !== "after-notes-read" || JSON.stringify(c.source) !== JSON.stringify(receipt.source)
       || c.workspace?.kind !== "thread" || c.workspace.projectId !== this.o.projectId || c.workspace.threadId !== this.o.turn.thread)) throw new Error("Notes context receipt scope changed.");
     const key = receipt.source.receiptId, signature = JSON.stringify(receipt);
@@ -132,7 +139,8 @@ export class TaskContextAttempt {
     this.notes.set(key, signature);
   }
   proposed(proposal: TaskContextProposal): TaskContextProposalResult {
-    if (!this.current()) throw new Error("Task context attempt is no longer current.");
+    if (!this.accepting()) throw new Error("Task context attempt is no longer accepting proposals.");
+    if (this.o.privateValue?.(proposal)) throw new Error("Task context proposal contains a private connection.");
     const signature = JSON.stringify(proposal), prior = this.proposals.get(proposal.receiptId);
     if (prior) { if (prior.signature !== signature) throw new Error("Task context proposal receipt changed."); return structuredClone(prior.result); }
     const source = { kind: "model-proposal" as const, turn: structuredClone(this.o.turn), leaseId: proposal.leaseId, receiptId: proposal.receiptId, requestId: proposal.requestId, at: proposal.at };

@@ -74,6 +74,8 @@ export interface PlanStep { text: string; status: PlanStepStatus }
 export type PlanSource = "codex-plan" | "claude-todo" | "claude-tasks" | "acp-plan";
 
 export interface ToolCall {
+  /** Main changed displayed evidence inputs; only separately retained native metadata may establish targets. */
+  displayOnlyInputs?: true;
   name: string;
   title: string;
   args: Record<string, unknown>;
@@ -83,6 +85,7 @@ export interface ToolCall {
 }
 
 export interface ToolProgress {
+  displayOnlyInputs?: true;
   args?: Record<string, unknown>;
   title?: string;
   agent?: AgentActivity;
@@ -249,7 +252,7 @@ export function applyConversationEvent(state: ConversationState, event: Conversa
     }
     case "tool.start": {
       if (entry) return state;
-      const item: ConversationItem = { id: newId, kind: "tool", name: event.tool.name, title: event.tool.title, args: event.tool.args, ...(event.tool.agent ? { agent: event.tool.agent } : {}), ...(event.tool.exec ? { exec: event.tool.exec } : {}), status: "running", outcome: "running", origin, at: event.at };
+      const item: ConversationItem = { id: newId, kind: "tool", name: event.tool.name, title: event.tool.title, args: event.tool.args, ...(event.tool.displayOnlyInputs ? { displayOnlyInputs: true } : {}), ...(event.tool.agent ? { agent: event.tool.agent } : {}), ...(event.tool.exec ? { exec: event.tool.exec } : {}), status: "running", outcome: "running", origin, at: event.at };
       return draft.add(item).entry(key, { ...fresh("tool", turn), ids: { tool: newId } }).done();
     }
     case "plan.update": {
@@ -348,6 +351,7 @@ export function parseConversationEvent(value: unknown): ConversationEvent | null
       case "reasoning.delta": return (value.representation === "summary" || value.representation === "provider-text") && Number.isSafeInteger(value.index) && (value.index as number) >= 0 && isString(value.text);
       case "reasoning.done": return optional(value.summary, strings) && optional(value.text, strings);
       case "tool.start": return isRecord(value.tool) && isString(value.tool.name) && isString(value.tool.title) && isRecord(value.tool.args) && optional(value.tool.agent, isRecord)
+        && optional(value.tool.displayOnlyInputs, (x) => x === true)
         && optional(value.tool.exec, (x) => isRecord(x) && isString(x.command) && optional(x.cwd, isString) && optional(x.actions, Array.isArray));
       case "tool.update": return progress(value.progress);
       case "tool.done": return SETTLED.includes(value.outcome as string) && optional(value.progress, progress);
@@ -456,6 +460,7 @@ function strings(value: unknown): boolean { return Array.isArray(value) && value
 function optional(value: unknown, check: (v: unknown) => boolean): boolean { return value === undefined || check(value); }
 function progress(value: unknown): boolean {
   return isRecord(value) && optional(value.args, isRecord) && optional(value.title, isString) && optional(value.agent, isRecord) && optional(value.output, isString)
+    && optional(value.displayOnlyInputs, (x) => x === true)
     && optional(value.durationMs, (d) => typeof d === "number" && Number.isFinite(d))
     && optional(value.outputBytes, (b) => Number.isSafeInteger(b) && (b as number) >= 0) && optional(value.outputTruncated, (t) => typeof t === "boolean")
     && optional(value.exitCode, (c) => c === null || Number.isSafeInteger(c))
