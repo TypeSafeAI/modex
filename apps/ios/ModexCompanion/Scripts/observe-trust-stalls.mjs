@@ -190,6 +190,42 @@ export async function resolveAppImage({ deviceId, signal, command = runBounded }
   catch (error) { throw Object.assign(Error('App image realpath unavailable'), { imageStage: 'image-realpath', code: error?.code }); }
 }
 
+// Only a confirmed-closed metadata timeout permits another read; no pairing or sampling is retried here.
+export async function confirmBootedSimulator({ deviceId, signal, command = runBounded, onAttempt = () => {} }) {
+  const failure = (code, closed, pid) => Object.assign(Error('Explicit simulator metadata unavailable'), {
+    code, ...(typeof closed === 'boolean' ? { closed } : {}), ...(pidOK(pid) ? { pid } : {}),
+  });
+  if (!UUID.test(deviceId)) throw failure('INVALID_DEVICE');
+  const codes = new Set(['COMMAND_TIMEOUT', 'ABORT_ERR', 'COMMAND_FAILED', 'OUTPUT_LIMIT', 'DIAGNOSTIC_STOPPED', 'INVALID_BOUNDS', 'COMMAND_CLEANUP_UNVERIFIED']);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    if (signal?.aborted) throw failure('ABORT_ERR', true);
+    let result;
+    try {
+      result = await command('/usr/bin/xcrun', ['simctl', 'list', 'devices', 'booted', '-j'], { signal, maxBytes: 1024 * 1024, timeoutMs: 5000 });
+      if (result.closed !== true) throw failure('COMMAND_CLEANUP_UNVERIFIED', result.closed, result.pid);
+      if (signal?.aborted) throw failure('ABORT_ERR', true, result.pid);
+    } catch (error) {
+      const code = codes.has(error?.code) ? error.code : 'SIMULATOR_QUERY_UNAVAILABLE';
+      onAttempt({ attempt, outcome: 'unavailable', code, ...(typeof error?.closed === 'boolean' ? { commandClosed: error.closed } : {}) });
+      if (signal?.aborted) throw failure('ABORT_ERR', error?.closed, error?.pid);
+      if (code !== 'COMMAND_TIMEOUT' || error?.closed !== true || attempt === 3) throw failure(code, error?.closed, error?.pid);
+      continue;
+    }
+    let devices;
+    try { devices = JSON.parse(result.stdout.toString()); }
+    catch {
+      onAttempt({ attempt, outcome: 'unavailable', code: 'INVALID_DEVICE_LIST', commandClosed: true });
+      throw failure('INVALID_DEVICE_LIST', true);
+    }
+    if (!Object.values(devices?.devices ?? {}).flat().some(device => device?.udid === deviceId && device.state === 'Booted')) {
+      onAttempt({ attempt, outcome: 'refused', code: 'DEVICE_NOT_BOOTED', commandClosed: true });
+      throw failure('DEVICE_NOT_BOOTED', true);
+    }
+    onAttempt({ attempt, outcome: 'booted' });
+    return;
+  }
+}
+
 export async function runObserver({ deviceId, output, signal }) {
   if (process.platform !== 'darwin' || process.env.GITHUB_ACTIONS !== 'true' || process.env.RUNNER_OS !== 'macOS'
     || !UUID.test(deviceId) || !path.isAbsolute(output) || path.resolve(output) === '/') throw Error('Trust stack diagnostics require an explicit macOS CI simulator and output path');
@@ -203,8 +239,9 @@ export async function runObserver({ deviceId, output, signal }) {
   const command = gateCommands(runBounded, info => { receipt.unconfirmedCommand = info; receipt.unavailable = 'COMMAND_CLEANUP_UNVERIFIED'; deadline.abort(); observer?.close(); });
   const save = () => fs.writeFileSync(path.join(directory, 'manifest.json'), JSON.stringify({ ...receipt, observation: observer?.report }, null, 2) + '\n', { mode: 0o600 });
   try {
-    const devices = JSON.parse((await command('/usr/bin/xcrun', ['simctl', 'list', 'devices', 'booted', '-j'], { signal: combined })).stdout.toString());
-    if (!Object.values(devices.devices ?? {}).flat().some(x => x.udid === deviceId && x.state === 'Booted')) throw Error('Explicit simulator is not booted');
+    receipt.startup = { stage: 'device-metadata', attempts: [] }; save();
+    await confirmBootedSimulator({ deviceId, signal: combined, command, onAttempt: row => { receipt.startup.attempts.push(row); save(); } });
+    receipt.startup.stage = 'device-confirmed'; save();
     const appImage = () => resolveAppImage({ deviceId, signal: combined, command });
     observer = new TrustStallObserver({ deviceId, appImage, identity: (pid, image) => currentIdentity(pid, image, combined, command),
       sample: async (pid, opts) => {
