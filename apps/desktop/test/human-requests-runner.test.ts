@@ -753,3 +753,36 @@ test("offline image denial is acknowledged without generating an image", async (
     assert.equal(fs.readdirSync(thread.cwd).some(name => name.endsWith(".png")), false);
   } finally { await runner.dispose(); }
 });
+
+
+test("Codex pipe failure preserves the uncertain answer and blocks deletion until closure", async () => {
+  const proc = new FakeProcess();
+  codexAsking(proc, { questions }, "item/tool/requestUserInput", false);
+  const codex = new CodexBackend("codex", fakeSpawn(proc).spawn), h = await harness(codex);
+  const sent = h.runner.send(h.thread.id, "synthetic fixture");
+  let deleting: Promise<void> | undefined;
+  try {
+    await waitFor(() => h.runner.items(h.thread.id).some(i => i.kind === "question"));
+    const card = h.runner.items(h.thread.id).find(i => i.kind === "question")!;
+    proc.holdStdio = true; proc.ignore.add("SIGKILL");
+    proc.stdin._write = (_chunk, _encoding, callback) => callback(Object.assign(new Error("private-answer-fault"), { code: "EPIPE" }));
+    h.runner.answerQuestion(h.thread.id, card.id, { "q-env": ["staging"], "q-token": ["private-answer-token"] });
+    await waitFor(() => (h.runner.items(h.thread.id).find(i => i.id === card.id) as { delivery?: string }).delivery === "uncertain");
+    const saved = new Store(h.home).items(h.thread.id).find(i => i.id === card.id) as Extract<ThreadItem, { kind: "question" }>;
+    assert.equal(saved.delivery, "uncertain"); assert.deepEqual(saved.answers, { "q-env": ["staging"], "q-token": ["(hidden)"] });
+    assert.equal(saved.withdrawn, undefined);
+    let deleted = false;
+    deleting = h.runner.deleteThread(h.thread.id).then(() => { deleted = true; });
+    await new Promise<void>(resolve => setImmediate(resolve)); h.runner.stop(h.thread.id);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(deleted, false); assert.ok(h.store.thread(h.thread.id));
+    proc.ignore.clear(); proc.close(null, "SIGKILL");
+    await new Promise<void>(resolve => setImmediate(resolve)); assert.equal(deleted, false);
+    proc.releaseStdio(); await sent; await deleting;
+    assert.equal(h.store.thread(h.thread.id), undefined);
+    assert.equal(JSON.stringify(h.events).includes("private-answer-token"), false);
+  } finally {
+    proc.ignore.clear(); proc.close(null, "SIGKILL"); proc.releaseStdio();
+    await sent; await deleting; await h.runner.dispose(); await codex.dispose();
+  }
+});

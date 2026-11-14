@@ -55,6 +55,12 @@ export class CodexBackend implements Backend {
    * here means Codex settled it itself (codex-cli 0.163.0): the card is withdrawn and no answer is sent.
    */
   private readonly openRequests = new Map<string, { controller: AbortController; thread: unknown }>();
+  /** A broken input pipe cannot release the generation until its owned process actually closes. */
+  private inputFailure: { child: ChildProcess; error: CodexError; closed: Promise<void> } | null = null;
+  private readonly closures = new WeakMap<ChildProcess, Promise<void>>();
+  private readonly deliveries = new WeakMap<ChildProcess, Set<Promise<void>>>();
+  private readonly writeReceipts = new WeakMap<ChildProcess, Set<(error?: Error) => void>>();
+
 
   /**
    * How long a turn stays open after Codex's final answer with nothing else in progress, when Codex
@@ -76,6 +82,7 @@ export class CodexBackend implements Backend {
       local?: { model: string; provider: string; externalSandbox?: true; admit?: (reads: { config: unknown; requirements: unknown }) => void } }) {}
 
   private ensure(): Promise<void> {
+    if (this.inputFailure) return Promise.reject(this.inputFailure.error);
     if (this.ready && this.child && this.child.exitCode === null) return this.ready;
     this.ready = new Promise((resolve, reject) => {
       let child: ChildProcess;
@@ -88,6 +95,8 @@ export class CodexBackend implements Backend {
         return reject(new CodexError(`could not start ${bin} app-server: ${(err as Error).message}`, { bin, spawnError: (err as Error).message }));
       }
       this.child = child;
+      let closed!: () => void;
+      this.closures.set(child, new Promise<void>(resolve => { closed = resolve; }));
       this.generation = randomUUID();
       this.loaded.clear();
       this.metadataConnections.clear();
@@ -99,20 +108,36 @@ export class CodexBackend implements Backend {
         // Redact across chunks before the bound can discard a token's beginning.
         stderr = (this.configuration?.redact(output) ?? output).slice(-16_384);
       });
-      child.stdout?.on("data", (d: Buffer) => { if (this.child === child) lines.push(d, (line) => this.dispatch(line)); });
+      child.stdout?.on("data", (d: Buffer) => { if (this.child === child && this.inputFailure?.child !== child) lines.push(d, (line) => this.dispatch(line)); });
+      // This is a separate emitter from ChildProcess.error. Retain the listener for the
+      // stream's whole lifetime so a superseded child's late error is still consumed.
+      child.stdin?.on("error", error => { this.inputFailed(child, error); });
+      child.stdin?.on("close", () => { if (this.child === child && child.exitCode === null) this.inputFailed(child); });
       child.on("error", (err) => {
+        if (this.inputFailure?.child === child) return; // A failed termination is not closure evidence.
         const error = new CodexError(`${bin}: ${err.message}. Is the Codex CLI installed and on PATH?`, { bin, spawnError: err.message, errno: (err as NodeJS.ErrnoException).code, pid: child.pid });
         if (this.child === child) this.disconnect(error);
         reject(error);
       });
       child.on("close", (code, signal) => {
-        const output = this.configuration?.redact(stderr) ?? stderr;
-        if (this.child === child) this.disconnect(new CodexError(`codex app-server exited (${code}) ${output.trim().split("\n").slice(-2).join(" ")}`, { exitCode: code, signal, stderr: stderrTail(output), pid: child.pid, userAgent: this.userAgent }));
+        const finalize = async () => {
+          const fault = this.inputFailure?.child === child ? this.inputFailure : undefined;
+          // Broker delivery persists sent/uncertain before request withdrawal or turn end.
+          if (fault) await Promise.allSettled([...(this.deliveries.get(child) ?? [])]);
+          try {
+            if (this.child === child) {
+              const output = this.configuration?.redact(stderr) ?? stderr;
+              this.inputFailure = null;
+              this.disconnect(fault?.error ?? new CodexError(`codex app-server exited (${code}) ${output.trim().split("\n").slice(-2).join(" ")}`, { exitCode: code, signal, stderr: stderrTail(output), pid: child.pid, userAgent: this.userAgent }));
+            }
+          } finally { closed(); }
+        };
+        void finalize();
       });
       this.request<{ userAgent?: string }>("initialize", { clientInfo: { name: "modex", title: "Modex", version: process.env.MODEX_VERSION ?? "0.0.1" }, capabilities: { experimentalApi: true } }, 5000)
-        .then((r) => {
+        .then(async (r) => {
           this.userAgent = typeof r?.userAgent === "string" ? r.userAgent : null;
-          this.notify("initialized", {});
+          await this.notify("initialized", {});
           resolve();
         })
         .catch(reject);
@@ -121,6 +146,7 @@ export class CodexBackend implements Backend {
   }
 
   private disconnect(error: Error): void {
+    if (this.child) for (const finish of this.writeReceipts.get(this.child) ?? []) finish(error);
     this.child = null;
     this.ready = null;
     this.loaded.clear();
@@ -214,14 +240,50 @@ export class CodexBackend implements Backend {
     return fields.length ? { displayOnlyInputs: true, unavailableInputs: fields } : {};
   }
 
-  private send(o: unknown): void {
-    this.child?.stdin?.write(JSON.stringify(o) + "\n");
+  /** Idempotent transport failure; closing the pipe or submitting SIGKILL is not process closure. */
+  private inputFailed(child: ChildProcess, cause?: unknown): CodexError {
+    if (this.inputFailure?.child === child) return this.inputFailure.error;
+    const code = cause && typeof cause === "object" && "code" in cause ? cause.code : undefined;
+    const error = new CodexError("Codex app-server input transport failed.", {
+      stage: "stdin", pid: child.pid, ...(typeof code === "string" && /^[A-Z0-9_]{1,32}$/.test(code) ? { errno: code } : {}),
+    });
+    if (this.child !== child) return error; // Consume old errors without touching the replacement.
+    this.inputFailure = { child, error, closed: this.closures.get(child)! };
+    for (const finish of this.writeReceipts.get(child) ?? []) finish(error);
+    for (const pending of this.pending.values()) pending.reject(error);
+    this.pending.clear();
+    void Promise.allSettled([...(this.deliveries.get(child) ?? [])]).then(() => {
+      if (this.inputFailure?.child !== child) return;
+      for (const request of this.openRequests.values()) request.controller.abort();
+    });
+    try { killGroup(child); } catch { /* Keep ownership until close even when termination fails. */ }
+    return error;
+  }
+
+  private send(o: unknown, written?: (error?: Error) => void): void {
+    const child = this.child;
+    if (!child) { written?.(new CodexError("codex app-server is not running", {})); return; }
+    if (this.inputFailure) { written?.(this.inputFailure.error); return; }
+    const stdin = child.stdin;
+    if (!stdin?.writable || stdin.destroyed || stdin.writableEnded) { written?.(this.inputFailed(child)); return; }
+    let settled = false;
+    const receipts = written ? this.writeReceipts.get(child) ?? new Set<(error?: Error) => void>() : undefined;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true; receipts?.delete(finish); written?.(error);
+    };
+    if (receipts) { this.writeReceipts.set(child, receipts); receipts.add(finish); }
+    try {
+      stdin.write(JSON.stringify(o) + "\n", error => {
+        finish(error ? this.inputFailed(child, error) : this.inputFailure?.child === child ? this.inputFailure.error : undefined);
+      });
+    } catch (error) { finish(this.inputFailed(child, error)); }
   }
 
   private request<T = unknown>(method: string, params: unknown, timeoutMs?: number): Promise<T> {
-    if (!this.child || this.child.exitCode !== null || !this.child.stdin?.writable) {
-      return Promise.reject(new CodexError("codex app-server is not running", { method }));
-    }
+    if (this.inputFailure) return Promise.reject(this.inputFailure.error);
+    if (!this.child || this.child.exitCode !== null) return Promise.reject(new CodexError("codex app-server is not running", { method }));
+    if (!this.child.stdin?.writable || this.child.stdin.destroyed || this.child.stdin.writableEnded) return Promise.reject(this.inputFailed(this.child));
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
       const timer = timeoutMs === undefined ? undefined : setTimeout(() => {
@@ -237,8 +299,8 @@ export class CodexBackend implements Backend {
     });
   }
 
-  private notify(method: string, params: unknown): void {
-    this.send({ method, params });
+  private notify(method: string, params: unknown): Promise<void> {
+    return new Promise((resolve, reject) => this.send({ method, params }, error => error ? reject(error) : resolve()));
   }
 
   private respond(id: unknown, result: unknown): void {
@@ -318,12 +380,22 @@ export class CodexBackend implements Backend {
   private restart(reason: string): void {
     const child = this.child;
     if (!child) return;
+    if (this.inputFailure?.child === child) {
+      try { killGroup(child); } catch { /* A repeated Stop still needs closure. */ }
+      return;
+    }
     this.disconnect(new CodexError(reason, { pid: child.pid }));
     killGroup(child);
   }
 
   async dispose(): Promise<void> {
     const child = this.child;
+    if (this.inputFailure && this.inputFailure.child === child) {
+      const fault = this.inputFailure;
+      try { killGroup(child!); } catch { /* Do not release a failed generation on signal submission. */ }
+      await fault.closed;
+      return;
+    }
     this.disconnect(new CodexError("codex app-server disposed", {}));
     if (child) await new Promise<void>((resolve) => {
       child.once("close", () => resolve());
@@ -374,6 +446,8 @@ export class CodexBackend implements Backend {
       if (second.status !== "failed") return second;
       return { ...second, detail: { ...second.detail, firstAttempt: { error: first.error, ...first.detail } }, recovery: [`${step}: failed again`] };
     } finally {
+      // Setup cancellation, RPC failure and timeouts cannot free this turn while its failed child lives.
+      if (this.inputFailure) await this.inputFailure.closed;
       this.activeTurns--;
     }
   }
@@ -511,7 +585,7 @@ export class CodexBackend implements Backend {
       };
       const onDisconnect = (error: Error) => finish(signal.aborted ? { status: "interrupted" } : { status: "failed", error: error.message, detail: detail(detailOf(error)) });
       const finish = (r: TurnResult) => {
-        if (done) return;
+        if (done || this.inputFailure?.child === child) return;
         done = true;
         for (const key of this.changePaths.keys()) if (key.startsWith(`${tid}:`)) this.changePaths.delete(key);
         agents.finish(signal.aborted || r.status === "interrupted");
@@ -854,11 +928,15 @@ export class CodexBackend implements Backend {
     const deliver = async (result: unknown) => {
       const child = this.child;
       const write = () => {
-        if (withdrawn.aborted || this.generation !== native.runtime || !child || child !== this.child || child.exitCode !== null) return Promise.reject(new Error("request transport unavailable"));
-        return writeJsonResponse(child.stdin, { id: msg.id, result });
+        if (withdrawn.aborted || this.generation !== native.runtime || !child || child !== this.child || child.exitCode !== null || this.inputFailure?.child === child) return Promise.reject(new Error("request transport unavailable"));
+        return writeJsonResponse(child.stdin, { id: msg.id, result }).catch(error => { this.inputFailed(child, error); throw error; });
       };
-      if (sink.deliverRequest) await sink.deliverRequest(native, write);
-      else await write();
+      if (!child) return;
+      const receipts = this.deliveries.get(child) ?? new Set<Promise<void>>();
+      this.deliveries.set(child, receipts);
+      const delivery = (async () => { if (sink.deliverRequest) await sink.deliverRequest(native, write); else await write(); })();
+      receipts.add(delivery);
+      try { await delivery; } finally { receipts.delete(delivery); }
     };
     if (msg.method === "item/commandExecution/requestApproval") {
       const cmd = stripShell(String(p.command ?? ""));
