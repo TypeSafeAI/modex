@@ -125,8 +125,17 @@ test("a model proposal is confirmed explicitly, inspected on Retry and frozen by
     await panel.getByText("Proposed role: file", { exact: true }).waitFor({ timeout: 3000 });
     await expect(panel.getByText("Proposed role: note", { exact: true })).toBeVisible();
     await expect(panel.getByText("Observed read", { exact: true })).toHaveCount(0);
-    await panel.getByRole("checkbox", { name: "Relevant: README.md", exact: true }).check();
-    await panel.getByRole("checkbox", { name: `Relevant: Note ${note.id}`, exact: true }).check();
+    const proposal = (await page.evaluate(id => window.modex!.invoke("thread:items", { threadId: id }), threadId)).find(item => item.kind === "user")!;
+    if (proposal.kind !== "user" || !proposal.contextEvidence) throw Error("Missing proposed context");
+    let confirmedRevision = proposal.contextEvidence.revision;
+    for (const name of ["Relevant: README.md", `Relevant: Note ${note.id}`]) {
+      const checkbox = panel.getByRole("checkbox", { name, exact: true });
+      await checkbox.click(); await expect(checkbox).toBeChecked(); await expect(checkbox).toBeEnabled();
+      const context = await page.evaluate(address => window.modex!.invoke("task:context", address), { threadId, turnId: proposal.id });
+      expect(context.revision).toBe(++confirmedRevision);
+      const confirmed = context.refs.filter(ref => ref.relations.some(relation => relation.provenance === "user-confirmed"));
+      expect(confirmed.map(ref => ref.target)).toEqual(name === "Relevant: README.md" ? [{ kind: "file", path: "README.md" }] : [{ kind: "file", path: "README.md" }, { kind: "note", pageId: note.id }]);
+    }
     await expect(panel.getByText("Confirmed by you", { exact: true })).toHaveCount(2);
     const initial = await page.evaluate(id => window.modex!.invoke("thread:items", { threadId: id }), threadId);
     const user = initial.find(item => item.kind === "user")!; expect(user.kind).toBe("user"); if (user.kind !== "user") throw Error("Missing user");
@@ -387,4 +396,79 @@ test("legacy saved Task view and full copy omit private commands without rewriti
     expect(await page.evaluate(pageId => window.modex!.invoke("space:history", { id: pageId }), note.id)).toEqual(history);
     expect(fs.readFileSync(path.join(home, "context-inputs.jsonl"), "utf8")).toBe(inputs);
   } finally { await app.close(); }
+});
+
+for (const stale of [false, true]) test(`confirmation waits for main authority: ${stale ? "stale rejection" : "accepted update"}`, async () => {
+  const { home } = setup(), { app, page } = await launch(home);
+  try {
+    await notes(page, home); await tid(page, "new-chat").click();
+    await tid(page, "composer-input").fill("Propose context"); await tid(page, "send").click();
+    await expect(items(page, "assistant").last()).toContainText("Context fixture complete");
+    await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
+    const threadId = (await currentRow(page).getAttribute("data-thread-id"))!;
+    const user = (await page.evaluate(threadId => window.modex!.invoke("thread:items", { threadId }), threadId)).find(item => item.kind === "user")!;
+    const address = { threadId, turnId: user.id };
+    const before = await page.evaluate(address => window.modex!.invoke("task:context", address), address);
+    const ref = before.refs.find(ref => ref.target.kind === "file" && ref.target.path === "README.md")!;
+    await page.getByRole("button", { name: "Task context · 2", exact: true }).click();
+    const panel = page.getByRole("region", { name: "Task context", exact: true });
+    const checkbox = panel.getByRole("checkbox", { name: "Relevant: README.md", exact: true });
+    await checkbox.evaluate(input => {
+      const events: { type: string; trusted: boolean; checked: boolean; canceled: boolean }[] = [];
+      (window as any).__confirmationEvents = events;
+      for (const type of ["click", "change"]) input.addEventListener(type, event => {
+        if (events.length < 64) events.push({ type, trusted: event.isTrusted, checked: (input as HTMLInputElement).checked, canceled: event.defaultPrevented });
+      });
+    });
+    await app.evaluate(({ ipcMain }) => {
+      const original = (ipcMain as any)._invokeHandlers.get("task:context-confirm");
+      if (typeof original !== "function") throw Error("Missing original context confirmation handler");
+      let release!: () => void;
+      const gate = new Promise<void>(resolve => { release = resolve; });
+      const probe = { requests: [] as any[], outcomes: [] as any[], release, restore: () => { ipcMain.removeHandler("task:context-confirm"); ipcMain.handle("task:context-confirm", original); } };
+      (globalThis as any).__heldConfirmation = probe;
+      ipcMain.removeHandler("task:context-confirm");
+      ipcMain.handle("task:context-confirm", async (event, request) => {
+        probe.requests.push(structuredClone(request));
+        if (probe.requests.length === 1) await gate;
+        try { const result = await original(event, request); probe.outcomes.push({ accepted: true, revision: result.revision }); return result; }
+        catch (error) { probe.outcomes.push({ accepted: false, error: String(error) }); throw error; }
+      });
+    });
+    await checkbox.click();
+    await expect(checkbox).toBeDisabled(); await expect(checkbox).not.toBeChecked();
+    const requests = await app.evaluate(() => (globalThis as any).__heldConfirmation.requests);
+    expect(requests).toEqual([{ ...address, expectedRevision: before.revision, refIds: [ref.id] }]);
+    expect(await page.evaluate(address => window.modex!.invoke("task:context", address), address)).toEqual(before);
+    await expect(panel.getByText("Confirmed by you", { exact: true })).toHaveCount(0);
+    const events = await page.evaluate(() => (window as any).__confirmationEvents);
+    expect(events).toEqual([{ type: "click", trusted: true, checked: true, canceled: false }, { type: "change", trusted: true, checked: false, canceled: false }]);
+    let current = before;
+    if (stale) {
+      // A second, genuine main-owned confirmation advances the revision while the first request is held.
+      current = await page.evaluate(request => window.modex!.invoke("task:context-confirm", request), { ...address, expectedRevision: before.revision, refIds: [] });
+      expect(current.revision).toBe(before.revision + 1);
+    }
+    await app.evaluate(() => (globalThis as any).__heldConfirmation.release());
+    await expect(checkbox).toBeEnabled();
+    if (stale) {
+      await expect(panel.getByRole("alert")).toContainText("Task context changed; review it again.");
+      await expect(checkbox).not.toBeChecked(); await expect(panel.getByText("Confirmed by you", { exact: true })).toHaveCount(0);
+      expect(await page.evaluate(address => window.modex!.invoke("task:context", address), address)).toEqual(current);
+      expect(await app.evaluate(() => (globalThis as any).__heldConfirmation.requests.length)).toBe(2);
+    } else {
+      await expect(checkbox).toBeChecked(); await expect(panel.getByText("Confirmed by you", { exact: true })).toHaveCount(1);
+      current = await page.evaluate(address => window.modex!.invoke("task:context", address), address);
+      expect(current.revision).toBe(before.revision + 1);
+      expect(current.refs.find(value => value.id === ref.id)!.relations.filter(value => value.provenance === "user-confirmed")).toHaveLength(1);
+      expect(await app.evaluate(() => (globalThis as any).__heldConfirmation.requests.length)).toBe(1);
+    }
+    const disk = JSON.parse(fs.readFileSync(path.join(home, "app/threads", `${threadId}.json`), "utf8"));
+    const persisted = disk.find((item: { id: string }) => item.id === user.id)!;
+    expect(persisted.kind).toBe("user"); expect(persisted.contextEvidence).toEqual(current);
+    await test.info().attach("held-confirmation-observations", { contentType: "application/json", body: JSON.stringify({ stale, requests, events, before, after: current, outcomes: await app.evaluate(() => (globalThis as any).__heldConfirmation.outcomes) }) });
+  } finally {
+    await app.evaluate(() => { const probe = (globalThis as any).__heldConfirmation; probe?.release(); probe?.restore(); });
+    await app.close();
+  }
 });
