@@ -11,7 +11,6 @@ interface Draft { binding: ContextDraftBinding; scope: Scope; context: TaskConte
 const fail = () => new Error("Task context draft is stale or no longer belongs to this composer/project.");
 const key = (owner: ContextDraftOwner) => owner.kind === "thread" ? `thread:${owner.threadId}` : owner.key;
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-const empty = (): TaskContextEvidence => ({ revision: 0, refs: [], captures: [], checks: [] });
 const SELECTION_BYTES = 2 * 1024 * 1024;
 const tooLarge = () => new Error("Selected context is too large to save; the previous draft was preserved.");
 
