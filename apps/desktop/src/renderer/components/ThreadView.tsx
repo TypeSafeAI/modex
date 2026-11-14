@@ -21,6 +21,7 @@ import { ReasoningItem } from "./transcript/ReasoningItem";
 import { EvidenceCard } from "./transcript/EvidenceCard";
 import { QuestionCard } from "./transcript/QuestionCard";
 import { SaveTaskNote, TaskContextLine, TaskNoPlanLine, TaskPlanCard, TaskVerificationLine } from "./transcript/TaskPlanCard";
+import { taskContext } from "../../shared/task-context";
 import { TaskContextPanel } from "./transcript/TaskContextPanel";
 import { OUTPUT_PREVIEW_BYTES, PATCH_TOOLS, formatBytes, type NativeWebSearch } from "../../shared/evidence";
 import { ToolLog } from "./transcript/ToolLog";
@@ -231,7 +232,7 @@ export function ThreadView({ contextControls, contextBusy, thread, project, item
         {turns.map((turn, i) => (
           <DeferMarkdown.Provider key={turn.user?.id ?? `pre-${i}`} value={i < turns.length - EAGER_TURNS ? scroller : null}>
           <TurnContent key={turn.user?.id ?? `pre-${i}`} turn={turn} status={i === lastUser && busy ? thread.status : undefined}
-            footer={(t, revealItem) => <><MessageActions threadId={thread.id} turn={t} readOnly={Boolean(thread.retired)} noteSaved={Boolean(thread.taskNotes?.[t.user!.id])} /><TaskNoPlanLine items={t.rest} /><TaskVerificationLine items={t.user ? [t.user, ...t.rest] : t.rest} /><TaskContextLine items={t.user ? [t.user, ...t.rest] : t.rest} cwd={thread.cwd} /><TaskContextPanel context={t.user?.contextEvidence} threadId={thread.id} turnId={t.user?.id} readOnly={Boolean(thread.retired)} onRevealItem={revealItem} /></>}
+            footer={(t, revealItem) => <><MessageActions threadId={thread.id} turn={t} readOnly={Boolean(thread.retired)} noteSaved={Boolean(thread.taskNotes?.[t.user!.id])} /><TaskNoPlanLine items={t.rest} /><TaskVerificationLine items={t.user ? [t.user, ...t.rest] : t.rest} />{!t.user?.contextEvidence && <TaskContextLine items={t.user ? [t.user, ...t.rest] : t.rest} cwd={thread.cwd} />}<TaskContextPanel context={t.user?.contextEvidence} reportedContext={taskContext(t.rest, thread.cwd)} threadId={thread.id} turnId={t.user?.id} readOnly={Boolean(thread.retired)} onRevealItem={revealItem} /></>}
             render={(item, live) => <Item key={item.id} item={item} live={live} onAnswer={onAnswer} onAnswerQuestion={onAnswerQuestion} onPolicy={(approvals) => onUpdate({ approvals })} onFix={onFix} onRetry={!thread.retired && !busy && item.id === retryId ? onRetry : undefined} onReply={!thread.retired && !busy && item.id === askId ? (text) => void onSend(text) : undefined} />} />
           </DeferMarkdown.Provider>
         ))}

@@ -72,6 +72,11 @@ test("minimum window keeps composer controls inside the main pane with Changes o
   for (const id of ["context-project", "context-kind", "context-branch"]) {
     expect(await tid(page, id).evaluate((el) => el.scrollWidth <= el.clientWidth + 1), `${id} text overflows its label`).toBe(true);
   }
+  const selector = page.getByRole("button", { name: "Context for next request", exact: true });
+  await expect(selector).toBeVisible();
+  const selectorBox = (await selector.boundingBox())!, composerBox = (await tid(page, "composer-box").boundingBox())!;
+  expect(selectorBox.x).toBeGreaterThanOrEqual(composerBox.x);
+  expect(selectorBox.x + selectorBox.width).toBeLessThanOrEqual(composerBox.x + composerBox.width);
   await page.screenshot({ path: test.info().outputPath("minimum-window.png") });
 });
 

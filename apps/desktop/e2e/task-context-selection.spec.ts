@@ -3,7 +3,7 @@ import { createServer } from "vite";
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { launch, seedHome, tid, currentRow, items, appDir } from "./support";
+import { launch, seedHome, tid, currentRow, items, appDir, resizeWindow } from "./support";
 
 // All provider behavior below belongs to this isolated executable; no real model or credential is used.
 function setup() {
@@ -61,9 +61,16 @@ async function notes(page: Page, home: string) {
 test("first request selects scoped files and Notes and reaches the native Send exactly once", async () => {
   const { home } = setup(), { app, page } = await launch(home);
   try {
+    await resizeWindow(app, page, 900, 600);
     const note = await notes(page, home);
     await tid(page, "new-chat").click();
+    const trigger = page.getByRole("button", { name: "Context for next request", exact: true });
+    const triggerBox = (await trigger.boundingBox())!, kindBox = (await tid(page, "context-kind").boundingBox())!;
+    expect(triggerBox.x).toBeGreaterThan(kindBox.x + kindBox.width);
     const panel = await openContext(page);
+    const panelBox = (await panel.boundingBox())!, viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+    expect(panelBox.x).toBeGreaterThanOrEqual(0); expect(panelBox.y).toBeGreaterThanOrEqual(0);
+    expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(viewport.width); expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(viewport.height);
     await expect(panel.getByRole("checkbox", { name: "README.md", exact: true })).toBeVisible();
     await expect(panel.getByRole("checkbox", { name: "Note: Context reference", exact: true })).toBeVisible();
     await expect(panel.getByText("Foreign reference", { exact: true })).toHaveCount(0);
@@ -145,15 +152,25 @@ test("a model proposal is confirmed explicitly, inspected on Retry and frozen by
     const after = await page.evaluate(({ threadId, turnId }) => window.modex!.invoke("task:context", { threadId, turnId }), { threadId, turnId: user.id });
     expect(JSON.stringify(after)).not.toContain("context-private-body-sentinel");
     expect(after.captures.some(c => c.target.kind === "note" && c.target.pageId === note.id && c.revision.state === "available" && c.revision.digest === createHash("sha256").update("context-private-body-sentinel").digest("hex"))).toBe(true);
+    await checkControls.getByRole("checkbox", { name: "Check reference: README.md", exact: true }).check();
+    await checkControls.getByRole("button", { name: "Apply check relevance", exact: true }).click();
+    await expect(checkControls).toContainText("user-confirmed");
     await tid(page, "save-task-note").last().click(); await expect(tid(page, "task-note-saved").last()).toContainText("Saved to Notes");
     const before = fs.readFileSync(path.join(home, "context-inputs.jsonl"), "utf8");
     await tid(page, "task-note-saved").last().getByRole("button", { name: "Open", exact: true }).click(); await tid(page, "task-view-open").click();
     const frozen = tid(page, "task-view"); await expect(frozen).toBeVisible();
+    await expect(frozen.getByText(/Files touched/)).toHaveCount(0);
+    await expect(tid(frozen, "task-view-file")).toHaveCount(0);
     await frozen.getByRole("button", { name: "Task context · 2", exact: true }).click();
     await expect(frozen.getByText("Observed read", { exact: true })).toHaveCount(2);
     await expect(frozen.getByRole("checkbox", { name: /^Relevant:/ })).toHaveCount(0);
     await expect(frozen.getByRole("checkbox", { name: /^Check reference:/ })).toHaveCount(0);
     await expect(frozen.getByRole("button", { name: "Apply check relevance", exact: true })).toHaveCount(0);
+    const mapped = frozen.getByTestId("context-reference").filter({ hasText: "README.md" }).getByTestId("context-check-mapping");
+    await expect(mapped).toHaveCount(1);
+    await expect(mapped).toContainText("pnpm test");
+    await expect(mapped).toContainText("user-confirmed");
+    await expect(frozen.getByTestId("context-check-mapping")).toHaveCount(1);
     await page.screenshot({ path: test.info().outputPath("context-frozen-task.png"), animations: "disabled" });
     expect(fs.readFileSync(path.join(home, "context-inputs.jsonl"), "utf8")).toBe(before);
   } finally { await app.close(); }
@@ -212,6 +229,41 @@ test("turn relevance controls share the retained-reference limit and reveal over
     await expect(turn.getByRole("checkbox", { name: /^Relevant:/ })).toHaveCount(20);
     await turn.getByRole("button", { name: "Show all 23 references", exact: true }).click();
     await expect(turn.getByRole("checkbox", { name: /^Relevant:/ })).toHaveCount(23);
+    const threadId = (await currentRow(page).getAttribute("data-thread-id"))!;
+    const original = (await page.evaluate(threadId => window.modex!.invoke("thread:items", { threadId }), threadId)).find(item => item.kind === "user");
+    expect(original?.kind).toBe("user");
+    fs.writeFileSync(path.join(repo, "reference-1.ts"), "// changed before Save\n");
+    fs.unlinkSync(path.join(repo, "reference-21.ts"));
+    await tid(page, "save-task-note").last().click();
+    const saved = tid(page, "task-note-saved").last(); await expect(saved).toContainText("Saved to Notes");
+    const note = (await page.evaluate(() => window.modex!.invoke("space:list", undefined))).find(note => note.title.startsWith("Task:"))!;
+    const snapshot = await page.evaluate(pageId => window.modex!.invoke("task:note", { pageId }), note.id);
+    expect(snapshot!.record.contextEvidence).toEqual(original?.kind === "user" ? original.contextEvidence : undefined);
+    const inputs = fs.readFileSync(path.join(home, "context-inputs.jsonl"), "utf8");
+    fs.writeFileSync(path.join(repo, "reference-0.ts"), "// changed after Save\n");
+    fs.unlinkSync(path.join(repo, "reference-22.ts"));
+    // Capture the fixed clipboard IPC locally: never overwrite the person's clipboard.
+    await app.evaluate(({ ipcMain }) => { ipcMain.removeHandler("clipboard:write"); let fail = true; ipcMain.handle("clipboard:write", (_event, request) => { if (fail) { fail = false; throw Error("Fixture clipboard unavailable"); } (globalThis as any).__savedTaskCopy = request.text; }); });
+    await saved.getByRole("button", { name: "Open", exact: true }).click(); await tid(page, "task-view-open").click();
+    const frozen = tid(page, "task-view");
+    await frozen.getByRole("button", { name: "Copy full saved record", exact: true }).click({ timeout: 3000 });
+    await expect(frozen.getByRole("alert")).toContainText("Fixture clipboard unavailable");
+    await expect(frozen.getByRole("status")).toHaveCount(0);
+    expect(await app.evaluate(() => (globalThis as any).__savedTaskCopy)).toBeUndefined();
+    await frozen.getByRole("button", { name: "Copy full saved record", exact: true }).click();
+    await expect(frozen.getByRole("status")).toContainText("Full saved record copied");
+    const copied = await app.evaluate(() => (globalThis as any).__savedTaskCopy as string);
+    const metadata = JSON.parse(copied.match(/```json\n([\s\S]*?)\n```/)![1]!);
+    expect(metadata).toEqual(snapshot!.record.contextEvidence); expect(metadata.refs).toHaveLength(23);
+    expect(copied).toContain("reference-22.ts"); expect(copied).toContain(snapshot!.savedAt);
+    expect(copied).toContain(`Saved revision: ${snapshot!.savedRevision}`);
+    expect(copied).toContain(`Project: ${JSON.stringify(snapshot!.projectId)}`);
+    expect(copied).toContain(`Note: ${JSON.stringify(note.id)}`);
+    expect(copied).toContain(`Turn: ${JSON.stringify(snapshot!.turnId)}`);
+    expect(copied).not.toContain(repo); expect(copied).not.toContain("changed after Save");
+    expect(await page.evaluate(pageId => window.modex!.invoke("task:note", { pageId }), note.id)).toEqual(snapshot);
+    expect((await page.evaluate(() => window.modex!.invoke("space:list", undefined))).find(page => page.id === note.id)).toEqual(note);
+    expect(fs.readFileSync(path.join(home, "context-inputs.jsonl"), "utf8")).toBe(inputs);
   } finally { await app.close(); }
 });
 
@@ -296,5 +348,43 @@ test("a revoked draft reloads saved metadata without recapturing changed files",
     const metadata = await page.evaluate(binding => window.modex!.invoke("task:context-draft", { binding }), reloaded.binding);
     expect(metadata).toEqual(saved.context);
     await panel.getByTestId("context-reference").first().locator("summary").first().click(); await expect(panel.getByTestId("context-digest").first()).toHaveText(saved.context.captures[0].revision.digest);
+  } finally { await app.close(); }
+});
+
+
+test("legacy saved Task view and full copy omit private commands without rewriting saved bytes", async () => {
+  const { home } = setup(), { app, page } = await launch(home);
+  try {
+    await tid(page, "new-chat").click(); await tid(page, "composer-input").fill("Portable legacy task"); await tid(page, "send").click();
+    await expect(items(page, "assistant").last()).toContainText("Context fixture complete"); await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
+    await tid(page, "save-task-note").last().click(); const saved = tid(page, "task-note-saved").last(); await expect(saved).toContainText("Saved to Notes");
+    const note = (await page.evaluate(() => window.modex!.invoke("space:list", undefined))).find(note => note.title.startsWith("Task:"))!;
+    const taskFile = path.join(home, "notes", ".modex", "tasks", `${note.id}.json`);
+    const snapshot = JSON.parse(fs.readFileSync(taskFile, "utf8"));
+    const sentinel = "legacy-command-private-sentinel", first = `pnpm test --config /private/${sentinel}`, second = `${first}-second`;
+    snapshot.record.commands = [{ command: first, outcome: "failed", exitCode: 1 }, { command: second, outcome: "succeeded", exitCode: 0 }];
+    snapshot.record.verification = { state: "failed", edits: 1, checks: [{ command: first, outcome: "failed", exitCode: 1, passed: false, stale: false }, { command: second, outcome: "succeeded", exitCode: 0, passed: true, stale: false }] };
+    delete snapshot.record.contextEvidence;
+    snapshot.record.context = { files: [], outside: 1, unlisted: [first, second] };
+    fs.writeFileSync(taskFile, JSON.stringify(snapshot));
+    const snapshotBytes = fs.readFileSync(taskFile), inputs = fs.readFileSync(path.join(home, "context-inputs.jsonl"), "utf8");
+    const history = await page.evaluate(pageId => window.modex!.invoke("space:history", { id: pageId }), note.id);
+    await app.evaluate(({ ipcMain }) => { ipcMain.removeHandler("clipboard:write"); ipcMain.handle("clipboard:write", (_event, request) => { (globalThis as any).__legacyTaskCopy = request.text; }); });
+    await saved.getByRole("button", { name: "Open", exact: true }).click(); await tid(page, "task-view-open").click();
+    const frozen = tid(page, "task-view"); await expect(frozen).toBeVisible();
+    await expect(frozen).not.toContainText(sentinel);
+    await expect(frozen.getByTestId("task-view-unlisted")).toHaveCount(2);
+    await expect(frozen.getByTestId("task-view-unlisted").nth(0)).toContainText("Recorded command 1");
+    await expect(frozen.getByTestId("task-view-unlisted").nth(1)).toContainText("Recorded command 2");
+    await expect(frozen.getByTestId("task-view-verification")).toHaveAttribute("data-state", "failed");
+    expect(await frozen.locator("[title]").evaluateAll(nodes => nodes.map(node => node.getAttribute("title")).join(" "))).not.toContain(sentinel);
+    await frozen.getByRole("button", { name: "Copy full saved record", exact: true }).click();
+    await expect(frozen.getByRole("status")).toContainText("Full saved record copied");
+    const copied = await app.evaluate(() => (globalThis as any).__legacyTaskCopy as string);
+    expect(copied).not.toContain(sentinel); expect(copied).toContain("Recorded command 1"); expect(copied).toContain("Recorded command 2"); expect(copied).toContain("exit code 1");
+    expect(fs.readFileSync(taskFile)).toEqual(snapshotBytes);
+    expect((await page.evaluate(() => window.modex!.invoke("space:list", undefined))).find(page => page.id === note.id)).toEqual(note);
+    expect(await page.evaluate(pageId => window.modex!.invoke("space:history", { id: pageId }), note.id)).toEqual(history);
+    expect(fs.readFileSync(path.join(home, "context-inputs.jsonl"), "utf8")).toBe(inputs);
   } finally { await app.close(); }
 });

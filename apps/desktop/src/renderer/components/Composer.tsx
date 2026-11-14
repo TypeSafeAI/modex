@@ -148,8 +148,8 @@ export function Composer({ contextControls, sendBlocked, text, onText: setText, 
   return (
     <div className="composer" data-testid="composer">
       <div className="composer-inner" data-testid="attachment-dropzone">
-        <ContextStrip context={context} />
         {contextControls}
+        <ContextStrip context={context} />
         {local?.current && <p className="local-inference-host" data-testid="local-inference-host">Runs through Codex at {local.entries.find(e => e.connection.id === local.current!.model.connection.id && e.connection.revision === local.current!.model.connection.revision)?.connection.origin ?? "an unavailable local server"} · connection revision {local.current.model.connection.revision}. A local address does not verify offline operation.</p>}
         {unsupportedImages && <p role="status" className="local-inference-host" data-testid="local-images-unavailable">Images are not qualified for local models. Remove the image or choose a cloud model before sending; the attachment is still here.</p>}
         <div className={`composer-box${plan ? " plan" : ""}`} data-testid="composer-box">

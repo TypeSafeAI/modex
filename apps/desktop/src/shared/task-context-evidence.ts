@@ -41,6 +41,7 @@ export interface TaskCheckEvidence {
   startedAt?: string;
   finishedAt?: string;
   command: string;
+  commandOmission?: CommandOmission;
   outcome: ExecutionOutcome;
   exitCode?: number | null;
   scope: "project" | "outside" | "unknown";
@@ -49,6 +50,15 @@ export interface TaskCheckEvidence {
   startCaptureIds: string[];
   endCaptureIds: string[];
   staleness: "current-observation" | "stale" | "unknown";
+}
+/** Export-local equality key; never a replacement native identity or an original command payload. */
+export interface CommandOmission { id: number; reason: "privacy" }
+export const OMITTED_COMMAND = "Native command text omitted for privacy; result retained.";
+export function isCommandOmission(v: unknown): v is CommandOmission {
+  return shape(v, ["id", "reason"]) && integer(v.id) && v.id > 0 && v.reason === "privacy";
+}
+export function isTaskCommandText(v: unknown): v is Record<string, unknown> & { command: string; commandOmission?: CommandOmission } {
+  return object(v) && typeof v.command === "string" && (v.commandOmission === undefined || (isCommandOmission(v.commandOmission) && v.command === OMITTED_COMMAND));
 }
 export interface TaskContextEvidence {
   revision: number;
@@ -166,7 +176,7 @@ function capture(v: unknown): v is ContextCapture {
   return true;
 }
 function check(v: unknown): v is TaskCheckEvidence {
-  return shape(v, ["itemId", "eventIds", "command", "outcome", "scope", "relevantRefIds", "relevance", "startCaptureIds", "endCaptureIds", "staleness"], ["origin", "planRevision", "exitCode", "startedAt", "finishedAt"]) && identity(v.itemId) && ids(v.eventIds) && typeof v.command === "string" && v.command.length > 0 && v.command.length <= 1024 * 1024 && !v.command.includes("\0") && one(v.outcome, ["running", "succeeded", "failed", "denied", "interrupted", "unknown"]) && one(v.scope, ["project", "outside", "unknown"]) && ids(v.relevantRefIds) && one(v.relevance, ["user-confirmed", "native", "unestablished"]) && ids(v.startCaptureIds) && ids(v.endCaptureIds) && one(v.staleness, ["current-observation", "stale", "unknown"]) && (v.origin === undefined || turn(v.origin, true)) && (v.planRevision === undefined || integer(v.planRevision)) && (v.startedAt === undefined || date(v.startedAt)) && (v.finishedAt === undefined || (date(v.finishedAt) && (v.startedAt === undefined || v.finishedAt >= v.startedAt))) && (v.exitCode === undefined || v.exitCode === null || (typeof v.exitCode === "number" && Number.isSafeInteger(v.exitCode)));
+  return shape(v, ["itemId", "eventIds", "command", "outcome", "scope", "relevantRefIds", "relevance", "startCaptureIds", "endCaptureIds", "staleness"], ["origin", "planRevision", "exitCode", "startedAt", "finishedAt", "commandOmission"]) && isTaskCommandText(v) && identity(v.itemId) && ids(v.eventIds) && typeof v.command === "string" && v.command.length > 0 && v.command.length <= 1024 * 1024 && !v.command.includes("\0") && one(v.outcome, ["running", "succeeded", "failed", "denied", "interrupted", "unknown"]) && one(v.scope, ["project", "outside", "unknown"]) && ids(v.relevantRefIds) && one(v.relevance, ["user-confirmed", "native", "unestablished"]) && ids(v.startCaptureIds) && ids(v.endCaptureIds) && one(v.staleness, ["current-observation", "stale", "unknown"]) && (v.origin === undefined || turn(v.origin, true)) && (v.planRevision === undefined || integer(v.planRevision)) && (v.startedAt === undefined || date(v.startedAt)) && (v.finishedAt === undefined || (date(v.finishedAt) && (v.startedAt === undefined || v.finishedAt >= v.startedAt))) && (v.exitCode === undefined || v.exitCode === null || (typeof v.exitCode === "number" && Number.isSafeInteger(v.exitCode)));
 }
 
 /** Strictly validate supplied metadata; absence is handled by legacy callers, never by coercion. */

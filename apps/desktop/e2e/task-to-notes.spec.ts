@@ -287,7 +287,10 @@ test("a saved task note reopens read-only as the task it saved, asks the CLI not
     await expect(tid(view, "task-view-request")).toHaveText("Fix the failing import");
     await expect(tid(view, "task-view-step")).toHaveText(["Reported done Ask which import", "Reported done Fix the import", "Reported done Run the tests"]);
     await expect(tid(view, "task-view-clarification")).toHaveText(["Which import should I fix? — lodash"]);
-    await expect(tid(view, "task-view-file")).toHaveText(["src/app.ts changed"]);
+    await expect(tid(view, "task-view-file")).toHaveCount(0);
+    await view.getByRole("button", { name: "Task context · 1", exact: true }).click();
+    await expect(tid(view, "context-reference")).toContainText("src/app.ts");
+    await expect(tid(view, "context-reference")).toContainText("Observed change");
     await expect(tid(view, "task-view-verification")).toHaveAttribute("data-state", "unknown");
     await expect(tid(view, "task-view-verification")).toContainText("confirmed relevance");
     await expect(tid(view, "task-view-verification")).toContainText("pnpm test");
@@ -322,12 +325,15 @@ test("a saved task note reopens read-only as the task it saved, asks the CLI not
 });
 
 test("a modern task cannot inherit legacy footer verification from an unrelated green command", async () => {
+  const priorLists = await tid(page, "task-context").count();
   const origin = { thread: threadId, turn: "modern-check", attempt: "modern-attempt", backend: "codex", native: { runtime: "fixture", item: "green-command" } };
   await app.evaluate(({ BrowserWindow }, events) => {
     for (const event of events) BrowserWindow.getAllWindows()[0]!.webContents.send("thread:event", event);
   }, [
     { type: "item", threadId, item: { id: "modern-check", kind: "user", text: "Modern task", at: at(), contextEvidence: { revision: 0, refs: [], captures: [], checks: [] } } },
     { type: "item", threadId, item: { id: "modern-green", kind: "tool", name: "exec_command", title: "test", args: {}, exec: { command: "pnpm test", cwd: repo }, status: "done", outcome: "succeeded", exitCode: 0, origin, at: at() } },
+    { type: "item", threadId, item: { id: "modern-outside", kind: "tool", name: "Read", title: "outside read", args: { file_path: "/outside/private-context" }, status: "done", outcome: "succeeded", ok: true, origin, at: at() } },
+    { type: "item", threadId, item: { id: "modern-unlisted", kind: "tool", name: "Bash", title: "possible writer", args: { command: "printf changed > partial.txt" }, exec: { command: "printf changed > partial.txt" }, status: "done", outcome: "succeeded", ok: true, origin, at: at() } },
     { type: "item", threadId, item: { id: "modern-answer", kind: "assistant", text: "Fixture complete", phase: "final", outcome: "succeeded", origin: { ...origin, native: { runtime: "fixture", item: "answer" } }, at: at() } },
     { type: "status", threadId, status: "idle" },
   ]);
@@ -335,4 +341,10 @@ test("a modern task cannot inherit legacy footer verification from an unrelated 
   await expect(line).toHaveAttribute("data-state", "unknown");
   await expect(line).toContainText("confirmed relevance");
   await expect(line).toContainText("timed snapshots");
+  await expect(tid(page, "task-context")).toHaveCount(priorLists);
+  await page.getByRole("button", { name: "Task context · 0", exact: true }).click();
+  const context = page.getByRole("region", { name: "Task context", exact: true });
+  await expect(context).toContainText("1 outside the project, not named");
+  await expect(context).toContainText("printf changed > partial.txt");
+  await expect(context).not.toContainText("/outside/private-context");
 });

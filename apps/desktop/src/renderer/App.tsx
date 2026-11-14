@@ -552,7 +552,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   }, [draftProjectId]);
 
   const thread = useMemo(() => state?.threads.find((t) => t.id === selected) ?? null, [state, selected]);
-  const contextUi = useTaskContextDraft(draft ? ownerFor(draftKey) : thread ? { kind: "thread", threadId: thread.id } : null);
+  const contextUi = useTaskContextDraft(thread ? { kind: "thread", threadId: thread.id } : draft ? ownerFor(draftKey) : null);
   /** Choosing a thread (sidebar, history) discards any draft: an unsent draft never becomes a thread. */
   const selectThread = useCallback((id: string) => {
     if (nativeHoldRef.current) return;

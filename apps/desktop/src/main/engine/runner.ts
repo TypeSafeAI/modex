@@ -515,8 +515,19 @@ export class ThreadRunner {
     if (!project) throw new Error("This project has no notes yet. Open Notes for it, then save again.");
     const existing = saved ? notes.list().find(page => page.id === saved.pageId && !page.trashedAt) : undefined;
     const page = reused ?? notes.create({ title: existing ? `${record.title} (saved again)` : record.title, markdown, containerId: project.id }, change);
-    notes.writeTaskSnapshot({ version: 1, pageId: page.id, revision: page.revision, projectId: thread.projectId, threadId, turnId, savedAt: page.updatedAt, record });
-    const updated = this.o.store.updateThread(threadId, { taskNotes: { ...thread.taskNotes, [turnId]: { pageId: page.id, revision: page.revision } } });
+    // These are separate durable writes, not a transaction. Preserve the completed
+    // note and identify it if a later write cannot be confirmed; never guess rollback.
+    try {
+      notes.writeTaskSnapshot({ version: 1, pageId: page.id, revision: page.revision, projectId: thread.projectId, threadId, turnId, savedAt: page.updatedAt, record });
+    } catch (error) {
+      throw new Error(`Note ${page.id}, revision ${page.revision}, was written, but its saved task record could not be confirmed. Keep this note for recovery; saving again may create another copy.`, { cause: error });
+    }
+    let updated: Thread;
+    try {
+      updated = this.o.store.updateThread(threadId, { taskNotes: { ...thread.taskNotes, [turnId]: { pageId: page.id, revision: page.revision } } });
+    } catch (error) {
+      throw new Error(`Note ${page.id}, revision ${page.revision}, and its saved task record were written, but the thread link could not be confirmed. Keep this note for recovery; saving again may create another copy.`, { cause: error });
+    }
     this.o.emit({ threadId, type: "thread", thread: updated });
     return { pageId: page.id, title: page.title, revision: page.revision, created: !reused, preserved: Boolean(existing && !reused) };
   }
@@ -553,7 +564,7 @@ export class ThreadRunner {
     const latest = thread?.taskNotes?.[snapshot.turnId];
     const other = latest && latest.pageId !== pageId ? notes.list().find((p) => p.id === latest.pageId && !p.trashedAt) : undefined;
     return {
-      record: snapshot.record, threadId: snapshot.threadId, turnId: snapshot.turnId, savedAt: snapshot.savedAt, savedRevision: snapshot.revision,
+      record: snapshot.record, pageId: snapshot.pageId, projectId: snapshot.projectId, threadId: snapshot.threadId, turnId: snapshot.turnId, savedAt: snapshot.savedAt, savedRevision: snapshot.revision,
       note: { title: page.title, revision: page.revision, trashed: Boolean(page.trashedAt) },
       ...(edited ? { edited } : {}),
       ...(!home ? { unlinked: true as const } : now && now.id !== home.id ? { moved: { from: home.name, to: now.name } } : {}),

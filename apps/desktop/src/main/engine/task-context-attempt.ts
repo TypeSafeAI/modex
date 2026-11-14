@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { ConversationEvent, TurnRef } from "../../shared/conversation-events.js";
 import type { ThreadItem } from "../../shared/types.js";
 import { contextRefId, type ContextCapture, type ContextRelation, type ContextTarget, type TaskContextEvidence } from "../../shared/task-context-evidence.js";
-import type { TaskContextCapture } from "./task-context-capture.js";
+import type { ExecutionScope, TaskContextCapture } from "./task-context-capture.js";
 import type { PagesReadReceipt } from "./pages-agents.js";
 import { isTaskContextCapability, type TaskContextCapability, type TaskContextProposal, type TaskContextProposalResult } from "../../shared/task-context-tools.js";
 import type { Exec } from "../../shared/evidence.js";
@@ -24,11 +24,12 @@ export class TaskContextAttempt {
   private readonly proposals = new Map<string, { signature: string; result: TaskContextProposalResult }>();
   private readonly pending = new Set<Promise<void>>();
   private readonly errors: unknown[] = [];
+  private readonly checkScopes = new Map<string, { pending: number; values: ExecutionScope[] }>();
   private sealed = false;
   private lastCapability?: string;
   constructor(private readonly o: {
     turn: TurnRef; cwd: string; projectId: string; signal: AbortSignal;
-    capture: Pick<TaskContextCapture, "capture">;
+    capture: Pick<TaskContextCapture, "capture" | "executionScope">;
     privateValue?(value: unknown): boolean;
     current(): boolean;
     update(change: (context: TaskContextEvidence) => void): void;
@@ -118,20 +119,29 @@ export class TaskContextAttempt {
     const source = { kind: "native" as const, itemId: item.id, origin: item.origin };
     const phase = event.type === "tool.start" ? "check-start-observed" : "check-end-observed";
     const placeholders: ContextCapture[] = [];
+    const changes = checkDirectoryChanges(command);
+    const cwd = exec?.cwd && path.isAbsolute(exec.cwd) && !item.unavailableInputs?.includes("exec.cwd") && changes ? path.resolve(exec.cwd) : undefined;
+    let lexical: ExecutionScope = cwd === undefined ? "unknown" : "project";
+    if (cwd !== undefined && changes) {
+      let directory = cwd;
+      for (let i = 0; i <= changes.length; i++) {
+        if (i) directory = path.resolve(directory, changes[i - 1]!);
+        const relative = path.relative(this.o.cwd, directory);
+        if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) { lexical = "outside"; break; }
+      }
+    }
+    const scopeState = this.checkScopes.get(item.id) ?? { pending: 0, values: [] };
+    this.checkScopes.set(item.id, scopeState); scopeState.pending++;
     this.change(context => {
       let check = context.checks.find(c => c.itemId === item.id);
       if (!check) {
-        const changes = checkDirectoryChanges(command);
-        const cwd = exec?.cwd && !item.unavailableInputs?.includes("exec.cwd") && changes
-          ? changes.reduce((cwd, change) => path.resolve(cwd, change), path.resolve(exec.cwd)) : undefined;
-        const relative = cwd === undefined ? undefined : path.relative(this.o.cwd, cwd);
-        const scope = relative === undefined ? "unknown" : relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative) ? "outside" : "project";
         const planRevision = this.o.planRevision();
-        check = { itemId: item.id, origin: item.origin, eventIds: [], command, outcome: "running", scope,
+        check = { itemId: item.id, origin: item.origin, eventIds: [], command, outcome: "running", scope: "unknown",
           relevantRefIds: [], relevance: "unestablished", startCaptureIds: [], endCaptureIds: [], staleness: "unknown",
           ...(planRevision === undefined ? {} : { planRevision }) };
         context.checks.push(check);
       }
+      check.scope = scopeState.values.includes("outside") ? "outside" : "unknown";
       check.eventIds.push(event.id);
       if (event.type === "tool.start") check.startedAt = event.at;
       else {
@@ -154,6 +164,17 @@ export class TaskContextAttempt {
         (event.type === "tool.start" ? check.startCaptureIds : check.endCaptureIds).push(capture.id);
       }
     });
+    const scopePending = Promise.resolve().then(() => lexical === "project" && cwd !== undefined
+      ? this.o.capture.executionScope(this.o.cwd, cwd, this.signal, changes ?? []) : lexical).then(scope => {
+      if (!this.current()) return;
+      scopeState.pending--; scopeState.values.push(scope);
+      this.change(context => {
+        const check = context.checks.find(c => c.itemId === item.id);
+        if (check) check.scope = scopeState.values.includes("outside") ? "outside"
+          : scopeState.pending || scopeState.values.includes("unknown") ? "unknown" : "project";
+      });
+    }).catch(error => { if (this.current()) this.errors.push(error); }).finally(() => { this.pending.delete(scopePending); });
+    this.pending.add(scopePending);
     if (!placeholders.length) return;
     const pending = this.o.capture.capture(this.o.cwd, placeholders.map(c => c.target), source, phase, this.signal).then(captures => {
       if (!this.current()) return;

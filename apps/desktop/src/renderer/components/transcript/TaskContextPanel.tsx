@@ -3,9 +3,17 @@ import { bridge } from "../../bridge";
 import type { ContextDraftUi } from "../../task-context-draft";
 import { contextRefId, type ContextSource, type ContextTarget, type TaskCheckEvidence, type TaskContextEvidence } from "../../../shared/task-context-evidence";
 import { useExpansionState } from "./reader-state";
+import { omittedCommandLabel, type TaskContext } from "../../../shared/task-context";
+import { UnlistedCommands } from "./TaskPlanCard";
+import { Icon } from "../ui/Icon";
 
 export const contextTargetLabel = (target: ContextTarget): string => target.kind === "file" ? target.path : target.kind === "note" ? `Note ${target.pageId}` : `Notes file ${target.id}`;
 type Ref = TaskContextEvidence["refs"][number];
+
+function RecordedCheckMappings({ context, refId }: { context: TaskContextEvidence; refId: string }) {
+  const checks = context.checks.filter(check => check.relevantRefIds.includes(refId));
+  return <>{checks.slice(0, 3).map(check => <p key={check.itemId} data-testid="context-check-mapping">Relevant to recorded check: <code>{check.commandOmission ? omittedCommandLabel(check.commandOmission) : check.command.length > 160 ? `${check.command.slice(0, 160)}…` : check.command}</code> · {check.relevance} · <code>{check.itemId}</code></p>)}{checks.length > 3 && <p>{checks.length - 3} more check mappings are retained in the full saved record.</p>}</>;
+}
 
 function ContextSourceLabel({ source, onRevealItem }: { source: ContextSource; onRevealItem?: (id: string) => void }) {
   const link = source.kind === "native" ? { itemId: source.itemId } : source.kind === "notes-read" || source.kind === "model-proposal" ? source.nativeLink : undefined;
@@ -49,7 +57,7 @@ export function TaskContextSelect({ ui }: { ui: ContextDraftUi }) {
   ];
   const busy = state.busy || state.held;
   return <div className="task-context-select">
-    <button type="button" className="btn small" ref={trigger} aria-expanded={state.open} onClick={ui.toggle}>Context for next request</button>
+    <button type="button" className="btn small" ref={trigger} aria-label="Context for next request" title="Context for next request" aria-expanded={state.open} onClick={ui.toggle}><span className="task-context-label">Context for next request</span><span className="task-context-compact-icon" aria-hidden="true"><Icon name="files" size={14} /></span></button>
     {state.open && <section role="region" aria-label="Context for next request" className="task-context-panel" onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); ui.close(); trigger.current?.focus(); } }}>
       <p>Select relevant references. Selection records a snapshot; it does not establish agent inspection or grant tool access.</p>
       {state.error && <p role="alert">{state.error}</p>}
@@ -65,9 +73,9 @@ export function TaskContextSelect({ ui }: { ui: ContextDraftUi }) {
   </div>;
 }
 
-export function TaskContextPanel({ context, threadId, turnId, readOnly = false, onRevealItem }: { context?: TaskContextEvidence; threadId?: string; turnId?: string; readOnly?: boolean; onRevealItem?: (id: string) => void }) {
+export function TaskContextPanel({ context, reportedContext, threadId, turnId, readOnly = false, onRevealItem }: { context?: TaskContextEvidence; reportedContext?: TaskContext; threadId?: string; turnId?: string; readOnly?: boolean; onRevealItem?: (id: string) => void }) {
   const [open, setOpen] = useExpansionState<boolean>(`task-context:${turnId ?? "saved"}`, false), [busy, setBusy] = useState(false), [error, setError] = useState("");
-  if (!context || (!context.refs.length && !context.checks.length)) return null;
+  if (!context || (!context.refs.length && !context.checks.length && !reportedContext?.outside && !reportedContext?.unlisted?.length)) return null;
   const editable = !readOnly && bridge.taskContextEditing === true;
   const confirm = async (id: string, selected: boolean) => {
     if (!editable || !threadId || !turnId || busy) return;
@@ -84,8 +92,10 @@ export function TaskContextPanel({ context, threadId, turnId, readOnly = false, 
       {readOnly && <p>Saved metadata. Read-only; expanding it does not refresh any observation.</p>}
       {error && <p role="alert">{error}</p>}
       <p>Snapshots record timed observations; process input bytes remain unverified.</p>
+      {Boolean(reportedContext?.outside) && <p>{reportedContext!.outside} outside the project, not named</p>}
+      {reportedContext?.unlisted?.length ? <UnlistedCommands commands={reportedContext.unlisted} omissions={reportedContext.unlistedOmissions} testId="task-context-unlisted" /> : null}
       {context.capabilities?.map(receipt => <p key={receipt.turn.attempt}>Attempt setup reported: {receipt.capability.state}{receipt.capability.state === "unavailable" ? ` (${receipt.capability.reason})` : ""} · {receipt.at}</p>)}
-      {!editable ? <ContextReferences context={context} /> : <fieldset disabled={busy}><legend>Relevant to this request</legend><ContextReferences context={context} onRevealItem={onRevealItem} renderControls={ref => <div><label className="task-context-confirm"><input type="checkbox" aria-label={`Relevant: ${contextTargetLabel(ref.target)}`} checked={ref.relations.some(r => r.provenance === "user-confirmed")} onChange={event => void confirm(ref.id, event.currentTarget.checked)} />{contextTargetLabel(ref.target)}</label>{ref.target.kind === "note" && <button type="button" className="btn small" onClick={() => window.dispatchEvent(new CustomEvent("modex:open-page", { detail: ref.target.kind === "note" ? ref.target.pageId : "" }))}>Preview Note</button>}</div>} /></fieldset>}
+      {!editable ? <ContextReferences context={context} renderControls={ref => <RecordedCheckMappings context={context} refId={ref.id} />} /> : <fieldset disabled={busy}><legend>Relevant to this request</legend><ContextReferences context={context} onRevealItem={onRevealItem} renderControls={ref => <div><label className="task-context-confirm"><input type="checkbox" aria-label={`Relevant: ${contextTargetLabel(ref.target)}`} checked={ref.relations.some(r => r.provenance === "user-confirmed")} onChange={event => void confirm(ref.id, event.currentTarget.checked)} />{contextTargetLabel(ref.target)}</label>{ref.target.kind === "note" && <button type="button" className="btn small" onClick={() => window.dispatchEvent(new CustomEvent("modex:open-page", { detail: ref.target.kind === "note" ? ref.target.pageId : "" }))}>Preview Note</button>}</div>} /></fieldset>}
       {context.checks.map(check => <CheckRelevance key={check.itemId} check={check} context={context} threadId={threadId} turnId={turnId} readOnly={!editable} onRevealItem={readOnly ? undefined : onRevealItem} />)}
     </section>}
   </div>;
@@ -102,7 +112,8 @@ function CheckRelevance({ check, context, threadId, turnId, readOnly, onRevealIt
     catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
     finally { setBusy(false); }
   };
-  return <fieldset aria-label={`Check relevance: ${check.command}`} disabled={busy}><legend><code>{check.command}</code></legend>
+  const label = check.commandOmission ? omittedCommandLabel(check.commandOmission) : check.command;
+  return <fieldset aria-label={`Check relevance: ${label}`} disabled={busy}><legend><code>{label}</code></legend>
     <p>{check.origin ? <>Source: {check.origin.backend} native check · {onRevealItem ? <button type="button" className="btn small" aria-label={`Show native item ${check.itemId}`} onClick={() => onRevealItem(check.itemId)}>Show reported check</button> : <code>{check.itemId}</code>}</> : "Native check origin unavailable"}</p>
     <p>{check.outcome} · exit {check.exitCode ?? "not reported"} · {check.scope} scope · {check.relevance}</p><p>{check.startedAt ?? "Start unavailable"} → {check.finishedAt ?? "Completion unavailable"}</p>
     {error && <p role="alert">{error}</p>}

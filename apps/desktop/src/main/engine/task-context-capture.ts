@@ -8,6 +8,8 @@ import { contextRefId, type ContextCapture, type ContextSource, type ContextTarg
 export interface CaptureClock { now(): number; setTimeout(callback: () => void, delay: number): unknown; clearTimeout(id: unknown): void }
 export type CaptureReader = (cwd: string, relative: string, options: { signal: AbortSignal; charge(bytes: number): boolean; remainingBytes(): number }) => Promise<ContextCapture["revision"]>;
 type Revision = ContextCapture["revision"];
+export type ExecutionScope = "project" | "outside" | "unknown";
+type ScopeReader = (cwd: string, directory: string, signal: AbortSignal) => Promise<ExecutionScope>;
 export interface CapturedNoteInput { target: Exclude<ContextTarget, { kind: "file" }>; text: string; source: ContextSource; version?: NonNullable<ContextCapture["noteVersion"]> }
 interface CaptureJob { target: ContextTarget; source: ContextSource; read: (options: Parameters<CaptureReader>[2]) => Promise<Revision>; version?: NonNullable<ContextCapture["noteVersion"]> }
 const unavailable = (reason: Extract<Revision, { state: "unavailable" }>["reason"]): Revision => ({ state: "unavailable", reason });
@@ -81,37 +83,65 @@ function abortable<T>(work: Promise<T>, signal: AbortSignal, fallback: T): Promi
     void work.then(finish, () => finish(fallback));
   });
 }
-interface Job { signal: AbortSignal; run(): Promise<Revision>; finish(result: Revision): void }
+interface Job { signal: AbortSignal; run(): Promise<void>; cancel(): void }
 
-/** One instance is shared by main: two live descriptor jobs and 64 queued jobs across every turn. */
+/** One instance is shared by main: two live capture/scope jobs and 64 queued jobs across every turn. */
 export class TaskContextCapture {
   private active = 0;
   private readonly queue: Job[] = [];
   private readonly reader: CaptureReader;
   private readonly head: (cwd: string, signal: AbortSignal) => Promise<ContextCapture["repository"]>;
   private readonly clock: CaptureClock;
-  constructor(options: { reader?: CaptureReader; head?: (cwd: string, signal: AbortSignal) => Promise<ContextCapture["repository"]>; clock?: CaptureClock } = {}) {
+  private readonly scopeReader: ScopeReader;
+  constructor(options: { reader?: CaptureReader; head?: (cwd: string, signal: AbortSignal) => Promise<ContextCapture["repository"]>; clock?: CaptureClock; scopeReader?: ScopeReader } = {}) {
     this.reader = options.reader ?? readFile; this.head = options.head ?? readHead; this.clock = options.clock ?? clock;
+    this.scopeReader = options.scopeReader ?? (async (cwd, directory, signal) => {
+      signal.throwIfAborted();
+      const [root, real] = await Promise.all([fs.realpath(cwd), fs.realpath(directory)]);
+      signal.throwIfAborted();
+      if (!(await fs.stat(real)).isDirectory()) return "unknown";
+      const relative = path.relative(root, real);
+      return relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative) ? "outside" : "project";
+    });
   }
   private pump(): void {
     while (this.active < 2 && this.queue.length) {
       const job = this.queue.shift()!;
-      if (job.signal.aborted) { job.finish(unavailable("budget")); continue; }
+      if (job.signal.aborted) { job.cancel(); continue; }
       this.active++;
       // A cancelled caller settles immediately; the real slot stays occupied until OS cleanup finishes.
-      void Promise.resolve().then(() => job.run()).then(value => job.finish(value), () => job.finish(unavailable("unreadable"))).finally(() => { this.active--; this.pump(); });
+      void Promise.resolve().then(() => job.run()).finally(() => { this.active--; this.pump(); });
     }
   }
-  private schedule(run: () => Promise<Revision>, signal: AbortSignal): Promise<Revision> {
-    if (signal.aborted || (this.active >= 2 && this.queue.length >= 64)) return Promise.resolve(unavailable("budget"));
+  private schedule<T>(run: () => Promise<T>, signal: AbortSignal, cancelled: T, rejected: T): Promise<T> {
+    if (signal.aborted || (this.active >= 2 && this.queue.length >= 64)) return Promise.resolve(cancelled);
     return new Promise(resolve => {
       let settled = false;
-      const job: Job = { signal, run, finish: value => { if (settled) return; settled = true; signal.removeEventListener("abort", stop); resolve(value); } };
-      const stop = () => { const index = this.queue.indexOf(job); if (index >= 0) this.queue.splice(index, 1); job.finish(unavailable("budget")); };
+      const finish = (value: T) => { if (settled) return; settled = true; signal.removeEventListener("abort", stop); resolve(value); };
+      const job: Job = { signal, run: async () => { try { finish(await run()); } catch { finish(rejected); } }, cancel: () => finish(cancelled) };
+      const stop = () => { const index = this.queue.indexOf(job); if (index >= 0) this.queue.splice(index, 1); job.cancel(); };
       signal.addEventListener("abort", stop, { once: true });
       if (signal.aborted) { stop(); return; }
       this.queue.push(job); this.pump();
     });
+  }
+  /** Canonical directory metadata only, sharing the two real slots/64 queue and 2 s caller budget. */
+  async executionScope(cwd: string, directory: string, signal: AbortSignal, changes: readonly string[] = []): Promise<ExecutionScope> {
+    if (!path.isAbsolute(cwd) || !path.isAbsolute(directory)) return "unknown";
+    const controller = new AbortController(), stop = () => controller.abort();
+    signal.addEventListener("abort", stop, { once: true }); if (signal.aborted) stop();
+    const timer = this.clock.setTimeout(stop, 2000);
+    try { return await this.schedule(async () => {
+      let current = directory;
+      for (let i = 0; i <= changes.length; i++) {
+        controller.signal.throwIfAborted();
+        if (i) current = path.resolve(current, changes[i - 1]!);
+        const scope = await this.scopeReader(cwd, current, controller.signal);
+        if (scope !== "project") return scope;
+      }
+      return "project";
+    }, controller.signal, "unknown" as ExecutionScope, "unknown" as ExecutionScope); }
+    finally { this.clock.clearTimeout(timer); signal.removeEventListener("abort", stop); }
   }
   async capture(cwd: string, targets: readonly ContextTarget[], source: ContextSource, phase: ContextCapture["phase"], signal: AbortSignal): Promise<ContextCapture[]> {
     const requested = structuredClone(targets);
@@ -164,7 +194,7 @@ export class TaskContextCapture {
     const worker = async () => {
       while (cursor < requested.length) {
         const index = cursor++, job = requested[index]!;
-        const revision = controller.signal.aborted ? unavailable("budget") : await this.schedule(() => job.read(options), controller.signal);
+        const revision = controller.signal.aborted ? unavailable("budget") : await this.schedule(() => job.read(options), controller.signal, unavailable("budget"), unavailable("unreadable"));
         rows[index] = { id: randomUUID(), target: structuredClone(job.target), source: sources[index]!, phase, startedAt, finishedAt: new Date(this.clock.now()).toISOString(), repository: repositoryFallback, revision, ...(job.version ? { noteVersion: { ...job.version } } : {}) };
       }
     };
