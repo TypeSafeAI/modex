@@ -24,6 +24,14 @@ import { actionDigest, codexAnswerResponse, codexQuestions } from "../../../shar
  */
 const STALE_AUTH = /(?:access token|authentication session) could not be refreshed/i;
 
+interface ServerLease {
+  readonly child: ChildProcess;
+  readonly generation: string;
+  readonly closed: Promise<void>;
+  userAgent: string | null;
+  retired: boolean;
+}
+
 /**
  * Drives the Codex CLI through `codex app-server`, the JSON-RPC-over-stdio protocol the
  * official Codex App uses. One server process is shared by all Codex threads; each Modex
@@ -33,7 +41,7 @@ const STALE_AUTH = /(?:access token|authentication session) could not be refresh
 export class CodexBackend implements Backend {
   readonly id = "codex" as const;
   private child: ChildProcess | null = null;
-  private ready: Promise<void> | null = null;
+  private ready: Promise<ServerLease> | null = null;
   private nextId = 1;
   /** Includes turns still awaiting initialize/thread creation, before they subscribe to events. */
   private activeTurns = 0;
@@ -46,10 +54,8 @@ export class CodexBackend implements Backend {
   private readonly threadModels = new Map<string, string>();
   /** File paths of in-flight file changes, keyed `threadId:itemId`, so an approval can name them without the patch. */
   private readonly changePaths = new Map<string, { paths: string[]; protected: boolean }>();
-  /** From the `initialize` reply: which codex build the server is. Kept for failure reports. */
-  private userAgent: string | null = null;
   /** Opaque id of the running app-server process; native thread, turn and item ids are unique only within it. */
-  private generation = "";
+  private lease: ServerLease | null = null;
   /**
    * Server requests waiting on a person, keyed `generation:id`. Codex's `serverRequest/resolved` for one still
    * here means Codex settled it itself (codex-cli 0.163.0): the card is withdrawn and no answer is sent.
@@ -57,7 +63,6 @@ export class CodexBackend implements Backend {
   private readonly openRequests = new Map<string, { controller: AbortController; thread: unknown }>();
   /** A broken input pipe cannot release the generation until its owned process actually closes. */
   private inputFailure: { child: ChildProcess; error: CodexError; closed: Promise<void> } | null = null;
-  private readonly closures = new WeakMap<ChildProcess, Promise<void>>();
   private readonly deliveries = new WeakMap<ChildProcess, Set<Promise<void>>>();
   private readonly writeReceipts = new WeakMap<ChildProcess, Set<(error?: Error) => void>>();
 
@@ -81,9 +86,12 @@ export class CodexBackend implements Backend {
       /** `admit` sees the child's effective configuration and requirements before every thread open, and throws to refuse it (#380). */
       local?: { model: string; provider: string; externalSandbox?: true; admit?: (reads: { config: unknown; requirements: unknown }) => void } }) {}
 
-  private ensure(): Promise<void> {
+  private ensure(): Promise<ServerLease> {
     if (this.inputFailure) return Promise.reject(this.inputFailure.error);
-    if (this.ready && this.child && this.child.exitCode === null) return this.ready;
+    if (this.ready && this.child) {
+      if (this.child.exitCode !== null || this.child.signalCode !== null) return Promise.reject(new CodexError("Codex app-server is closing; retry after it closes.", { stage: "close server" }));
+      return this.ready;
+    }
     this.ready = new Promise((resolve, reject) => {
       let child: ChildProcess;
       let bin = "codex";
@@ -96,8 +104,8 @@ export class CodexBackend implements Backend {
       }
       this.child = child;
       let closed!: () => void;
-      this.closures.set(child, new Promise<void>(resolve => { closed = resolve; }));
-      this.generation = randomUUID();
+      const lease: ServerLease = { child, generation: randomUUID(), closed: new Promise<void>(resolve => { closed = resolve; }), userAgent: null, retired: false };
+      this.lease = lease;
       this.loaded.clear();
       this.metadataConnections.clear();
       this.threadModels.clear();
@@ -108,7 +116,7 @@ export class CodexBackend implements Backend {
         // Redact across chunks before the bound can discard a token's beginning.
         stderr = (this.configuration?.redact(output) ?? output).slice(-16_384);
       });
-      child.stdout?.on("data", (d: Buffer) => { if (this.child === child && this.inputFailure?.child !== child) lines.push(d, (line) => this.dispatch(line)); });
+      child.stdout?.on("data", (d: Buffer) => { if (this.current(lease)) lines.push(d, line => { if (this.current(lease)) this.dispatch(lease, line); }); });
       // This is a separate emitter from ChildProcess.error. Retain the listener for the
       // stream's whole lifetime so a superseded child's late error is still consumed.
       child.stdin?.on("error", error => { this.inputFailed(child, error); });
@@ -128,17 +136,19 @@ export class CodexBackend implements Backend {
             if (this.child === child) {
               const output = this.configuration?.redact(stderr) ?? stderr;
               this.inputFailure = null;
-              this.disconnect(fault?.error ?? new CodexError(`codex app-server exited (${code}) ${output.trim().split("\n").slice(-2).join(" ")}`, { exitCode: code, signal, stderr: stderrTail(output), pid: child.pid, userAgent: this.userAgent }));
+              this.disconnect(fault?.error ?? new CodexError(`codex app-server exited (${code}) ${output.trim().split("\n").slice(-2).join(" ")}`, { exitCode: code, signal, stderr: stderrTail(output), pid: child.pid, userAgent: lease.userAgent }));
             }
           } finally { closed(); }
         };
         void finalize();
       });
-      this.request<{ userAgent?: string }>("initialize", { clientInfo: { name: "modex", title: "Modex", version: process.env.MODEX_VERSION ?? "0.0.1" }, capabilities: { experimentalApi: true } }, 5000)
+      this.request<{ userAgent?: string }>(lease, "initialize", { clientInfo: { name: "modex", title: "Modex", version: process.env.MODEX_VERSION ?? "0.0.1" }, capabilities: { experimentalApi: true } }, 5000)
         .then(async (r) => {
-          this.userAgent = typeof r?.userAgent === "string" ? r.userAgent : null;
-          await this.notify("initialized", {});
-          resolve();
+          this.requireLease(lease);
+          await this.notify(lease, "initialized", {});
+          this.requireLease(lease);
+          lease.userAgent = typeof r?.userAgent === "string" ? r.userAgent : null;
+          resolve(lease);
         })
         .catch(reject);
     });
@@ -148,6 +158,7 @@ export class CodexBackend implements Backend {
   private disconnect(error: Error): void {
     if (this.child) for (const finish of this.writeReceipts.get(this.child) ?? []) finish(error);
     this.child = null;
+    this.lease = null;
     this.ready = null;
     this.loaded.clear();
     this.metadataConnections.clear();
@@ -160,7 +171,7 @@ export class CodexBackend implements Backend {
     for (const finish of this.disconnects) finish(error);
   }
 
-  private dispatch(line: string): void {
+  private dispatch(lease: ServerLease, line: string): void {
     let msg: RpcMessage;
     try {
       const fields = this.redactedInputs, protectedValues = this.protectedValues, rawIds = this.protectedTransportIds, redact = this.configuration?.redact;
@@ -194,7 +205,7 @@ export class CodexBackend implements Backend {
       const p = msg.params as Record<string, unknown> | undefined;
       const patch = msg.method === "item/fileChange/requestApproval" ? this.changePaths.get(`${String(p?.threadId ?? "")}:${String(p?.itemId ?? "")}`) : undefined;
       if (this.protectedValues.has(msg) || patch?.protected) {
-        this.send({ id: this.protectedTransportIds.get(msg) ?? msg.id, error: { code: -32602, message: "Modex refused this request because it contains protected credential data." } });
+        this.send(lease, { id: this.protectedTransportIds.get(msg) ?? msg.id, error: { code: -32602, message: "Modex refused this request because it contains protected credential data." } });
         return;
       }
     }
@@ -248,7 +259,7 @@ export class CodexBackend implements Backend {
       stage: "stdin", pid: child.pid, ...(typeof code === "string" && /^[A-Z0-9_]{1,32}$/.test(code) ? { errno: code } : {}),
     });
     if (this.child !== child) return error; // Consume old errors without touching the replacement.
-    this.inputFailure = { child, error, closed: this.closures.get(child)! };
+    this.inputFailure = { child, error, closed: this.lease!.closed };
     for (const finish of this.writeReceipts.get(child) ?? []) finish(error);
     for (const pending of this.pending.values()) pending.reject(error);
     this.pending.clear();
@@ -260,8 +271,18 @@ export class CodexBackend implements Backend {
     return error;
   }
 
-  private send(o: unknown, written?: (error?: Error) => void): void {
-    const child = this.child;
+  private current(lease: ServerLease): boolean {
+    return !lease.retired && this.lease === lease && this.child === lease.child && this.inputFailure?.child !== lease.child;
+  }
+
+  private requireLease(lease: ServerLease): void {
+    if (lease.retired || this.lease !== lease || this.child !== lease.child) throw new CodexError("Codex app-server generation is no longer available.", { stage: "server generation" });
+    if (this.inputFailure?.child === lease.child) throw this.inputFailure.error;
+  }
+
+  private send(lease: ServerLease, o: unknown, written?: (error?: Error) => void): void {
+    try { this.requireLease(lease); } catch (error) { written?.(error as Error); return; }
+    const child = lease.child;
     if (!child) { written?.(new CodexError("codex app-server is not running", {})); return; }
     if (this.inputFailure) { written?.(this.inputFailure.error); return; }
     const stdin = child.stdin;
@@ -280,8 +301,8 @@ export class CodexBackend implements Backend {
     } catch (error) { finish(this.inputFailed(child, error)); }
   }
 
-  private request<T = unknown>(method: string, params: unknown, timeoutMs?: number): Promise<T> {
-    if (this.inputFailure) return Promise.reject(this.inputFailure.error);
+  private request<T = unknown>(lease: ServerLease, method: string, params: unknown, timeoutMs?: number): Promise<T> {
+    try { this.requireLease(lease); } catch (error) { return Promise.reject(error); }
     if (!this.child || this.child.exitCode !== null) return Promise.reject(new CodexError("codex app-server is not running", { method }));
     if (!this.child.stdin?.writable || this.child.stdin.destroyed || this.child.stdin.writableEnded) return Promise.reject(this.inputFailed(this.child));
     const id = this.nextId++;
@@ -295,27 +316,30 @@ export class CodexBackend implements Backend {
         resolve: (value) => { clearTimeout(timer); resolve(value as T); },
         reject: (error) => { clearTimeout(timer); reject(error); },
       });
-      this.send({ id, method, params });
+      this.send(lease, { id, method, params });
     });
   }
 
-  private notify(method: string, params: unknown): Promise<void> {
-    return new Promise((resolve, reject) => this.send({ method, params }, error => error ? reject(error) : resolve()));
+  private notify(lease: ServerLease, method: string, params: unknown): Promise<void> {
+    return new Promise((resolve, reject) => this.send(lease, { method, params }, error => error ? reject(error) : resolve()));
   }
 
-  private respond(id: unknown, result: unknown): void {
-    this.send({ id, result });
+  private respond(lease: ServerLease, id: unknown, result: unknown): void {
+    this.send(lease, { id, result });
   }
 
   async quota(): Promise<QuotaSnapshot | undefined> {
     if (this.configuration?.local) return undefined;
-    await this.ensure();
-    return codexQuota(await this.request("account/rateLimits/read", {}, 3000));
+    const lease = await this.ensure();
+    const result = await this.request(lease, "account/rateLimits/read", {}, 3000);
+    this.requireLease(lease);
+    return codexQuota(result);
   }
 
   async listModels(): Promise<ModelInfo[]> {
-    await this.ensure();
-    const res = await this.request<{ data: CodexModel[] }>("model/list", {});
+    const lease = await this.ensure();
+    const res = await this.request<{ data: CodexModel[] }>(lease, "model/list", {});
+    this.requireLease(lease);
     return res.data
       .filter((m) => !m.hidden)
       .map((m) => ({
@@ -332,7 +356,10 @@ export class CodexBackend implements Backend {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const result = await Promise.race([
-        this.ensure().then(() => this.request<{ account: { type?: unknown } | null; requiresOpenaiAuth?: boolean }>("account/read", { refreshToken: false }, 5000)),
+        this.ensure().then(async lease => {
+          const value = await this.request<{ account: { type?: unknown } | null; requiresOpenaiAuth?: boolean }>(lease, "account/read", { refreshToken: false }, 5000);
+          this.requireLease(lease); return value;
+        }),
         new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("timeout")), 5000); }),
       ]);
       if (result.account?.type === "chatgpt") return report("authenticated", "ChatGPT signed in · model access unverified");
@@ -360,13 +387,16 @@ export class CodexBackend implements Backend {
    * Ends this turn's own terminals, never an earlier turn's, and calls a command interrupted only
    * once Codex no longer lists it. Anything Codex cannot confirm stays unknown, with a notice.
    */
-  private async endTerminals(threadId: string, commands: ReadonlySet<string>, settle: (item: string, outcome: "interrupted" | "unknown") => void, sink: TurnSink): Promise<void> {
+  private async endTerminals(lease: ServerLease, threadId: string, commands: ReadonlySet<string>, settle: (item: string, outcome: "interrupted" | "unknown") => void, sink: TurnSink): Promise<void> {
     type Terminal = { itemId?: string; processId?: string };
-    const list = async () => (await this.request<{ data?: Terminal[] }>("thread/backgroundTerminals/list", { threadId }, 3000))?.data ?? [];
+    const list = async () => {
+      const value = await this.request<{ data?: Terminal[] }>(lease, "thread/backgroundTerminals/list", { threadId }, 3000);
+      this.requireLease(lease); return value?.data ?? [];
+    };
     let running: Set<string>;
     try {
       for (const terminal of (await list()).filter((t) => t.itemId && commands.has(t.itemId) && t.processId)) {
-        await this.request("thread/backgroundTerminals/terminate", { threadId, processId: terminal.processId }, 3000).catch(() => undefined);
+        await this.request(lease, "thread/backgroundTerminals/terminate", { threadId, processId: terminal.processId }, 3000).catch(() => undefined);
       }
       running = new Set((await list()).map((t) => t.itemId ?? "").filter((id) => commands.has(id)));
     } catch {
@@ -380,6 +410,7 @@ export class CodexBackend implements Backend {
   private restart(reason: string): void {
     const child = this.child;
     if (!child) return;
+    if (this.lease) this.lease.retired = true;
     if (this.inputFailure?.child === child) {
       try { killGroup(child); } catch { /* A repeated Stop still needs closure. */ }
       return;
@@ -390,6 +421,7 @@ export class CodexBackend implements Backend {
 
   async dispose(): Promise<void> {
     const child = this.child;
+    if (this.lease) this.lease.retired = true;
     if (this.inputFailure && this.inputFailure.child === child) {
       const fault = this.inputFailure;
       try { killGroup(child!); } catch { /* Do not release a failed generation on signal submission. */ }
@@ -446,18 +478,35 @@ export class CodexBackend implements Backend {
       if (second.status !== "failed") return second;
       return { ...second, detail: { ...second.detail, firstAttempt: { error: first.error, ...first.detail } }, recovery: [`${step}: failed again`] };
     } finally {
-      // Setup cancellation, RPC failure and timeouts cannot free this turn while its failed child lives.
-      if (this.inputFailure) await this.inputFailure.closed;
       this.activeTurns--;
     }
   }
 
   private async attempt(text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult> {
     if (signal.aborted) return { status: "interrupted" };
-    const failed = (err: unknown, extra: Record<string, unknown>): TurnResult =>
-      signal.aborted ? { status: "interrupted" } : { status: "failed", error: (err as Error).message, detail: { ...extra, ...detailOf(err), userAgent: this.userAgent, pid: this.child?.pid } };
+    const readiness = this.ensure(), owner = this.lease;
     try {
-      await duringSetup(this.ensure(), signal);
+      const result = await this.attemptOn(readiness, owner, text, opts, sink, signal);
+      // The stale-sign-in policy can recover its own server, never a disposed or superseded one.
+      // An unexpected close with no replacement keeps the established recovery behavior.
+      if (owner && result.status === "failed" && STALE_AUTH.test(result.error ?? "") && (owner.retired || (this.lease && this.lease !== owner))) {
+        return { ...result, error: "Codex app-server generation is no longer available.", detail: { ...result.detail, supersededError: result.error, stage: "server generation" } };
+      }
+      return result;
+    } finally {
+      // Only this attempt's failed generation fences its completion, never a replacement's.
+      const fault = this.inputFailure;
+      if (owner && fault?.child === owner.child) await fault.closed;
+    }
+  }
+
+  private async attemptOn(readiness: Promise<ServerLease>, owner: ServerLease | null, text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult> {
+    const failed = (err: unknown, extra: Record<string, unknown>): TurnResult =>
+      signal.aborted ? { status: "interrupted" } : { status: "failed", error: (err as Error).message, detail: { ...extra, ...detailOf(err), userAgent: owner?.userAgent, pid: owner?.child.pid } };
+    let lease: ServerLease;
+    try {
+      lease = await duringSetup(readiness, signal);
+      this.requireLease(lease);
     } catch (err) {
       return failed(err, { stage: "start app-server" });
     }
@@ -486,7 +535,7 @@ export class CodexBackend implements Backend {
     // thread is opened: confirming the provider's name on open does not say where its requests go (#380).
     if (local?.admit) {
       try {
-        const reads = await duringSetup(Promise.all([this.request("config/read", { includeLayers: true, cwd: opts.cwd }), this.request("configRequirements/read", {})])
+        const reads = await duringSetup(Promise.all([this.request(lease, "config/read", { includeLayers: true, cwd: opts.cwd }), this.request(lease, "configRequirements/read", {})])
           .catch((err: unknown) => {
             const detail = detailOf(err), reason = (err as Error).message;
             const recovery = /failed to synchronize managed preferences/i.test(reason)
@@ -494,6 +543,7 @@ export class CodexBackend implements Backend {
               : detail.rpcCode === -32601 ? " Local execution needs codex-cli 0.164.0 or later." : "";
             throw new CodexError(`Codex did not report its effective configuration (${reason}).${recovery}`, detail);
           }), signal);
+        this.requireLease(lease);
         local.admit({ config: reads[0], requirements: reads[1] });
       } catch (err) {
         return failed(err, { stage: "verify configuration" });
@@ -507,13 +557,15 @@ export class CodexBackend implements Backend {
     };
     try {
       if (threadId && (!this.loaded.has(threadId) || rebindMetadata)) {
-        const r = await duringSetup(this.request<{ thread: { id: string }; model?: unknown; modelProvider?: unknown }>("thread/resume", { threadId, cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null, ...pinned, config }), signal);
+        const r = await duringSetup(this.request<{ thread: { id: string }; model?: unknown; modelProvider?: unknown }>(lease, "thread/resume", { threadId, cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null, ...pinned, config }), signal);
+        this.requireLease(lease);
         confirmed(r);
         if (rebindMetadata && r.thread.id !== threadId) throw new CodexError("Codex changed conversation identity while rebinding metadata connections.", { stage: "bind metadata connections" });
         threadId = r.thread.id;
         if (typeof r.model === "string" && r.model) this.threadModels.set(threadId, r.model);
       } else if (!threadId) {
-        const r = await duringSetup(this.request<{ thread: { id: string }; model?: unknown; modelProvider?: unknown }>("thread/start", { cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null, ...pinned, config }), signal);
+        const r = await duringSetup(this.request<{ thread: { id: string }; model?: unknown; modelProvider?: unknown }>(lease, "thread/start", { cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null, ...pinned, config }), signal);
+        this.requireLease(lease);
         confirmed(r);
         threadId = r.thread.id;
         if (typeof r.model === "string" && r.model) this.threadModels.set(threadId, r.model);
@@ -523,9 +575,11 @@ export class CodexBackend implements Backend {
         ...((taskContext || priorMetadata?.taskContext) ? { taskContextCapability: { state: "unavailable" as const, reason: "configuration-not-bound" as const } } : {}) };
     }
     if (signal.aborted) return { status: "interrupted" };
+    try { this.requireLease(lease); } catch (error) { return failed(error, { stage: "publish session" }); }
     this.loaded.add(threadId);
     this.metadataConnections.set(threadId, metadata);
     if (taskContext) sink.taskContextCapability?.({ state: "available" });
+    try { this.requireLease(lease); } catch (error) { return failed(error, { stage: "publish session" }); }
     sink.session(threadId);
 
     const tid = threadId;
@@ -538,7 +592,7 @@ export class CodexBackend implements Backend {
     const collaborationMode = planModel ? { mode: "plan", settings: { model: planModel, reasoning_effort: opts.effort ?? null, developer_instructions: null } } : undefined;
     const prefixed = opts.plan ? `${PLAN_PREFIX}\n\n${context}` : context;
     const input = collaborationMode ? context : prefixed;
-    const runtime = this.generation;
+    const runtime = lease.generation;
     const seenRequests = new Map<string, string>();
     const agents = new AgentTracker(sink, runtime);
     const activities = new Set<string>();
@@ -574,14 +628,14 @@ export class CodexBackend implements Backend {
       // Some native reconnect paths still retry with provider retry counts set to zero.
       // Local coding must stop on that notification rather than continue after possible effects.
       let retryRefused: { message: string; nativeError: Record<string, unknown> } | null = null;
-      const child = this.child;
+      const child = lease.child;
       const detail = (extra: Record<string, unknown>): Record<string, unknown> => ({
-        codexThreadId: tid, turnId, userAgent: this.userAgent, pid: child?.pid, ...(retried.length ? { retriedErrors: retried } : {}), ...(lastError ? { errorNotification: lastError } : {}), ...extra,
+        codexThreadId: tid, turnId, userAgent: lease.userAgent, pid: child.pid, ...(retried.length ? { retriedErrors: retried } : {}), ...(lastError ? { errorNotification: lastError } : {}), ...extra,
       });
       const interrupt = () => {
         if (interrupted || !turnId || this.child !== child) return;
         interrupted = true;
-        void this.request("turn/interrupt", { threadId: tid, turnId }).catch(() => {});
+        void this.request(lease, "turn/interrupt", { threadId: tid, turnId }).catch(() => {});
       };
       const onDisconnect = (error: Error) => finish(signal.aborted ? { status: "interrupted" } : { status: "failed", error: error.message, detail: detail(detailOf(error)) });
       const finish = (r: TurnResult) => {
@@ -608,7 +662,7 @@ export class CodexBackend implements Backend {
         interrupt();
       };
       const onMsg = (msg: RpcMessage) => {
-        if (done || stopping) return;
+        if (done || stopping || !this.current(lease)) return;
         const p = (msg.params ?? {}) as Record<string, unknown>;
         const native = (item: unknown): NativeRef => ({ runtime, thread: tid, ...(p.turnId || turnId ? { turn: String(p.turnId ?? turnId) } : {}), item: String(item) });
         if (msg.method === "thread/started") {
@@ -635,7 +689,7 @@ export class CodexBackend implements Backend {
             const state = status.type === "active" ? (status.activeFlags?.length ? "waiting" : "running") : "failed";
             agents.update(id, { state, detail: state === "waiting" ? "Waiting for approval or input" : undefined });
           } else if (msg.id !== undefined && msg.method) {
-            void this.handleServerRequest(msg, sink, seenRequests);
+            void this.handleServerRequest(lease, msg, sink, seenRequests);
           } else if (msg.method === "turn/completed") {
             const turn = p.turn as { status?: string; error?: { message?: string } } | undefined;
             agents.update(id, { state: turn?.status === "completed" ? "completed" : turn?.status === "interrupted" ? "stopped" : "failed", detail: turn?.error?.message }, turn?.error?.message);
@@ -672,7 +726,7 @@ export class CodexBackend implements Backend {
         }
         // Server → client requests (approvals).
         if (msg.id !== undefined && msg.method) {
-          void this.handleServerRequest(msg, sink, seenRequests);
+          void this.handleServerRequest(lease, msg, sink, seenRequests);
           return;
         }
         if (msg.method === "item/started" || msg.method === "item/completed") {
@@ -838,7 +892,7 @@ export class CodexBackend implements Backend {
               if (commands.size) {
                 stopping = true;
                 clearTimeout(abortTimer);
-                void this.endTerminals(tid, commands, (id, outcome) => { const t = tools.get(id); sink.observe({ type: "tool.done", native: native(id), outcome, progress: { ...(t?.output ? { output: t.output } : {}), ...(t ? { durationMs: Date.now() - t.started } : {}) } }); }, sink).then(() => finish(failure));
+                void this.endTerminals(lease, tid, commands, (id, outcome) => { const t = tools.get(id); sink.observe({ type: "tool.done", native: native(id), outcome, progress: { ...(t?.output ? { output: t.output } : {}), ...(t ? { durationMs: Date.now() - t.started } : {}) } }); }, sink).then(() => finish(failure));
               } else finish(failure);
             }
             else {
@@ -851,7 +905,7 @@ export class CodexBackend implements Backend {
                   const t = tools.get(id);
                   sink.observe({ type: "tool.done", native: native(id), outcome, progress: { ...(t?.output ? { output: t.output } : {}), ...(t ? { durationMs: Date.now() - t.started } : {}) } });
                 };
-                void this.endTerminals(tid, commands, settle, sink).then(() => finish({ status: "interrupted" }));
+                void this.endTerminals(lease, tid, commands, settle, sink).then(() => finish({ status: "interrupted" }));
               } else finish(turn.status === "interrupted" ? { status: "interrupted" } : { status: "completed" });
             }
             break;
@@ -863,7 +917,7 @@ export class CodexBackend implements Backend {
       this.subscribers.add(onMsg);
       this.disconnects.add(onDisconnect);
       signal.addEventListener("abort", onAbort, { once: true });
-      const turnStart = (text: string, mode: typeof collaborationMode) => this.request<{ turn: { id: string } }>("turn/start", {
+      const turnStart = (text: string, mode: typeof collaborationMode) => this.request<{ turn: { id: string } }>(lease, "turn/start", {
         threadId: tid,
         // Images go by path (the app-server reads them); other attached files are named in the text.
         input: [{ type: "text", text, text_elements: [] }, ...(opts.attachments ?? []).filter((a) => a.kind === "image").map((a) => ({ type: "localImage", path: a.path }))],
@@ -878,12 +932,14 @@ export class CodexBackend implements Backend {
       });
       turnStart(input, collaborationMode)
         .catch((err: unknown) => {
+          this.requireLease(lease);
           // A Codex that does not take the collaboration mode refuses the request before starting a turn.
           if (!collaborationMode || signal.aborted || !refusedCollaborationMode(err)) throw err;
           sink.notice("info", "This Codex does not offer its plan mode, so this Plan turn runs with Modex's plan instructions.");
           return turnStart(prefixed, undefined);
         })
         .then((r) => {
+          this.requireLease(lease);
           turnId = r.turn.id;
           starting = false;
           if (signal.aborted) interrupt();
@@ -902,8 +958,9 @@ export class CodexBackend implements Backend {
     return paths;
   }
 
-  private async handleServerRequest(msg: RpcMessage, sink: TurnSink, seen: Map<string, string>): Promise<void> {
-    const key = `${this.generation}:${JSON.stringify(msg.id)}`;
+  private async handleServerRequest(lease: ServerLease, msg: RpcMessage, sink: TurnSink, seen: Map<string, string>): Promise<void> {
+    if (!this.current(lease)) return;
+    const key = `${lease.generation}:${JSON.stringify(msg.id)}`;
     const digest = actionDigest({ method: msg.method, params: msg.params });
     if (seen.has(key)) {
       if (seen.get(key) !== digest) {
@@ -916,19 +973,19 @@ export class CodexBackend implements Backend {
     const withdrawn = new AbortController();
     this.openRequests.set(key, { controller: withdrawn, thread: (msg.params as Record<string, unknown> | undefined)?.threadId });
     try {
-      await this.answerServerRequest(msg, sink, withdrawn.signal);
+      await this.answerServerRequest(lease, msg, sink, withdrawn.signal);
     } finally {
       if (this.openRequests.get(key)?.controller === withdrawn) this.openRequests.delete(key);
     }
   }
 
-  private async answerServerRequest(msg: RpcMessage, sink: TurnSink, withdrawn: AbortSignal): Promise<void> {
+  private async answerServerRequest(lease: ServerLease, msg: RpcMessage, sink: TurnSink, withdrawn: AbortSignal): Promise<void> {
     const p = (msg.params ?? {}) as Record<string, unknown>;
-    const native: NativeRequest = { runtime: this.generation, request: JSON.stringify(msg.id), ...(typeof p.itemId === "string" && p.itemId ? { item: p.itemId } : {}) };
+    const native: NativeRequest = { runtime: lease.generation, request: JSON.stringify(msg.id), ...(typeof p.itemId === "string" && p.itemId ? { item: p.itemId } : {}) };
     const deliver = async (result: unknown) => {
-      const child = this.child;
+      const child = lease.child;
       const write = () => {
-        if (withdrawn.aborted || this.generation !== native.runtime || !child || child !== this.child || child.exitCode !== null || this.inputFailure?.child === child) return Promise.reject(new Error("request transport unavailable"));
+        if (withdrawn.aborted || !this.current(lease) || child.exitCode !== null) return Promise.reject(new Error("request transport unavailable"));
         return writeJsonResponse(child.stdin, { id: msg.id, result }).catch(error => { this.inputFailed(child, error); throw error; });
       };
       if (!child) return;
@@ -967,7 +1024,7 @@ export class CodexBackend implements Backend {
       const permissions = requestedPermissions(p.permissions);
       if (!permissions) {
         sink.notice("warn", "Codex requested malformed or unsupported permissions; no permissions were granted.");
-        this.respond(msg.id, { permissions: {}, scope: "turn" });
+        this.respond(lease, msg.id, { permissions: {}, scope: "turn" });
         return;
       }
       const answer = await sink.approval({ question: "Allow these additional permissions for this turn?", detail: JSON.stringify({ ...p, permissions }, null, 2), canAlways: false, action: { backend: "codex", tool: "permissions", title: "grant additional permissions", escalation: true }, native }, withdrawn);
@@ -978,17 +1035,17 @@ export class CodexBackend implements Backend {
       const asked = codexQuestions(p);
       if (!asked) {
         sink.notice("warn", "Codex asked a question Modex could not read; it was declined.");
-        this.send({ id: msg.id, error: { code: -32602, message: "modex could not read this requestUserInput" } });
+        this.send(lease, { id: msg.id, error: { code: -32602, message: "modex could not read this requestUserInput" } });
         return;
       }
       const reply = await sink.question({ ...asked, native }, withdrawn);
       if (withdrawn.aborted) return;
       // A withdrawn question is an error reply, never an empty answer the model could take as the user's.
       if ("answers" in reply) await deliver(codexAnswerResponse(reply.answers));
-      else this.send({ id: msg.id, error: { code: -32000, message: reply.withdrawn === "stopped" ? "withdrawn by modex: the turn was stopped" : "withdrawn by modex: the turn ended before anyone answered" } });
+      else this.send(lease, { id: msg.id, error: { code: -32000, message: reply.withdrawn === "stopped" ? "withdrawn by modex: the turn was stopped" : "withdrawn by modex: the turn ended before anyone answered" } });
     } else {
       sink.notice("warn", `Codex asked for ${msg.method}, which Modex does not support yet; declined.`);
-      this.send({ id: msg.id, error: { code: -32601, message: `unsupported by modex: ${msg.method}` } });
+      this.send(lease, { id: msg.id, error: { code: -32601, message: `unsupported by modex: ${msg.method}` } });
     }
   }
 }

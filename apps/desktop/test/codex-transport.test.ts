@@ -1,19 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawnSync, type SpawnOptions } from "node:child_process";
+import type { QuestionReply } from "../src/main/engine/backends/types.js";
 import { setTimeout as delay } from "node:timers/promises";
 import { CodexBackend } from "../src/main/engine/backends/codex.js";
 import { FakeProcess, fakeSpawn, collectSink } from "./fakeproc.js";
 
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
-function wire(proc: FakeProcess): void {
+function wire(proc: FakeProcess, hold: ReadonlySet<string> = new Set()): void {
   let threads = 0;
   proc.stdin.on("data", data => {
     for (const line of data.toString().split("\n")) {
       if (!line.trim()) continue;
       const m = JSON.parse(line);
+      if (hold.has(m.method)) continue;
       if (m.method === "initialize") proc.emitLine({ id: m.id, result: { userAgent: "synthetic-transport" } });
       else if (m.method === "model/list") proc.emitLine({ id: m.id, result: { data: [] } });
+      else if (m.method === "account/read") proc.emitLine({ id: m.id, result: { account: { type: "chatgpt" } } });
+      else if (m.method === "account/rateLimits/read") proc.emitLine({ id: m.id, result: { rateLimits: {} } });
+      else if (["config/read", "configRequirements/read", "thread/backgroundTerminals/terminate"].includes(m.method)) proc.emitLine({ id: m.id, result: {} });
+      else if (m.method === "thread/backgroundTerminals/list") proc.emitLine({ id: m.id, result: { data: [] } });
       else if (m.method === "thread/start") proc.emitLine({ id: m.id, result: { thread: { id: `thr-${++threads}` }, model: m.params.model, modelProvider: m.params.modelProvider } });
       else if (m.method === "turn/start") {
         proc.emitLine({ id: m.id, result: { turn: { id: `tu-${m.params.threadId}` } } });
@@ -176,4 +182,187 @@ for (const phase of ["initialize", "stop"] as const) test(`real Node pipe: ${pha
   assert.equal(result.status, phase === "initialize" ? "failed" : "interrupted");
   assert.equal(result.starts, 1, "transport failure cannot retry on another server");
   if (phase === "initialize") assert.match(result.message, /transport/i);
+});
+
+test("a queued old initialize continuation cannot use the replacement", async () => {
+  const old = new FakeProcess(), next = new FakeProcess(); wire(old, new Set(["initialize"])); wire(next);
+  const backend = new CodexBackend("fixture", fakeSpawn([old, next]).spawn);
+  const first = backend.listModels().then(() => "success", () => "failed");
+  await old.waitFor(line => line.includes('"initialize"'));
+  const request = old.sent(m => m.method === "initialize")[0]!;
+  old.emitLine({ id: request.id, result: { userAgent: "old" } });
+  const disposing = backend.dispose(), replacement = backend.listModels();
+  try {
+    assert.equal(await first, "failed"); await replacement; await disposing;
+    assert.equal(next.sent(m => m.method === "initialized").length, 1);
+    assert.equal(next.sent(m => m.method === "model/list").length, 1);
+  } finally { await disposing; await replacement; await backend.dispose(); }
+});
+
+/** Dispose in the microtask between readiness resolving and its caller continuing. */
+function replaceAfterReady(old: FakeProcess, replace: () => void): void {
+  const original = old.stdin.write.bind(old.stdin);
+  old.stdin.write = ((chunk: unknown, ...args: unknown[]) => {
+    if (String(chunk).includes('"method":"initialized"')) {
+      const callback = args.find(value => typeof value === "function") as () => void;
+      setImmediate(() => { callback(); queueMicrotask(replace); });
+      return true;
+    }
+    return Reflect.apply(original, old.stdin, [chunk, ...args]);
+  }) as typeof old.stdin.write;
+}
+
+for (const kind of ["models", "quota", "account"] as const) test(`a disposed ready generation cannot migrate its ${kind} read`, async () => {
+  const old = new FakeProcess(), next = new FakeProcess(); wire(old); wire(next);
+  const servers = fakeSpawn([old, next]);
+  const spawn = ((file: string, args: string[], options: SpawnOptions) => {
+    if (args.includes("--version")) {
+      const version = new FakeProcess();
+      setImmediate(() => { version.emitRaw("codex-cli 0.164.0\n"); version.close(0); });
+      return fakeSpawn(version).spawn(file, args, options);
+    }
+    return servers.spawn(file, args, options);
+  }) as typeof servers.spawn;
+  const backend = new CodexBackend("fixture", spawn);
+  let disposing: Promise<void> | undefined, replacement: Promise<unknown> | undefined;
+  replaceAfterReady(old, () => { disposing = backend.dispose(); replacement = backend.listModels(); });
+  const first = kind === "account" ? backend.health().then(value => value.authentication)
+    : (kind === "models" ? backend.listModels() : backend.quota()).then(() => "success", () => "failed");
+  try {
+    assert.equal(await first, kind === "account" ? "unknown" : "failed");
+    await disposing; await replacement;
+    assert.equal(next.sent(m => m.method === "initialized").length, 1);
+    assert.equal(next.sent(m => m.method === "model/list").length, 1);
+    assert.equal(next.sent(m => m.method === "account/read" || m.method === "account/rateLimits/read").length, 0);
+  } finally { await disposing; await replacement; await backend.dispose(); }
+});
+
+test("an old thread-open reply cannot publish a session or start a replacement turn", async () => {
+  const old = new FakeProcess(), next = new FakeProcess(); wire(old, new Set(["thread/start"])); wire(next);
+  const backend = new CodexBackend("fixture", fakeSpawn([old, next]).spawn), sessions: string[] = [];
+  const { sink } = collectSink();
+  const running = backend.runTurn("synthetic", { cwd: "/fixture", mode: "chat", plan: false, model: "" }, { ...sink, session: value => { sessions.push(value); } }, new AbortController().signal);
+  await old.waitFor(line => line.includes('"thread/start"'));
+  const request = old.sent(m => m.method === "thread/start")[0]!;
+  old.emitLine({ id: request.id, result: { thread: { id: "old-thread" }, model: "old-model" } });
+  const disposing = backend.dispose(), replacement = backend.listModels();
+  // The baseline may incorrectly start a turn on next. Complete only that synthetic turn so the RED cannot hang.
+  next.stdin.on("data", bytes => { for (const line of bytes.toString().split("\n")) {
+    if (!line.trim()) continue; const m = JSON.parse(line);
+    if (m.method === "turn/start") setImmediate(() => next.emitLine({ method: "turn/completed", params: { threadId: m.params.threadId, turn: { id: `tu-${m.params.threadId}`, status: "completed" } } }));
+  } });
+  try {
+    assert.equal((await running).status, "failed"); await replacement; await disposing;
+    assert.deepEqual(sessions, []);
+    assert.equal(next.sent(m => m.method === "turn/start").length, 0);
+  } finally { await disposing; await replacement; await backend.dispose(); await running; }
+});
+
+test("old configuration replies cannot admit execution on a replacement", async () => {
+  const old = new FakeProcess(), next = new FakeProcess(); wire(old, new Set(["config/read", "configRequirements/read"])); wire(next);
+  let admitted = 0;
+  const backend = new CodexBackend("fixture", fakeSpawn([old, next]).spawn, { args: [], env: {}, redact: value => value, local: { provider: "fixture", model: "selected", admit: () => { admitted++; } } });
+  const running = backend.runTurn("synthetic", { cwd: "/fixture", mode: "chat", plan: false, model: "selected" }, collectSink().sink, new AbortController().signal);
+  await old.waitFor(line => line.includes('"configRequirements/read"'));
+  for (const m of old.sent(m => m.method === "config/read" || m.method === "configRequirements/read")) old.emitLine({ id: m.id, result: {} });
+  const disposing = backend.dispose(), replacement = backend.listModels();
+  next.stdin.on("data", bytes => { for (const line of bytes.toString().split("\n")) {
+    if (!line.trim()) continue; const m = JSON.parse(line);
+    if (m.method === "turn/start") setImmediate(() => next.emitLine({ method: "turn/completed", params: { threadId: m.params.threadId, turn: { id: `tu-${m.params.threadId}`, status: "completed" } } }));
+  } });
+  try {
+    assert.equal((await running).status, "failed"); await replacement; await disposing;
+    assert.equal(admitted, 0);
+    assert.equal(next.sent(m => m.method === "thread/start" || m.method === "turn/start").length, 0);
+  } finally { await disposing; await replacement; await backend.dispose(); await running; }
+});
+
+test("an old terminal-list reply cannot terminate a replacement's process", async () => {
+  const old = new FakeProcess(), next = new FakeProcess(); wire(old, new Set(["thread/backgroundTerminals/list"])); wire(next);
+  const backend = new CodexBackend("fixture", fakeSpawn([old, next]).spawn);
+  const running = backend.runTurn("synthetic", { cwd: "/fixture", mode: "chat", plan: false, model: "" }, collectSink().sink, new AbortController().signal);
+  await old.waitFor(line => line.includes('"turn/start"')); await tick();
+  const start = old.sent(m => m.method === "turn/start")[0]!;
+  const threadId = start.params.threadId, turnId = `tu-${threadId}`;
+  old.emitLine({ method: "item/started", params: { threadId, turnId, item: { type: "commandExecution", id: "old-command", command: "synthetic", cwd: "/fixture", status: "inProgress" } } });
+  old.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "interrupted" } } });
+  await old.waitFor(line => line.includes('"thread/backgroundTerminals/list"'));
+  const list = old.sent(m => m.method === "thread/backgroundTerminals/list")[0]!;
+  old.emitLine({ id: list.id, result: { data: [{ itemId: "old-command", processId: "old-process" }] } });
+  const disposing = backend.dispose(), replacement = backend.listModels();
+  try {
+    await running; await replacement; await disposing;
+    for (let i = 0; i < 5; i++) await tick();
+    assert.equal(next.sent(m => m.method === "thread/backgroundTerminals/terminate").length, 0);
+    assert.equal(next.sent(m => m.method === "thread/backgroundTerminals/list").length, 0);
+  } finally { await disposing; await replacement; await backend.dispose(); await running; }
+});
+
+test("withdrawing an old native question cannot reply through the replacement", async () => {
+  const old = new FakeProcess(), next = new FakeProcess(); wire(old); wire(next);
+  const backend = new CodexBackend("fixture", fakeSpawn([old, next]).spawn), { sink } = collectSink();
+  let displayed = false;
+  const running = backend.runTurn("synthetic", { cwd: "/fixture", mode: "chat", plan: false, model: "" }, { ...sink, question: (_request, withdrawn) => new Promise<QuestionReply>(resolve => {
+    displayed = true; withdrawn?.addEventListener("abort", () => resolve({ withdrawn: "native" }), { once: true });
+  }) }, new AbortController().signal);
+  await old.waitFor(line => line.includes('"turn/start"')); await tick();
+  const start = old.sent(m => m.method === "turn/start")[0]!;
+  old.emitLine({ id: 777, method: "item/tool/requestUserInput", params: { threadId: start.params.threadId, turnId: `tu-${start.params.threadId}`, itemId: "old-question", questions: [{ id: "q", header: "Choice", question: "Pick one", isOther: false, isSecret: false, options: [{ label: "a", description: "" }, { label: "b", description: "" }] }] } });
+  for (let i = 0; i < 5 && !displayed; i++) await tick(); assert.equal(displayed, true);
+  const disposing = backend.dispose(), replacement = backend.listModels();
+  try {
+    await running; await replacement; await disposing;
+    for (let i = 0; i < 5; i++) await tick();
+    assert.equal(next.sent(m => m.id === 777 && !m.method).length, 0);
+  } finally { await disposing; await replacement; await backend.dispose(); await running; }
+});
+
+test("an old stale-auth failure cannot recover on or terminate a replacement", async () => {
+  const old = new FakeProcess(), next = new FakeProcess(), unintended = new FakeProcess();
+  wire(old, new Set(["thread/start"])); wire(next); wire(unintended);
+  for (const peer of [next, unintended]) peer.stdin.on("data", bytes => { for (const line of bytes.toString().split("\n")) {
+    if (!line.trim()) continue; const m = JSON.parse(line);
+    if (m.method === "turn/start") setImmediate(() => peer.emitLine({ method: "turn/completed", params: { threadId: m.params.threadId, turn: { id: `tu-${m.params.threadId}`, status: "completed" } } }));
+  } });
+  const spawn = fakeSpawn([old, next, unintended]), backend = new CodexBackend("fixture", spawn.spawn);
+  const running = backend.runTurn("synthetic", { cwd: "/fixture", mode: "chat", plan: false, model: "" }, collectSink().sink, new AbortController().signal);
+  await old.waitFor(line => line.includes('"thread/start"'));
+  const open = old.sent(m => m.method === "thread/start")[0]!;
+  old.emitLine({ id: open.id, error: { code: -32000, message: "Your access token could not be refreshed because you have signed in to another account." } });
+  const disposing = backend.dispose(), replacement = backend.listModels().then(() => "success", () => "failed");
+  try {
+    assert.equal((await running).status, "failed");
+    assert.equal(next.killed, false); assert.equal(spawn.calls.length, 2);
+    assert.equal(next.sent(m => m.method === "thread/start" || m.method === "turn/start").length, 0);
+  } finally {
+    await disposing; await replacement; await backend.dispose(); await running;
+  }
+});
+
+test("an exited server with held stdio cannot be replaced before close", async () => {
+  const old = new FakeProcess(), next = new FakeProcess(); wire(old); wire(next); old.holdStdio = true;
+  const spawn = fakeSpawn([old, next]), backend = new CodexBackend("fixture", spawn.spawn);
+  let ended = false;
+  const running = backend.runTurn("synthetic", { cwd: "/fixture", mode: "chat", plan: false, model: "" }, collectSink().sink, new AbortController().signal).then(result => { ended = true; return result; });
+  await old.waitFor(line => line.includes('"turn/start"')); await tick(); old.close(0); await tick();
+  try {
+    await assert.rejects(backend.listModels(), /closing/);
+    assert.equal(spawn.calls.length, 1); assert.equal(ended, false);
+    old.releaseStdio(); assert.equal((await running).status, "failed");
+    assert.deepEqual(await backend.listModels(), []); assert.equal(spawn.calls.length, 2);
+  } finally { old.releaseStdio(); await backend.dispose(); await running; }
+});
+
+test("a child that closes before initialization cannot report the previous agent version", async () => {
+  const old = new FakeProcess(), next = new FakeProcess(); wire(old); wire(next, new Set(["initialize"]));
+  const backend = new CodexBackend("fixture", fakeSpawn([old, next]).spawn);
+  await backend.listModels(); await backend.dispose();
+  const pending = backend.listModels();
+  await next.waitFor(line => line.includes('"initialize"')); next.close(0);
+  try {
+    await assert.rejects(pending, error => {
+      assert.equal((error as { detail: Record<string, unknown> }).detail.userAgent, null);
+      return true;
+    });
+  } finally { await backend.dispose(); }
 });
