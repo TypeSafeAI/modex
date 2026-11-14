@@ -64,7 +64,7 @@ export function PrPane({ pane, changesViews, pr, keyId, changesWidth, treeWidth,
   // At most one panel under the header: Merge, a state change picked from the state menu, or an agent review.
   const [panel, setPanel] = useState<"merge" | "agent" | PrStateChange | null>(null);
   const closeHeaderPanel = () => {
-    const opener = panel === "agent" ? "code-review-review" : "code-review-merge";
+    const opener = panel === "agent" ? "code-review-review" : panel === "merge" ? "code-review-merge" : "code-review-state";
     setPanel(null);
     // Each split pane has its own header: return to the button that opened this panel.
     paneElement.current?.querySelector<HTMLElement>(`[data-testid="${opener}"]`)?.focus();
@@ -83,8 +83,8 @@ export function PrPane({ pane, changesViews, pr, keyId, changesWidth, treeWidth,
   return (
     <section ref={paneElement} id={`cr-pane-${pane}`} role="tabpanel" aria-labelledby={`cr-tab-${pane}`} className={`cr-pane cr-pane-${pane}`} data-pane={pane} data-testid={`code-review-pane-${pane}`}
       onKeyDown={(event) => {
-        if (event.key === "Escape" && (panel === "agent" || panel === "merge") && event.target instanceof Element
-          && event.target.closest('[data-testid="cr-agent-panel"], [data-testid="cr-merge"]')) {
+        if (event.key === "Escape" && panel !== null && event.target instanceof Element
+          && event.target.closest('[data-testid="cr-agent-panel"], [data-testid="cr-merge"], [data-testid="cr-state-panel"]')) {
           event.preventDefault();
           event.stopPropagation();
           closeHeaderPanel();
@@ -93,7 +93,7 @@ export function PrPane({ pane, changesViews, pr, keyId, changesWidth, treeWidth,
       <PrHeader pr={pr} busy={busy} pinned={pinned} caps={caps} onPin={onPin} merge={merge} review={review} filesToggle={pane === "changes" && treeWidth === null ? { shown: filesShown, toggle: () => setFilesShown((v) => !v) } : null} />
       {review && panel === "agent" && <AgentPanel key={keyId} agent={review.agent} overview={review.overview} onClose={closeHeaderPanel} onReload={onRetry} />}
       {merge && panel === "merge" && <MergePanel key={keyId} writes={merge.writes} overview={merge.overview} onClose={closeHeaderPanel} onMerged={onRetry} />}
-      {merge && panel && panel !== "merge" && panel !== "agent" && <StatePanel key={`${keyId}:${panel}`} writes={merge.writes} overview={merge.overview} to={panel} onClose={() => setPanel(null)} onDone={onRetry} />}
+      {merge && panel && panel !== "merge" && panel !== "agent" && <StatePanel key={`${keyId}:${panel}`} writes={merge.writes} overview={merge.overview} to={panel} onClose={closeHeaderPanel} onDone={onRetry} />}
       {pane === "overview" && <div ref={body} className="cr-pane-body" data-testid="code-review-overview-body" tabIndex={-1}>
         {status ?? <PrOverview key={keyId} pr={pr} caps={caps} retry={onRetry} onChanges={onShowChanges} onPage={onActivityPage} busy={contextBusy} writes={writes} agent={agent} />}
       </div>}
