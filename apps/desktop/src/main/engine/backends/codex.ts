@@ -32,6 +32,15 @@ interface ServerLease {
   retired: boolean;
 }
 
+interface ServerPreparation {
+  readonly readiness: Promise<ServerLease>;
+  readonly owner: ServerLease | null;
+}
+interface AttemptReceipt {
+  readonly result: TurnResult;
+  readonly owner: ServerLease | null;
+}
+
 /**
  * Drives the Codex CLI through `codex app-server`, the JSON-RPC-over-stdio protocol the
  * official Codex App uses. One server process is shared by all Codex threads; each Modex
@@ -56,6 +65,8 @@ export class CodexBackend implements Backend {
   private readonly changePaths = new Map<string, { paths: string[]; protected: boolean }>();
   /** Opaque id of the running app-server process; native thread, turn and item ids are unique only within it. */
   private lease: ServerLease | null = null;
+  /** Retained across closure so an older queued result cannot regain recovery ownership. */
+  private latestGeneration: string | null = null;
   /**
    * Server requests waiting on a person, keyed `generation:id`. Codex's `serverRequest/resolved` for one still
    * here means Codex settled it itself (codex-cli 0.163.0): the card is withdrawn and no answer is sent.
@@ -106,6 +117,7 @@ export class CodexBackend implements Backend {
       let closed!: () => void;
       const lease: ServerLease = { child, generation: randomUUID(), closed: new Promise<void>(resolve => { closed = resolve; }), userAgent: null, retired: false };
       this.lease = lease;
+      this.latestGeneration = lease.generation;
       this.loaded.clear();
       this.metadataConnections.clear();
       this.threadModels.clear();
@@ -156,7 +168,15 @@ export class CodexBackend implements Backend {
   }
 
   private disconnect(error: Error): void {
-    if (this.child) for (const finish of this.writeReceipts.get(this.child) ?? []) finish(error);
+    const child = this.child;
+    const requests = [...this.openRequests.values()];
+    const pending = [...this.pending.values()];
+    const disconnects = [...this.disconnects];
+    // Withdrawal callbacks can synchronously initialize a replacement. Detach the
+    // old generation's registries before any callback can register its new work.
+    this.openRequests.clear();
+    this.pending.clear();
+    this.disconnects.clear();
     this.child = null;
     this.lease = null;
     this.ready = null;
@@ -164,11 +184,10 @@ export class CodexBackend implements Backend {
     this.metadataConnections.clear();
     this.changePaths.clear();
     this.threadModels.clear();
-    for (const request of this.openRequests.values()) request.controller.abort();
-    this.openRequests.clear();
-    for (const p of this.pending.values()) p.reject(error);
-    this.pending.clear();
-    for (const finish of this.disconnects) finish(error);
+    if (child) for (const finish of this.writeReceipts.get(child) ?? []) finish(error);
+    for (const p of pending) p.reject(error);
+    for (const request of requests) request.controller.abort();
+    for (const finish of disconnects) finish(error);
   }
 
   private dispatch(lease: ServerLease, line: string): void {
@@ -259,6 +278,7 @@ export class CodexBackend implements Backend {
       stage: "stdin", pid: child.pid, ...(typeof code === "string" && /^[A-Z0-9_]{1,32}$/.test(code) ? { errno: code } : {}),
     });
     if (this.child !== child) return error; // Consume old errors without touching the replacement.
+    this.lease!.retired = true; // This failure never becomes eligible for stale-auth replay after close.
     this.inputFailure = { child, error, closed: this.lease!.closed };
     for (const finish of this.writeReceipts.get(child) ?? []) finish(error);
     for (const pending of this.pending.values()) pending.reject(error);
@@ -276,8 +296,8 @@ export class CodexBackend implements Backend {
   }
 
   private requireLease(lease: ServerLease): void {
+    if (this.lease === lease && this.inputFailure?.child === lease.child) throw this.inputFailure.error;
     if (lease.retired || this.lease !== lease || this.child !== lease.child) throw new CodexError("Codex app-server generation is no longer available.", { stage: "server generation" });
-    if (this.inputFailure?.child === lease.child) throw this.inputFailure.error;
   }
 
   private send(lease: ServerLease, o: unknown, written?: (error?: Error) => void): void {
@@ -355,13 +375,15 @@ export class CodexBackend implements Backend {
     const report = (authentication: BackendHealth["authentication"], detail: string) => health(authentication, detail, "available", installed.version);
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const result = await Promise.race([
+      const read = await Promise.race([
         this.ensure().then(async lease => {
           const value = await this.request<{ account: { type?: unknown } | null; requiresOpenaiAuth?: boolean }>(lease, "account/read", { refreshToken: false }, 5000);
-          this.requireLease(lease); return value;
+          this.requireLease(lease); return { lease, value };
         }),
         new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("timeout")), 5000); }),
       ]);
+      this.requireLease(read.lease);
+      const result = read.value;
       if (result.account?.type === "chatgpt") return report("authenticated", "ChatGPT signed in · model access unverified");
       if (result.account?.type === "apiKey") return report("authenticated", "API key configured · model access unverified");
       if (result.account !== null) return report("unknown", "Account status unavailable · check in Codex CLI");
@@ -407,16 +429,22 @@ export class CodexBackend implements Backend {
   }
 
   /** Ends the current server (and its commands); the next request starts a fresh one. */
-  private restart(reason: string): void {
+  private canRecover(owner: ServerLease | null): owner is ServerLease {
+    return owner !== null && !owner.retired && owner.generation === this.latestGeneration && (this.lease === owner || this.lease === null);
+  }
+
+  private restart(reason: string, expected?: ServerLease): boolean {
+    if (expected && !this.canRecover(expected)) return false;
     const child = this.child;
-    if (!child) return;
+    if (!child) return true;
     if (this.lease) this.lease.retired = true;
     if (this.inputFailure?.child === child) {
       try { killGroup(child); } catch { /* A repeated Stop still needs closure. */ }
-      return;
+      return true;
     }
     this.disconnect(new CodexError(reason, { pid: child.pid }));
     killGroup(child);
+    return true;
   }
 
   async dispose(): Promise<void> {
@@ -460,21 +488,32 @@ export class CodexBackend implements Backend {
     if (local && opts.resume && !this.loaded.has(opts.resume)) return { status: "failed", error: "This conversation's native session belongs to another Codex process. Select the local target again to start a fresh conversation." };
     this.activeTurns++;
     try {
-      const first = await this.attempt(text, opts, sink, signal);
+      const firstReceipt = await this.attempt(text, opts, sink, signal), first = firstReceipt.result;
       // A local provider has no sign-in to refresh: its failures are reported once, never retried.
       if (local || first.status !== "failed" || signal.aborted || !STALE_AUTH.test(first.error ?? "")) return first;
-      // A fresh server reads ~/.codex/auth.json again. While other threads are mid-turn on this one,
-      // keep it and retry in place instead; never interrupt another thread to refresh auth.
-      const shared = this.activeTurns > 1 || this.pending.size > 0;
+      const owner = firstReceipt.owner;
+      const refused = (): TurnResult => ({ ...first, error: "Codex app-server generation is no longer available.", detail: { ...first.detail, supersededError: first.error, stage: "server generation" } });
+      // Validate at the consumer, after attempt()'s own completion and closure await.
+      if (!this.canRecover(owner)) return refused();
+      const shared = this.lease === owner && (this.activeTurns > 1 || this.pending.size > 0);
       const step = shared
         ? "retried once on the running codex app-server (other Codex turns were active)"
         : "restarted codex app-server so it reads the current sign-in, then retried once";
-      sink.notice("info", "Codex's sign-in changed since it started. Reconnecting and retrying…");
-      if (!shared) this.restart("Codex was restarted to pick up a new sign-in.");
       const opened = first.detail?.codexThreadId;
       const resume = typeof opened === "string" ? opened : opts.resume;
+      let prepared: ServerPreparation;
+      if (shared) prepared = this.prepareServer(owner);
+      else {
+        if (!this.restart("Codex was restarted to pick up a new sign-in.", owner)) return refused();
+        // A synchronous shutdown subscriber may already have started a different server.
+        if (this.lease !== null) return refused();
+        prepared = this.prepareServer();
+      }
+      // Capture the recovery lease before reporting callbacks; they may synchronously dispose it.
+      // Preparation only initializes a server. Coding starts below, after these callbacks succeed.
+      sink.notice("info", "Codex's sign-in changed since it started. Reconnecting and retrying…");
       sink.taskContextCapability?.({ state: "unavailable", reason: "configuration-not-bound" });
-      const second = await this.attempt(text, { ...opts, resume }, sink, signal);
+      const second = (await this.attempt(text, { ...opts, resume }, sink, signal, prepared)).result;
       if (second.status !== "failed") return second;
       return { ...second, detail: { ...second.detail, firstAttempt: { error: first.error, ...first.detail } }, recovery: [`${step}: failed again`] };
     } finally {
@@ -482,18 +521,22 @@ export class CodexBackend implements Backend {
     }
   }
 
-  private async attempt(text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult> {
-    if (signal.aborted) return { status: "interrupted" };
-    const readiness = this.ensure(), owner = this.lease;
-    try {
-      const result = await this.attemptOn(readiness, owner, text, opts, sink, signal);
-      // The stale-sign-in policy can recover its own server, never a disposed or superseded one.
-      // An unexpected close with no replacement keeps the established recovery behavior.
-      if (owner && result.status === "failed" && STALE_AUTH.test(result.error ?? "") && (owner.retired || (this.lease && this.lease !== owner))) {
-        return { ...result, error: "Codex app-server generation is no longer available.", detail: { ...result.detail, supersededError: result.error, stage: "server generation" } };
-      }
-      return result;
-    } finally {
+  private prepareServer(expected?: ServerLease): ServerPreparation {
+    const readiness = expected
+      ? this.current(expected) && this.ready ? this.ready : Promise.reject(new CodexError("Codex app-server generation is no longer available.", { stage: "server generation" }))
+      : this.ensure();
+    const owner = expected ?? this.lease;
+    // A reporting callback may fail before this preparation is consumed; it must not start coding
+    // or leave an unobserved setup rejection. The original promise still rejects for its consumer.
+    void readiness.catch(() => {});
+    return { readiness, owner };
+  }
+
+  private async attempt(text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal, prepared?: ServerPreparation): Promise<AttemptReceipt> {
+    if (signal.aborted && !prepared) return { result: { status: "interrupted" }, owner: null };
+    const { readiness, owner } = prepared ?? this.prepareServer();
+    try { return { result: await this.attemptOn(readiness, owner, text, opts, sink, signal), owner }; }
+    finally {
       // Only this attempt's failed generation fences its completion, never a replacement's.
       const fault = this.inputFailure;
       if (owner && fault?.child === owner.child) await fault.closed;

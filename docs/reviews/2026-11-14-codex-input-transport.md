@@ -1,0 +1,19 @@
+# Codex input transport and generation ownership
+
+## Observed failure
+
+PR #525's first merge-queue run `43565223289` tested `81fec064c5ef70ecd8dd827de3811871d2ef1dd6` and failed the Jev contrast Settings-click case. Retained Electron stderr contains an uncaught `write EPIPE` from Codex stdin; the process sample shows `NSAlert runModal`. Injected Writable failures and real subprocess pipes reproduced the uncaught transport error. These observations establish the transport defect, while the original queue timing remains unexplained. The PR remains unmerged and has not been requeued for this repair.
+
+## Candidate behavior
+
+Signed source commits `46764fe9060661f156b30f6e5a764aa57e61f9b9` and `860ecc78c4fbec0cd28d8465e0fa93b5d6567282`, plus this follow-up, install a persistent stdin error handler, settle pending RPCs and initialization write receipts, and report a fixed body-free transport failure with a bounded errno. A failed generation remains owned until its child closes. Broker delivery promises drain before request withdrawal, preserving an accepted answer as uncertain when delivery fails. Stop, disposal and late events cannot release or complete the faulted attempt early.
+
+Every asynchronous read, write, coding setup and terminal-cleanup operation retains its server lease. Health keeps that lease through its outer race before publishing account status. Stale-auth recovery carries the attempt owner to the actual restart/replay decision, prepares only its captured generation before reporting callbacks, and starts no coding turn if reporting fails. Cleanup detaches the old request registries before withdrawal callbacks can initialize a replacement. A latest-issued generation guard prevents old recovery permission returning after an intervening server starts and closes; ordinary recovery after natural closure without a replacement retains its single retry.
+
+## Validation and limits
+
+Meaningful failing controls precede the fixes: queued initialization and post-ready work crossing generations; stale-auth replay after replacement or input failure; old health publication after replacement; replacement initialization rejected by an old withdrawal callback; and old recovery becoming eligible after an intervening generation closed. The no-replacement natural-close control already passed before the latest-issued guard. The first Node fixture using `process.stdin.destroy()` was inconclusive and is retained separately; the valid real-pipe fixture uses synchronous fd0 reads without constructing Node's special stdin stream.
+
+The final affected suite passes 136 cases with 13 explicit opt-in local CLI/live skips and zero failures or cancellations. The actual private Electron regression passes once without retries: a real synthetic Node pipe fails, discovery reports the fixed error, and Settings remains responsive. Main compilation passes. Scoped agent source review found no remaining Critical or Important findings; the reviewer ran no tests or app sessions. Full local qualification, hosted checks, protected queue and independent actual-merge proof remain required. The earlier full run on `46764fe` passed build, workspace typechecks and 2,861 unit cases with 36 skips, then stopped at a stage boundary before E2E because later generation findings superseded it. That run is not a full qualification pass.
+
+Evidence lives outside disposable worktrees in `/Users/buns/Documents/Codex/2026-11-11/modex-closeout/`: the original queue artifacts and diagnosis, all first-failure logs, `codex-consumer-final-source-review.json`, `codex-latest-issued-generation-red.log`, `codex-latest-issued-generation-green-focused.log` and the private Electron results. The app check uses a synthetic Node peer in a private development profile and performs no inference. It does not establish installed-release, live-provider, physical-descendant, device or human acceptance, and no open-issue checkbox is changed on this evidence alone.

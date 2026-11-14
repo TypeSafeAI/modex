@@ -366,3 +366,186 @@ test("a child that closes before initialization cannot report the previous agent
     });
   } finally { await backend.dispose(); }
 });
+
+test("account status cannot publish after its validated reply is superseded", async () => {
+  const old = new FakeProcess(), next = new FakeProcess(); wire(old, new Set(["account/read"])); wire(next);
+  const servers = fakeSpawn([old, next]);
+  const spawn = ((file: string, args: string[], options: SpawnOptions) => {
+    if (args.includes("--version")) {
+      const version = new FakeProcess(); setImmediate(() => { version.emitRaw("codex-cli 0.164.0\n"); version.close(0); });
+      return fakeSpawn(version).spawn(file, args, options);
+    }
+    return servers.spawn(file, args, options);
+  }) as typeof servers.spawn;
+  const backend = new CodexBackend("fixture", spawn), reading = backend.health();
+  await old.waitFor(line => line.includes('"account/read"'));
+  const request = old.sent(m => m.method === "account/read")[0]!;
+  old.emitLine({ id: request.id, result: { account: { type: "chatgpt" } } });
+  let disposing: Promise<void> | undefined, replacement: Promise<unknown> | undefined;
+  queueMicrotask(() => { disposing = backend.dispose(); replacement = backend.listModels(); });
+  try {
+    assert.equal((await reading).authentication, "unknown");
+    await disposing; await replacement; assert.equal(next.killed, false);
+  } finally { await disposing; await replacement; await backend.dispose(); }
+});
+
+for (const hops of Array.from({ length: 13 }, (_, index) => index)) test(`stale-auth recovery stays owned across microtask handoff ${hops}`, async () => {
+  const old = new FakeProcess(), replacementPeer = new FakeProcess();
+  wire(old, new Set(["thread/start"])); wire(replacementPeer);
+  let initial = true, explicitReplacement = false, afterHandoff = false, unauthorizedStarts = 0;
+  const spawn = ((file: string, args: string[], options: SpawnOptions) => {
+    let peer: FakeProcess;
+    if (initial) { initial = false; peer = old; }
+    else if (explicitReplacement) { explicitReplacement = false; peer = replacementPeer; }
+    else {
+      if (afterHandoff) unauthorizedStarts++;
+      peer = new FakeProcess(); wire(peer);
+      peer.stdin.on("data", bytes => { for (const line of bytes.toString().split("\n")) {
+        if (!line.trim()) continue; const m = JSON.parse(line);
+        if (m.method === "turn/start") setImmediate(() => { if (!peer.killed) peer.emitLine({ method: "turn/completed", params: { threadId: m.params.threadId, turn: { id: `tu-${m.params.threadId}`, status: "completed" } } }); });
+      } });
+    }
+    return fakeSpawn(peer).spawn(file, args, options);
+  }) as typeof import("node:child_process").spawn;
+  // A faulty recovery may replay directly on the replacement; complete only that synthetic run.
+  replacementPeer.stdin.on("data", bytes => { for (const line of bytes.toString().split("\n")) {
+    if (!line.trim()) continue; const m = JSON.parse(line);
+    if (m.method === "turn/start") setImmediate(() => { if (!replacementPeer.killed) replacementPeer.emitLine({ method: "turn/completed", params: { threadId: m.params.threadId, turn: { id: `tu-${m.params.threadId}`, status: "completed" } } }); });
+  } });
+  const backend = new CodexBackend("fixture", spawn);
+  const running = backend.runTurn("synthetic", { cwd: "/fixture", mode: "chat", plan: false, model: "" }, collectSink().sink, new AbortController().signal);
+  await old.waitFor(line => line.includes('"thread/start"'));
+  const request = old.sent(m => m.method === "thread/start")[0]!;
+  old.emitLine({ id: request.id, error: { code: -32000, message: "Your access token could not be refreshed because you have signed in to another account." } });
+  let disposing: Promise<void> | undefined, replacement: Promise<unknown> | undefined;
+  const handoff = (remaining: number): void => {
+    if (remaining) { queueMicrotask(() => handoff(remaining - 1)); return; }
+    afterHandoff = true; disposing = backend.dispose(); explicitReplacement = true;
+    replacement = backend.listModels().then(() => "success", () => "failed");
+  };
+  handoff(hops);
+  try {
+    assert.equal((await running).status, "failed"); await disposing; await replacement;
+    assert.equal(replacementPeer.killed, false);
+    assert.equal(unauthorizedStarts, 0);
+    assert.equal(replacementPeer.sent(m => m.method === "thread/start" || m.method === "thread/resume" || m.method === "turn/start").length, 0);
+  } finally { await disposing; await replacement; await backend.dispose(); await running; }
+});
+
+test("a transport fault after stale-auth rejection cannot replay the turn", async () => {
+  const old = new FakeProcess(), next = new FakeProcess(); wire(old, new Set(["thread/start"])); wire(next);
+  next.stdin.on("data", bytes => { for (const line of bytes.toString().split("\n")) {
+    if (!line.trim()) continue; const m = JSON.parse(line);
+    if (m.method === "turn/start") setImmediate(() => { if (!next.killed) next.emitLine({ method: "turn/completed", params: { threadId: m.params.threadId, turn: { id: `tu-${m.params.threadId}`, status: "completed" } } }); });
+  } });
+  const spawn = fakeSpawn([old, next]), backend = new CodexBackend("fixture", spawn.spawn);
+  const running = backend.runTurn("synthetic", { cwd: "/fixture", mode: "chat", plan: false, model: "" }, collectSink().sink, new AbortController().signal);
+  await old.waitFor(line => line.includes('"thread/start"'));
+  const request = old.sent(m => m.method === "thread/start")[0]!;
+  old.emitLine({ id: request.id, error: { code: -32000, message: "Your access token could not be refreshed." } });
+  queueMicrotask(() => old.stdin.emit("error", Object.assign(new Error("write EPIPE"), { code: "EPIPE" })));
+  try {
+    assert.equal((await running).status, "failed");
+    assert.equal(spawn.calls.length, 1); assert.equal(next.killed, false);
+  } finally { await backend.dispose(); await running; }
+});
+
+test("recovery reporting callbacks cannot redirect the prepared attempt", async () => {
+  const old = new FakeProcess(), replacementPeer = new FakeProcess(), automatic: FakeProcess[] = [];
+  wire(old, new Set(["thread/start"])); wire(replacementPeer);
+  let initial = true, explicit = false;
+  const spawn = ((file: string, args: string[], options: SpawnOptions) => {
+    let peer: FakeProcess;
+    if (initial) { initial = false; peer = old; }
+    else if (explicit) { explicit = false; peer = replacementPeer; }
+    else { peer = new FakeProcess(); wire(peer); automatic.push(peer); }
+    return fakeSpawn(peer).spawn(file, args, options);
+  }) as typeof import("node:child_process").spawn;
+  const backend = new CodexBackend("fixture", spawn), { sink } = collectSink();
+  let disposing: Promise<void> | undefined, replacement: Promise<unknown> | undefined;
+  const running = backend.runTurn("synthetic", { cwd: "/fixture", mode: "chat", plan: false, model: "" }, { ...sink, notice: (level, text) => {
+    sink.notice(level, text);
+    if (text.includes("sign-in changed")) { disposing = backend.dispose(); explicit = true; replacement = backend.listModels(); }
+  } }, new AbortController().signal);
+  await old.waitFor(line => line.includes('"thread/start"'));
+  const request = old.sent(m => m.method === "thread/start")[0]!;
+  old.emitLine({ id: request.id, error: { code: -32000, message: "Your access token could not be refreshed." } });
+  try {
+    assert.equal((await running).status, "failed"); await disposing; await replacement;
+    assert.equal(replacementPeer.killed, false);
+    for (const peer of [...automatic, replacementPeer]) assert.equal(peer.sent(m => m.method === "thread/start" || m.method === "turn/start").length, 0);
+  } finally { await disposing; await replacement; await backend.dispose(); await running; }
+});
+
+test("failed recovery reporting cannot leave an orphan coding turn", async () => {
+  const old = new FakeProcess(), next = new FakeProcess(); wire(old, new Set(["thread/start"])); wire(next);
+  const backend = new CodexBackend("fixture", fakeSpawn([old, next]).spawn), { sink } = collectSink();
+  const running = backend.runTurn("synthetic", { cwd: "/fixture", mode: "chat", plan: false, model: "" }, { ...sink, notice: (level, text) => {
+    if (text.includes("sign-in changed")) throw new Error("synthetic reporting failure");
+    sink.notice(level, text);
+  } }, new AbortController().signal);
+  await old.waitFor(line => line.includes('"thread/start"'));
+  const request = old.sent(m => m.method === "thread/start")[0]!;
+  old.emitLine({ id: request.id, error: { code: -32000, message: "Your access token could not be refreshed." } });
+  try {
+    await assert.rejects(running, /synthetic reporting failure/);
+    for (let i = 0; i < 5; i++) await tick();
+    assert.equal(next.sent(m => m.method === "thread/start" || m.method === "turn/start").length, 0);
+  } finally { await backend.dispose(); }
+});
+
+test("a native withdrawal callback cannot reject replacement initialization", async () => {
+  const old = new FakeProcess(), next = new FakeProcess(); wire(old); wire(next, new Set(["initialize"]));
+  const backend = new CodexBackend("fixture", fakeSpawn([old, next]).spawn), { sink } = collectSink();
+  let displayed = false, settled = false, replacement: Promise<string> | undefined;
+  const running = backend.runTurn("synthetic", { cwd: "/fixture", mode: "chat", plan: false, model: "" }, { ...sink, question: (_request, withdrawn) => new Promise<QuestionReply>(resolve => {
+    displayed = true;
+    withdrawn?.addEventListener("abort", () => {
+      replacement = backend.listModels().then(() => { settled = true; return "success"; }, () => { settled = true; return "failed"; });
+      resolve({ withdrawn: "native" });
+    }, { once: true });
+  }) }, new AbortController().signal);
+  await old.waitFor(line => line.includes('"turn/start"')); await tick();
+  const start = old.sent(m => m.method === "turn/start")[0]!;
+  old.emitLine({ id: 778, method: "item/tool/requestUserInput", params: { threadId: start.params.threadId, turnId: `tu-${start.params.threadId}`, itemId: "old-question", questions: [{ id: "q", header: "Choice", question: "Pick one", isOther: false, isSecret: false, options: [{ label: "a", description: "" }, { label: "b", description: "" }] }] } });
+  for (let i = 0; i < 5 && !displayed; i++) await tick(); assert.equal(displayed, true);
+  const disposing = backend.dispose(); await tick();
+  const initialize = next.sent(m => m.method === "initialize")[0]!;
+  try {
+    assert.equal(settled, false, "old disconnect must not clear a newly registered initialization RPC");
+    next.emitLine({ id: initialize.id, result: { userAgent: "replacement" } });
+    assert.equal(await replacement, "success"); await disposing; await running;
+    assert.equal(next.killed, false);
+  } finally {
+    if (initialize) next.emitLine({ id: initialize.id, result: { userAgent: "replacement" } });
+    await disposing; await backend.dispose(); await running; await replacement;
+  }
+});
+
+for (const intervening of [false, true]) test(`natural-close stale-auth recovery ${intervening ? "refuses a closed intervening generation" : "retains its single retry without a replacement"}`, async () => {
+  const old = new FakeProcess(), replacement = new FakeProcess(), recovery = new FakeProcess();
+  wire(old, new Set(["thread/start"])); wire(replacement); wire(recovery);
+  recovery.stdin.on("data", bytes => { for (const line of bytes.toString().split("\n")) {
+    if (!line.trim()) continue; const m = JSON.parse(line);
+    if (m.method === "turn/start") setImmediate(() => recovery.emitLine({ method: "turn/completed", params: { threadId: m.params.threadId, turn: { id: `tu-${m.params.threadId}`, status: "completed" } } }));
+  } });
+  const spawn = fakeSpawn(intervening ? [old, replacement, recovery] : [old, recovery]);
+  const backend = new CodexBackend("fixture", spawn.spawn);
+  const running = backend.runTurn("synthetic", { cwd: "/fixture", mode: "chat", plan: false, model: "" }, collectSink().sink, new AbortController().signal);
+  await old.waitFor(line => line.includes('"thread/start"'));
+  old.stderr.write("Your access token could not be refreshed.");
+  // Deliver the native close events synchronously so both generations close before
+  // the old rejected RPC's Promise continuations consume their stale-auth result.
+  old.exitCode = 1; old.emit("close", 1, null);
+  let reading: Promise<unknown> | undefined;
+  if (intervening) {
+    reading = backend.listModels().catch(() => undefined);
+    replacement.exitCode = 0; replacement.emit("close", 0, null);
+  }
+  try {
+    assert.equal((await running).status, intervening ? "failed" : "completed");
+    await reading;
+    assert.equal(spawn.calls.length, 2, "only the latest issued generation may recover after natural closure");
+    assert.equal(replacement.sent(m => m.method === "thread/start" || m.method === "turn/start").length, 0);
+  } finally { await reading; await backend.dispose(); await running; }
+});
