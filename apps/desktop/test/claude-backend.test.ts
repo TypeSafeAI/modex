@@ -9,6 +9,21 @@ import { PNG_B64, tmpdir } from "./helpers.js";
 import { fileURLToPath } from "node:url";
 import { claudeCall } from "../src/main/engine/backends/usage.js";
 
+test("Claude reports proposal capability from its connection status rather than argv alone", async () => {
+  for (const state of ["connected", "failed", "missing", "unconfigured"] as const) for (const resume of [undefined, "saved-session"]) {
+    const proc = new FakeProcess(), backend = new ClaudeBackend("claude", fakeSpawn(proc).spawn), reports: unknown[] = [];
+    const sink = Object.assign(collectSink().sink, { taskContextCapability: (value: unknown) => reports.push(value) });
+    try {
+      const run = backend.runTurn("hello", { cwd: "/repo", mode: "chat", plan: false, model: "", resume, ...(state === "unconfigured" ? {} : { taskContext: { url: "http://127.0.0.1:1234/private", instructions: "METADATA ONLY" } }) }, sink, new AbortController().signal);
+      await proc.waitFor(line => line.includes('"type":"user"'));
+      proc.emitLine({ type: "system", subtype: "init", session_id: "s", ...(state === "missing" ? {} : { mcp_servers: [{ name: "modex_task_context", status: state === "unconfigured" ? "connected" : state }] }) });
+      proc.emitLine({ type: "result", subtype: "success", result: "done" }); proc.close(0); const result = await run;
+      const expected = state === "connected" ? { state: "available" } : { state: "unavailable", reason: "configuration-not-bound" };
+      assert.deepEqual((result as unknown as { taskContextCapability: unknown }).taskContextCapability, expected); assert.deepEqual(reports.at(-1), expected);
+    } finally { await backend.dispose(); }
+  }
+});
+
 test("attached images become base64 blocks on the user message; text and other files stay as text", () => {
   assert.equal(userContent("hi"), "hi");
   assert.equal(userContent("hi", [{ name: "a.pdf", mime: "application/pdf", kind: "file", path: "/x/a.pdf" }]), "hi");
@@ -34,6 +49,18 @@ test("ClaudeBackend writes attached images into the stream-json user message", a
   assert.equal(first.message.content[1]!.source!.data, PNG_B64);
   proc.emitLine({ type: "result", subtype: "success", is_error: false, result: "ok", session_id: "s" });
   assert.equal((await run).status, "completed");
+});
+
+test("Claude exposes only propose_refs for metadata in Plan/Chat and refreshes config on resume", () => {
+  for (const resume of [undefined, "previous-session"]) for (const plan of [false, true]) {
+    const taskContext = { url: `http://127.0.0.1:1234/mcp/${resume ?? "fresh"}-${plan}`, instructions: "Candidates only" };
+    const args = ClaudeBackend.args({ cwd: "/repo", mode: "chat", plan, model: "", resume, taskContext });
+    assert.ok(args.includes("--mcp-config"));
+    assert.deepEqual(JSON.parse(args[args.indexOf("--mcp-config") + 1]!), { mcpServers: { modex_task_context: { type: "http", url: taskContext.url } } });
+    assert.deepEqual(args.slice(args.indexOf("--allowedTools") + 1), ["mcp__modex_task_context__propose_refs"]);
+    assert.equal(args[args.indexOf("--append-system-prompt") + 1], "Candidates only");
+    assert.equal(args[args.indexOf("--permission-mode") + 1], plan ? "plan" : "manual");
+  }
 });
 
 test("Claude attaches Pages and knowledge together with exact session tool allowlists", () => {
@@ -378,7 +405,7 @@ test("ClaudeBackend reads usage from a captured stream-json turn; a turn without
   const none = new ClaudeBackend("claude", fakeSpawn(bare).spawn).runTurn("go", { cwd: "/repo", mode: "chat", plan: false, model: "" }, collectSink().sink, new AbortController().signal);
   await bare.waitFor((l) => l.includes('"type":"user"'));
   bare.emitLine({ type: "result", subtype: "success", is_error: false, result: "ok", session_id: "s" });
-  assert.deepEqual(await none, { status: "completed" });
+  assert.deepEqual(await none, { status: "completed", taskContextCapability: { state: "unavailable", reason: "configuration-not-bound" } });
 });
 
 test("ClaudeBackend drops the CLI's synthetic credit refusal reply and fails the turn with its words", async () => {

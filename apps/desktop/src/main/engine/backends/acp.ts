@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { CliExecutable } from "../cli-path.js";
 import { generateTitle } from "../titles.js";
 import type { Backend, ModelInfo, NativeRequest, TitleOptions, TurnOptions, TurnResult, TurnSink } from "./types.js";
-import { LineBuffer, stderrTail, writeJsonResponse } from "./types.js";
+import { LineBuffer, stderrTail, writeJsonResponse, withTaskContextCapability } from "./types.js";
 import { UsageMeter, withUsage } from "./usage.js";
 import { cliEnvironment, cliSpawn, health, installation, probe } from "./health.js";
 import type { ApprovalAnswer, BackendHealth, Mode } from "../../../shared/types.js";
@@ -241,6 +241,9 @@ export class AcpBackend implements Backend {
   }
 
   async runTurn(text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult> {
+    return withTaskContextCapability({ state: "unavailable", reason: "unsupported-adapter" }, sink, reported => this.runAcpTurn(text, opts, reported, signal));
+  }
+  private async runAcpTurn(text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult> {
     if (signal.aborted) return { status: "interrupted" };
     // CR-6 review snapshots need a read-only, hook-free, prompt-free mode. The ACP server has no such mode: refuse rather than run loosely.
     if (opts.confinement) return { status: "failed", error: `${this.family.label} has no confined review mode; Code Review runs on Claude.`, detail: { stage: "confinement" } };

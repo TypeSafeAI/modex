@@ -542,3 +542,17 @@ test("Codex: a message that keeps streaming after a command starts stays one mes
   const items = conversation((await codexTurn(lines)).items);
   assert.deepEqual(items.map((i) => [i.kind, i.kind === "tool" ? i.outcome : i.text]), [["assistant", "Running the tests now."], ["tool", "succeeded"]]);
 });
+
+
+test("native input availability survives journal replay and accepts only static field addresses", () => {
+  const turn: TurnRef = { thread: "T", turn: "U", attempt: "A", backend: "claude" };
+  const event = { schema: CONVERSATION_SCHEMA, id: "E", seq: 1, at: "2026-11-13T00:00:00.000Z", turn, native: { runtime: "R", item: "I" }, type: "tool.start", tool: { name: "Read", title: "Read target", args: { file_path: "[redacted]" }, displayOnlyInputs: true, unavailableInputs: ["args.file_path"] } };
+  const parsed = parseConversationEvent(event); assert.ok(parsed);
+  const restored = projectConversation([{ schema: CONVERSATION_SCHEMA, id: "start", seq: 1, at: event.at, turn, type: "attempt.start" }, { ...parsed, seq: 2 }]);
+  const tool = restored.items.find(item => item.kind === "tool");
+  assert.ok(tool?.kind === "tool"); assert.deepEqual(tool.unavailableInputs, ["args.file_path"]);
+  for (const value of [["secret-value"], ["args.content"], "args.file_path", [null], Array(10_001).fill("args.file_path"), ["exec.actions.-1.path"], ["args.files.0.secret-value"]]) {
+    assert.equal(parseConversationEvent({ ...event, tool: { ...event.tool, unavailableInputs: value } }), null);
+    assert.equal(parseConversationEvent({ ...event, type: "tool.done", outcome: "succeeded", progress: { unavailableInputs: value } }), null);
+  }
+});

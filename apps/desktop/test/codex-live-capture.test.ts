@@ -102,7 +102,7 @@ test("live Codex (gpt-6.1-sol): the requestUserInput clarification, the edit and
     // Codex parsed `cat check.js greeting.txt` and the rg listing as "unknown" actions, so they are not reads.
     assert.deepEqual(record.context?.files.map((f) => [f.path, f.relations]), [["greeting.txt", ["changed"]]]);
     const md = taskMarkdown(record);
-    for (const expected of ["- Should greeting.txt say hello in English or in Spanish? — English", "- `greeting.txt`", "- `/bin/zsh -lc 'node check.js'` — succeeded, exit code 0"]) assert.ok(md.includes(expected), `missing: ${expected}\n${md}`);
+    for (const expected of ["- Should greeting.txt say hello in English or in Spanish? — English", "## Context references", "- File `greeting.txt` — native-requested changed; observed changed.", "- `/bin/zsh -lc 'node check.js'` — succeeded, exit code 0"]) assert.ok(md.includes(expected), `missing: ${expected}\n${md}`);
     assert.ok(md.includes("## Plan\n\nCodex reported no plan for this turn."), md);
   } finally { await h.runner.dispose(); await codex.dispose(); }
 });

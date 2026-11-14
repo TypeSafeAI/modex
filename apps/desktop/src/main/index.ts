@@ -21,6 +21,8 @@ import { WorkspaceCanvas } from "./workspace-canvas.js";
 import { CANVAS_SCHEME } from "../shared/canvas.js";
 import { KnowledgeService } from "./engine/knowledge.js";
 import { PagesAgents } from "./engine/pages-agents.js";
+import { TaskContextCapture } from "./engine/task-context-capture.js";
+import { TaskContextAgents } from "./engine/task-context-agents.js";
 import { KnowledgeAgents } from "./engine/knowledge-agents.js";
 import { UsageLedger } from "./engine/usage-ledger.js";
 import { ANALYTICS_SCHEME, WorkspaceAnalytics } from "./workspace-analytics.js";
@@ -136,7 +138,10 @@ const knowledgeAgents = new KnowledgeAgents({
     return { notes, own: projectNotes(id, create)?.rel ?? null };
   },
 });
+const contextCapture = new TaskContextCapture();
+const taskContextAgents = new TaskContextAgents({ store });
 const pagesAgents = new PagesAgents({
+  capture: contextCapture,
   space: store.space, notes: store.space, enabled: id => store.project(id)?.pagesMaintenance === true,
   // Each project's agents work in that project's notes only (docs/pages-maintenance.md).
   scope: (id, create) => { const notes = projectNotes(id, create); return notes ? { id: notes.id, rel: notes.rel } : null; },
@@ -245,7 +250,7 @@ const attachments = new AttachmentStore(path.join(home, "attachments"), {
 // before startup inspection can update the installed-version receipt.
 attachments.setRecoveryRetention(null);
 const usageLedger = new UsageLedger(store.dir);
-const runner = new ThreadRunner({ beforeSend: thread => { if (thread.localTarget === undefined) media?.beforeSend(thread); }, imageOutcome: (id, status) => media?.jobs.outcome(id, status), ...((demo || process.env.MODEX_E2E) ? { imageBackend: imageFixtureBackend } : {}), images: { prepare: (thread, signal) => { if (media) return media.jobs.prepare(thread, signal); return Promise.resolve(undefined); } }, home, store, emit, secrets, knowledge: knowledgeAgents, pages: pagesAgents, usage: usageLedger, backends: { codex: accountCodex, claude: accountClaude }, claudeAccounts, attachments, beforeDeleteThread: (id) => terminals.close(id), withOwnerRemoval });
+const runner = new ThreadRunner({ contextCapture, taskContext: taskContextAgents, beforeSend: thread => { if (thread.localTarget === undefined) media?.beforeSend(thread); }, imageOutcome: (id, status) => media?.jobs.outcome(id, status), ...((demo || process.env.MODEX_E2E) ? { imageBackend: imageFixtureBackend } : {}), images: { prepare: (thread, signal) => { if (media) return media.jobs.prepare(thread, signal); return Promise.resolve(undefined); } }, home, store, emit, secrets, knowledge: knowledgeAgents, pages: pagesAgents, usage: usageLedger, backends: { codex: accountCodex, claude: accountClaude }, claudeAccounts, attachments, beforeDeleteThread: (id) => terminals.close(id), withOwnerRemoval });
 let mediaInitializationError: string | undefined;
 try { media = new Media({ home, store, runner: () => runner, window: () => win, pathReady, offline: Boolean(demo || process.env.MODEX_E2E), changed: kind => {
   if (win && !win.isDestroyed()) win.webContents.send("media:event", { kind });
@@ -304,6 +309,7 @@ async function withOwnerRemoval(scope: DraftRemovalScope, operation: () => Promi
   return ownerRemoval.run(scope, operation);
 }
 function invalidateNativeDocument(): void {
+  runner.invalidateContextDocument();
   ownerRemoval.invalidate();
   rendererPreflight.invalidate();
   recoveryQuitPreflight.invalidate(); recoveryQuitOperation = undefined;
@@ -559,7 +565,7 @@ function drainServices(): Promise<void> {
   modexAccount.cancel(); chatgpt.cancel(); claudeLogin.cancel(); retirer.stop();
   drainingServices = (async () => {
     // Start every disposer even if another throws before returning its promise.
-    const operations = [() => media?.dispose(), () => pagesAgents.dispose(), () => knowledgeAgents.dispose().then(() => knowledge.dispose()),
+    const operations = [() => media?.dispose(), () => pagesAgents.dispose(), () => taskContextAgents.dispose(), () => knowledgeAgents.dispose().then(() => knowledge.dispose()),
       () => desktopHost?.dispose(), () => companion.dispose(), () => terminals.dispose(), () => runner.dispose(), () => codeReviewAgent.dispose()];
     const results = await Promise.allSettled(operations.map(dispose => Promise.resolve().then(dispose)));
     modexAccount.dispose(); chatgpt.dispose();
@@ -813,8 +819,19 @@ handle("project:remove", async ({ projectId }) => {
   await runner.removeProject(projectId);
   return store.snapshot();
 });
-handle("thread:create", ({ projectId, worktree, mode, model, backend, auto }) => runner.createThread(projectId, { worktree, mode, model, backend, auto }));
+handle("thread:create", ({ projectId, worktree, mode, model, backend, auto, contextDraft }, event) => {
+  if (contextDraft !== undefined && !event) throw new Error("Select draft context from this Mac.");
+  return runner.createThread(projectId, { worktree, mode, model, backend, auto, contextDraft });
+});
 handle("thread:items", ({ threadId }) => runner.items(threadId));
+handle("task:context-draft-open", ({ owner }) => runner.openContextDraft(owner), { localOnly: true });
+handle("task:context-draft-select", ({ binding, targets }) => runner.selectTaskContext(binding, targets), { localOnly: true });
+handle("task:context-draft-close", ({ binding }) => runner.closeContextDraft(binding), { localOnly: true });
+handle("task:context-candidates", ({ binding }) => runner.taskContextCandidates(binding), { localOnly: true });
+handle("task:context-draft", ({ binding }) => runner.draftTaskContext(binding), { localOnly: true });
+handle("task:context", ({ threadId, turnId }) => runner.taskContext(threadId, turnId), { localOnly: true });
+handle("task:context-confirm", ({ threadId, turnId, expectedRevision, refIds }) => runner.confirmTaskContext(threadId, turnId, expectedRevision, refIds), { localOnly: true });
+handle("task:check-confirm", ({ threadId, turnId, expectedRevision, itemId, refIds }) => runner.confirmTaskCheck(threadId, turnId, expectedRevision, itemId, refIds), { localOnly: true });
 handle("task:save-note", ({ threadId, turnId }) => runner.saveTaskNote(threadId, turnId));
 handle("task:note", ({ pageId }) => runner.taskNote(pageId));
 handle("thread:followup", ({ threadId }) => runner.followUp(threadId));
@@ -837,7 +854,7 @@ async function startTurn(threadId: string, run: Promise<void>): Promise<{ ok: bo
   accepting = false;
   return earlyError !== undefined ? { ok: false, error: earlyError } : { ok: true };
 }
-handle("thread:send", ({ threadId, text, attachments: files }, event) => startTurn(threadId, runner.send(threadId, text, files, event ? "desktop" : "paired-desktop")));
+handle("thread:send", ({ threadId, text, attachments: files, contextDraft }, event) => startTurn(threadId, runner.send(threadId, text, files, event ? "desktop" : "paired-desktop", contextDraft)));
 registerAttachmentCommands(handle, attachments, { bytesOnly: false, reveal: (abs) => shell.showItemInFolder(abs) });
 handle("attachments:pick", async (req) => {
   // Explicit renderer paths keep the strict whole-request guard. Only the native dialog's

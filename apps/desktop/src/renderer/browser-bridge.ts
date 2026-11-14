@@ -42,6 +42,7 @@ export function createBrowserBridge(): ModexBridge {
   if (import.meta.hot) import.meta.hot.dispose(disconnect);
   return {
     platform: "web",
+    taskContextEditing: true,
     pickFiles: () => new Promise<File[]>((resolve, reject) => {
       const input = document.createElement("input");
       input.type = "file"; input.multiple = true; input.hidden = true;

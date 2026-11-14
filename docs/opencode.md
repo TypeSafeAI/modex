@@ -67,6 +67,8 @@ models by its generic rules. Overrides for the executables are verified with `--
 
 ## What is not there
 
+The CF-7 completion candidate records `unsupported-adapter` proposal capability for each OpenCode/MiMo attempt, including fresh, resumed and loaded sessions. This receipt is metadata only: it does not attach the independent `propose_refs` MCP tool, advertise its instructions, or change execution, Notes or permission policy. Native transport support and a future implementation would need separate qualification; ordinary MCP setup elsewhere does not establish support for this scoped channel.
+
 - **No confined review mode.** Code Review (CR-6) turns are refused; they run on Claude.
 - **No Modex MCP tools.** Knowledge, Space pages and image tools are not attached; their
   instructions go in as text with a notice, and the agent cannot call them.

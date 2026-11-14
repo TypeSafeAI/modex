@@ -23,6 +23,18 @@ function fixture(shortExpiry = false) {
   return { backend, calls, select: (id: string) => { active = id; }, renew: () => { renewed = true; } };
 }
 
+test("an account registers its already-leased credential before the native child starts", async () => {
+  const f = fixture(), protectedValues: string[] = [], collected = collectSink();
+  try {
+    const sink = Object.assign(collected.sink, { protectCredential: (value: string) => { assert.equal(f.calls.length, 0); protectedValues.push(value); } });
+    const run = f.backend.runTurn("hello", { cwd: "/repo", mode: "chat", plan: false, model: "", account: "account-a" }, sink, new AbortController().signal);
+    while (!f.calls.length) await new Promise(resolve => setTimeout(resolve, 5));
+    await f.calls[0]!.child.waitFor(line => line.includes('"turn/start"'));
+    f.calls[0]!.child.emitLine({ method: "turn/completed", params: { threadId: "thread-0", turn: { id: "turn", status: "completed" } } }); await run;
+    assert.deepEqual(protectedValues, ["SECRET-account-a"]);
+  } finally { await f.backend.dispose(); }
+});
+
 test("accounts own distinct Codex children, token environments and resume paths", async () => {
   const f = fixture(); const sink = collectSink(); const controller = new AbortController();
   try {

@@ -35,6 +35,8 @@ test("Store browser guests belong to the client and hide while its host is disco
     await page.getByLabel("Connection link", { exact: true }).fill(link);
     await page.getByRole("button", { name: "Connect to my Mac" }).click();
     await expect(tid(page, "draft-view")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Context for next request", exact: true })).toHaveCount(0);
+    await expect(page.evaluate(() => window.modex!.invoke("task:context-draft-open", { owner: { kind: "project", projectId: "p1", key: "draft:0:p1" } }))).rejects.toThrow(/Unknown desktop command/);
     await createThread(page, "Browse in the Store client");
     const tabs = page.locator('.workspace-tabs [role="tab"]');
     const initialTabs = await tabs.count();

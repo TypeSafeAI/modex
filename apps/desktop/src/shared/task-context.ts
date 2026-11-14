@@ -7,8 +7,10 @@
  */
 import { finalAnswerIndex, type ExecutionOutcome, type PlanSource, type PlanStep } from "./conversation-events.js";
 import type { ThreadItem } from "./types.js";
+import { copyTaskContextEvidence, isTaskContextEvidence, isTaskCommandText, isCommandOmission, OMITTED_COMMAND, taskContextBelongsTo, type CommandOmission, type TaskContextEvidence } from "./task-context-evidence.js";
+export * from "./task-context-evidence.js";
 
-export interface TaskCommand { command: string; outcome: ExecutionOutcome; exitCode?: number | null }
+export interface TaskCommand { command: string; outcome: ExecutionOutcome; exitCode?: number | null; commandOmission?: CommandOmission; itemId?: string }
 
 /** A check the turn ran: a test, build, typecheck or lint command. `stale`: something that may change files ran after it. */
 export interface TaskCheck extends TaskCommand { passed: boolean; stale: boolean }
@@ -19,6 +21,8 @@ export interface TaskVerification {
   checks: TaskCheck[];
   /** Edits the turn made (patch tools not denied). With none and no check, there is nothing to verify. */
   edits: number;
+  /** Modern provenance is limited to timed snapshots, never subprocess input attestation. */
+  basis?: "context-snapshots";
 }
 
 /** A command as the CLI reported it, shown as the script when the whole of it is `sh`/`bash`/`zsh -c '…'`. */
@@ -54,6 +58,8 @@ export interface TaskRecord {
   /** The project files the turn touched, by what the CLI reported. */
   context?: TaskContext;
   answer?: string;
+  /** Main-owned timed provenance, frozen at Save; omitted for legacy turns. */
+  contextEvidence?: TaskContextEvidence;
 }
 
 /**
@@ -76,6 +82,8 @@ export interface TaskSnapshot {
 /** A saved task note, reopened read-only: the record as saved, and what has happened to the note since. */
 export interface TaskNoteView {
   record: TaskRecord;
+  pageId: string;
+  projectId: string;
   threadId: string;
   turnId: string;
   savedAt: string;
@@ -101,13 +109,14 @@ export function isTaskSnapshot(value: unknown): value is TaskSnapshot {
   return typeof v === "object" && v !== null && v.version === 1 && typeof v.pageId === "string" && Number.isInteger(v.revision)
     && typeof v.projectId === "string" && typeof v.threadId === "string" && typeof v.turnId === "string" && typeof v.savedAt === "string"
     && typeof r === "object" && r !== null && typeof r.title === "string" && typeof r.request === "string" && strings(r.files)
-    && Number.isInteger(r.outsideFiles) && Array.isArray(r.commands) && r.commands.every((c) => typeof c?.command === "string")
+    && Number.isInteger(r.outsideFiles) && Array.isArray(r.commands) && r.commands.every((c) => isTaskCommandText(c) && (c.itemId === undefined || portableItemId(c.itemId)))
     && Array.isArray(r.clarifications) && r.clarifications.every((c) => typeof c?.question === "string" && (c.answer === null || strings(c.answer)))
     && (r.plan === undefined || (Array.isArray(r.plan.steps) && r.plan.steps.every((s) => typeof s?.text === "string" && typeof s.status === "string")))
-    && (r.verification === undefined || (typeof r.verification.state === "string" && Array.isArray(r.verification.checks) && r.verification.checks.every((c) => typeof c?.command === "string")))
+    && (r.verification === undefined || (typeof r.verification.state === "string" && Array.isArray(r.verification.checks) && r.verification.checks.every(isTaskCommandText)))
     && (r.context === undefined || (Array.isArray(r.context.files) && r.context.files.every((f) => typeof f?.path === "string" && strings(f.relations)) && Number.isInteger(r.context.outside)
-      && (r.context.unlisted === undefined || strings(r.context.unlisted))))
-    && (r.answer === undefined || typeof r.answer === "string");
+      && (r.context.unlisted === undefined || strings(r.context.unlisted)) && validUnlistedOmissions(r.context)))
+    && (r.answer === undefined || typeof r.answer === "string")
+    && (r.contextEvidence === undefined || (isTaskContextEvidence(r.contextEvidence) && taskContextBelongsTo(r.contextEvidence, v.threadId, v.turnId, v.projectId)));
 }
 
 /** A question the CLI asked, with the answer as its card shows it. Nothing is filled in that the card does not hold. */
@@ -150,7 +159,7 @@ function proposedPlan(item: ThreadItem): boolean {
   return item.kind === "assistant" && item.nativePhase === "plan" && Boolean(item.text.trim());
 }
 
-export function taskRecord(items: readonly ThreadItem[], opts: { threadId: string; title: string; cwd: string }): TaskRecord {
+export function taskRecord(items: readonly ThreadItem[], opts: { threadId: string; title: string; cwd: string; contextEvidence?: TaskContextEvidence }): TaskRecord {
   const user = items.find((item) => item.kind === "user");
   const rest = items.filter((item) => item.kind !== "user");
   const plan = [...rest].reverse().find((item) => item.kind === "plan");
@@ -168,27 +177,31 @@ export function taskRecord(items: readonly ThreadItem[], opts: { threadId: strin
     // A question the agent asked in its message has no answer in this turn: the next message is the answer.
     if (item.kind === "assistant") for (const ask of item.asks ?? []) clarifications.push({ question: ask.title, answer: null, closed: "message" });
     if (item.kind !== "tool") continue;
-    if (PATCH_TOOLS.has(item.name)) {
+    if (PATCH_TOOLS.has(item.name) && !item.displayOnlyInputs) {
       for (const file of patchFiles(item)) {
         const rel = relative(file, opts.cwd);
         if (rel === null) outsideFiles++;
         else files.add(rel);
       }
     }
-    if (item.exec) commands.push({ command: item.exec.command, outcome: item.outcome ?? (item.ok === true ? "succeeded" : "unknown"), ...(item.exitCode !== undefined ? { exitCode: item.exitCode } : {}) });
+    if (item.exec) commands.push({ command: item.exec.command, ...(!isPortableCommand(item.exec.command) && portableItemId(item.id) ? { itemId: item.id } : {}), outcome: item.outcome ?? (item.ok === true ? "succeeded" : "unknown"), ...(item.exitCode !== undefined ? { exitCode: item.exitCode } : {}) });
   }
+  const evidence = opts.contextEvidence ?? (user?.kind === "user" ? user.contextEvidence : undefined);
+  if (evidence !== undefined && (!isTaskContextEvidence(evidence) || !user || !taskContextBelongsTo(evidence, opts.threadId, user.id))) throw new Error("Task context does not belong to this request.");
+  const context = taskContext(items, opts.cwd, evidence);
   const final = finalAnswerIndex(rest);
   const answer = final >= 0 ? rest[final] : undefined;
   const missing = noPlan(rest);
   const proposed = [...rest].reverse().find(proposedPlan);
-  return {
+  return portableTaskRecord({
+    ...(evidence !== undefined ? { contextEvidence: copyTaskContextEvidence(evidence) } : {}),
     title: opts.title, threadId: opts.threadId, request: user?.kind === "user" ? user.text : "",
     ...(plan?.kind === "plan" ? { plan: { steps: plan.steps, from: plan.from, revision: plan.revision } } : {}),
     ...(proposed?.kind === "assistant" ? { proposedPlan: proposed.text.trim() } : {}),
     ...(missing ? { noPlan: missing } : {}),
-    files: [...files], outsideFiles, commands, clarifications, verification: verification(rest), context: taskContext(rest, opts.cwd),
+    files: evidence === undefined ? [...files] : context.files.filter(file => file.relations.includes("changed")).map(file => file.path), outsideFiles, commands, clarifications, verification: verification(rest, evidence), context,
     ...(answer?.kind === "assistant" && answer !== proposed && answer.text.trim() ? { answer: answer.text.trim() } : {}),
-  };
+  });
 }
 
 export const PROPOSED_WORDS = "Codex proposed this plan in plan mode. Its steps have no statuses.";
@@ -196,7 +209,9 @@ const STEP_WORDS: Record<PlanStep["status"], string> = { pending: "not started",
 const FROM_WORDS: Record<PlanSource, string> = { "codex-plan": "Codex's plan", "claude-todo": "Claude's todo list", "claude-tasks": "Claude's task list", "acp-plan": "The agent's plan" };
 
 /** The record as portable Markdown for a note. */
-export function taskMarkdown(record: TaskRecord): string {
+export function taskMarkdown(record: TaskRecord, options: { fullContext?: boolean } = {}): string {
+  record = portableTaskRecord(record);
+  const evidence = record.contextEvidence === undefined ? undefined : copyTaskContextEvidence(record.contextEvidence);
   const lines: string[] = [`# ${record.title}`, ""];
   if (record.request.trim()) lines.push(...record.request.trim().split("\n").map((line) => `> ${line}`), "");
   const clarifications = record.clarifications ?? [];
@@ -210,24 +225,49 @@ export function taskMarkdown(record: TaskRecord): string {
   }
   if (record.files.length || record.outsideFiles) {
     lines.push("## Files changed", "");
-    for (const file of record.files) lines.push(`- \`${file}\``);
+    if (evidence) lines.push(`${record.files.length} project ${record.files.length === 1 ? "file" : "files"} changed; recorded relations are in Context references below.`);
+    else for (const file of record.files) lines.push(`- \`${file}\``);
     if (record.outsideFiles) lines.push(`- ${record.outsideFiles} ${record.outsideFiles === 1 ? "file" : "files"} outside the project (not named)`);
     lines.push("");
   }
   const context = record.context;
   const unlisted = context?.unlisted ?? [];
-  if (context && (context.files.length || context.outside || unlisted.length)) {
+  if (context && ((!evidence && context.files.length) || context.outside || unlisted.length)) {
     lines.push("## Files the turn touched", "", "As the CLI reported them. Modex did not index the project.", "");
-    for (const file of context.files.slice(0, CONTEXT_SHOWN)) lines.push(`- \`${file.path}\` — ${file.relations.join(", ")}`);
-    if (context.files.length > CONTEXT_SHOWN) lines.push(`- and ${context.files.length - CONTEXT_SHOWN} more`);
+    if (!evidence) {
+      for (const file of (options.fullContext ? context.files : context.files.slice(0, CONTEXT_SHOWN))) lines.push(`- \`${file.path}\` — ${file.relations.join(", ")}`);
+      if (!options.fullContext && context.files.length > CONTEXT_SHOWN) lines.push(`- and ${context.files.length - CONTEXT_SHOWN} more`);
+    }
     if (context.outside) lines.push(`- ${context.outside} outside the project (not named)`);
     if (context.files.length || context.outside) lines.push("");
     if (unlisted.length) {
       lines.push(UNLISTED_WORDS, "");
-      for (const command of unlisted.slice(0, CONTEXT_SHOWN)) lines.push(`- \`${command.replace(/`/g, "'")}\``);
-      if (unlisted.length > CONTEXT_SHOWN) lines.push(`- and ${unlisted.length - CONTEXT_SHOWN} more`);
+      for (const [index, command] of (options.fullContext ? unlisted : unlisted.slice(0, CONTEXT_SHOWN)).entries()) {
+        const omission = context.unlistedOmissions?.find(row => row.index === index)?.omission;
+        lines.push(`- ${omission ? omittedCommandLabel(omission) : `\`${command.replace(/`/g, "'")}\``}`);
+      }
+      if (!options.fullContext && unlisted.length > CONTEXT_SHOWN) lines.push(`- and ${unlisted.length - CONTEXT_SHOWN} more`);
       lines.push("");
     }
+  }
+  if (evidence?.refs.length) {
+    const captures = new Map(evidence.captures.map(capture => [capture.id, capture]));
+    const refs = options.fullContext ? evidence.refs : evidence.refs.slice(0, CONTEXT_SHOWN);
+    lines.push("## Context references", "", "Snapshots record timed observations; process input bytes remain unverified.", "");
+    for (const ref of refs) {
+      const label = ref.target.kind === "file" ? `File ${contextCode(ref.target.path)}` : ref.target.kind === "note" ? `Note ${contextCode(ref.target.pageId)}` : `Notes file ${contextCode(ref.target.id)}`;
+      const relations = [...new Set(ref.relations.map(relation => relation.provenance === "user-confirmed" ? "human-confirmed relevance" : relation.provenance === "model-proposed" ? `model-proposed ${relation.role ?? "relevance"}` : `${relation.provenance} ${relation.kind}`))];
+      let row = `- ${label}${relations.length ? ` — ${relations.join("; ")}` : ""}. ${ref.captureIds.length} retained captures.`;
+      const capture = ref.captureIds.map(id => captures.get(id)).filter(c => c !== undefined).at(-1);
+      if (capture) {
+        const revision = capture.revision.state === "available" ? `SHA-256 ${capture.revision.digest}, ${capture.revision.bytes} bytes` : `revision unavailable: ${capture.revision.reason}`;
+        row += ` Retained capture: ${capture.phase}, ${capture.startedAt} → ${capture.finishedAt}; ${revision}${capture.noteVersion ? `; Note revision ${capture.noteVersion.revision} (${capture.noteVersion.via})` : ""}.`;
+      }
+      lines.push(row);
+    }
+    if (!options.fullContext && evidence.refs.length > CONTEXT_SHOWN) lines.push("", `${evidence.refs.length - CONTEXT_SHOWN} more context references are retained. Use the full record export for every reference and provenance receipt.`);
+    else if (!options.fullContext) lines.push("", "Use the full record export for all provenance receipts, captures and check-reference mappings.");
+    lines.push("");
   }
   if (record.commands.length) {
     lines.push("## Commands", "");
@@ -236,21 +276,29 @@ export function taskMarkdown(record: TaskRecord): string {
   }
   const checked = record.verification;
   if (checked && (checked.checks.length || record.files.length || record.outsideFiles)) {
-    lines.push("## Verification", "", VERIFICATION_WORDS[checked.state], "");
+    lines.push("## Verification", "", verificationWords(checked), "");
     if (checked.checks.length) lines.push(...checked.checks.map((check) => `- ${commandLine(check)}${check.stale ? " (ran before a later change)" : ""}`), "");
   }
   if (record.answer) lines.push("## Answer", "", record.answer, "");
   // A check a later fix superseded is settled by what came after it; the verification line says how.
-  const superseded = new Set(checked?.checks.filter((check) => check.stale).map((check) => check.command + "\0" + check.outcome) ?? []);
+  const superseded = new Set(checked?.checks.filter((check) => check.stale).map((check) => commandKey(check) + "\0" + check.outcome) ?? []);
   const loose = [
-    ...record.commands.filter((command) => !SETTLED_WELL.has(command.outcome) && !(checked?.state === "verified" && superseded.has(command.command + "\0" + command.outcome))).map(commandLine),
+    ...record.commands.filter((command) => !SETTLED_WELL.has(command.outcome) && !(checked?.state === "verified" && superseded.has(commandKey(command) + "\0" + command.outcome))).map(commandLine),
     ...(record.plan?.steps.filter((step) => step.status !== "completed").map((step) => `${step.text} (${STEP_WORDS[step.status]})`) ?? []),
     ...clarifications.filter((c) => !c.answer || c.uncertain).map(clarificationLine),
-    ...(checked && checked.state !== "verified" && (checked.checks.length || record.files.length || record.outsideFiles) ? [VERIFICATION_WORDS[checked.state]] : []),
+    ...(checked && checked.state !== "verified" && (checked.checks.length || record.files.length || record.outsideFiles) ? [verificationWords(checked)] : []),
   ];
   if (loose.length) lines.push("## Not settled", "", ...loose.map((line) => `- ${line}`), "");
+  if (options.fullContext && evidence) lines.push("## Full context provenance", "", "Retained metadata only. Export does not refresh files, execute a check or reconstruct a missing observation.", "", "```json", JSON.stringify(evidence, null, 2), "```", "");
   lines.push("---", `From modex thread ${record.threadId}.`);
   return lines.join("\n") + "\n";
+}
+
+/** Quoted data in a code span, including literal backticks and whitespace in filenames. */
+function contextCode(value: string): string {
+  const quoted = /`|\s/.test(value) ? JSON.stringify(value) : value, ticks = quoted.match(/`+/g) ?? [];
+  const fence = "`".repeat(Math.max(1, ...ticks.map(run => run.length + 1)));
+  return `${fence}${quoted}${fence}`;
 }
 
 const CLOSED_WORDS: Record<NonNullable<TaskClarification["closed"]>, string> = { native: "the agent withdrew it", stopped: "the turn was stopped", ended: "the turn ended first", message: "it was asked in a message" };
@@ -265,7 +313,7 @@ export function clarificationLine(c: TaskClarification): string {
 function commandLine(command: TaskCommand): string {
   const words: Record<ExecutionOutcome, string> = { running: "running", succeeded: "succeeded", failed: "failed", denied: "denied", interrupted: "stopped", unknown: "status unknown" };
   const exit = typeof command.exitCode === "number" ? `exit code ${command.exitCode}` : command.exitCode === null ? "no exit code" : "exit code not reported";
-  return `\`${command.command.replace(/`/g, "'")}\` — ${words[command.outcome]}, ${exit}`;
+  return `${command.commandOmission ? omittedCommandLabel(command.commandOmission) : `\`${command.command.replace(/`/g, "'")}\``} — ${words[command.outcome]}, ${exit}${command.itemId ? `; source item ${contextCode(command.itemId)}` : ""}`;
 }
 
 /** Files a patch tool touched: Claude's `file_path`/`notebook_path`, or the names in Codex's "edit a, b" title. */
@@ -330,6 +378,18 @@ const VERIFICATION_WORDS: Record<TaskVerification["state"], string> = {
   none: "Not verified: no check result confirms the latest changes.",
 };
 
+export function verificationWords(value: TaskVerification): string {
+  if (value.basis !== "context-snapshots") return VERIFICATION_WORDS[value.state];
+  const words: Record<TaskVerification["state"], string> = {
+    verified: "Checks passed for confirmed references with matching timed snapshots. These snapshots do not prove which bytes the check consumed.",
+    failed: "A check for confirmed project references did not pass. Timed snapshots do not prove which bytes the check consumed.",
+    unknown: "Not verified: project scope, confirmed relevance, exit status or matching timed snapshots are incomplete.",
+    stale: "Not verified: a later change or plan revision superseded the check's timed snapshots.",
+    none: "Not verified: no check receipt covers the current task context.",
+  };
+  return words[value.state];
+}
+
 /** Tools that change files. `write_file` is the offline engine's. A denied one changed nothing. */
 const EDIT_TOOLS = new Set([...PATCH_TOOLS, "write_file"]);
 
@@ -340,7 +400,57 @@ const EDIT_TOOLS = new Set([...PATCH_TOOLS, "write_file"]);
  * after it: Modex cannot see what an unknown command wrote. Nothing here links a check to a plan
  * step, because neither CLI reports such a link.
  */
-export function verification(items: readonly ThreadItem[]): TaskVerification {
+export function verification(items: readonly ThreadItem[], supplied?: TaskContextEvidence): TaskVerification {
+  const user = items.find(item => item.kind === "user");
+  const evidence = supplied ?? (user?.kind === "user" ? user.contextEvidence : undefined);
+  const legacy = legacyVerification(items);
+  if (evidence === undefined) return legacy;
+  const result: TaskVerification = { ...legacy, state: legacy.checks.length ? "unknown" : "none", basis: "context-snapshots" };
+  if (!isTaskContextEvidence(evidence)) return result;
+  const plan = [...items].reverse().find(item => item.kind === "plan");
+  const currentPlan = plan?.kind === "plan" ? plan.revision : undefined;
+  const needed = evidence.refs.filter(ref => ref.relations.some(r => r.provenance === "user-confirmed" || (r.kind === "changed" && r.provenance === "observed")));
+  const covered = new Set<string>();
+  let stale = false, failed = false;
+  const sameOrigin = (a: import("./conversation-events.js").ItemOrigin | undefined, b: import("./conversation-events.js").ItemOrigin | undefined) => Boolean(a && b
+    && a.thread === b.thread && a.turn === b.turn && a.attempt === b.attempt && a.backend === b.backend && a.account === b.account
+    && a.native.runtime === b.native.runtime && a.native.item === b.native.item && a.native.thread === b.native.thread && a.native.turn === b.native.turn && a.native.part === b.native.part);
+  for (const check of evidence.checks) {
+    const index = items.findIndex(item => item.kind === "tool" && item.id === check.itemId && sameOrigin(item.origin, check.origin));
+    const item = items[index];
+    if (item?.kind !== "tool" || item.unavailableInputs?.includes("exec.command") || item.exec?.command !== check.command || !isCheckCommand(check.command)) continue;
+    if (check.scope !== "project" || check.relevance !== "user-confirmed" || !check.relevantRefIds.length) continue;
+    // A later write can affect a reference even when no native file-change item named it.
+    const laterWriter = items.slice(index + 1).some(later => later.kind === "tool" && later.outcome !== "denied"
+      && (EDIT_TOOLS.has(later.name) || Boolean(later.exec?.command && mayWrite(later.exec.command))));
+    if (laterWriter || check.staleness === "stale" || check.planRevision !== currentPlan) { stale = true; continue; }
+    if (check.outcome === "failed" || check.outcome === "denied" || (typeof check.exitCode === "number" && check.exitCode !== 0)) { failed = true; continue; }
+    if (check.outcome !== "succeeded" || check.exitCode !== 0 || item.outcome !== "succeeded" || item.exitCode !== 0 || check.staleness !== "current-observation" || check.eventIds.length < 2 || !check.startedAt || !check.finishedAt) continue;
+    const captures = new Map(evidence.captures.map(c => [c.id, c]));
+    for (const refId of check.relevantRefIds) {
+      const ref = evidence.refs.find(ref => ref.id === refId);
+      if (!ref) continue;
+      const owns = (c: import("./task-context-evidence.js").ContextCapture | undefined, phase: "check-start-observed" | "check-end-observed") => Boolean(c && c.phase === phase && c.source.kind === "native"
+        && c.source.itemId === check.itemId && sameOrigin(c.source.origin, check.origin)
+        && JSON.stringify(c.target) === JSON.stringify(ref.target) && ref.captureIds.includes(c.id));
+      const start = check.startCaptureIds.map(id => captures.get(id)).find(c => owns(c, "check-start-observed"));
+      const end = check.endCaptureIds.map(id => captures.get(id)).find(c => owns(c, "check-end-observed"));
+      if (!start || !end || start.finishedAt > end.startedAt || (check.startedAt !== undefined && start.startedAt < check.startedAt)
+        || (check.finishedAt !== undefined && (start.finishedAt > check.finishedAt || end.startedAt < check.finishedAt))
+        || start.revision.state !== "available" || end.revision.state !== "available") continue;
+      if (start.revision.digest !== end.revision.digest || start.revision.bytes !== end.revision.bytes || start.revision.noteRevision !== end.revision.noteRevision) { stale = true; continue; }
+      const endRevision = end.revision;
+      const later = ref.captureIds.map(id => captures.get(id)).filter(c => c && c.startedAt > end.finishedAt && c.noteVersion?.via !== "history");
+      if (later.some(c => c!.revision.state === "available" && (c!.revision.digest !== endRevision.digest || c!.revision.bytes !== endRevision.bytes || c!.revision.noteRevision !== endRevision.noteRevision))) { stale = true; continue; }
+      if (later.some(c => c!.revision.state !== "available")) continue;
+      covered.add(refId);
+    }
+  }
+  result.state = failed ? "failed" : needed.length && needed.every(ref => covered.has(ref.id)) ? "verified" : stale ? "stale" : result.state;
+  return result;
+}
+
+function legacyVerification(items: readonly ThreadItem[]): TaskVerification {
   const checks: TaskCheck[] = [];
   let edits = 0;
   const staleAll = () => { for (const check of checks) check.stale = true; };
@@ -398,6 +508,21 @@ export function isCheckCommand(command: string): boolean {
   return sawCheck;
 }
 
+/** Literal leading cd operations only. Directory-changing tool flags remain unqualified. */
+export function checkDirectoryChanges(command: string): string[] | null {
+  const parts = segments(command, { checks: true, noWrites: true });
+  if (!parts || !isCheckCommand(command)) return null;
+  const changes: string[] = [];
+  for (const words of parts) {
+    if (words[0] === "cd") {
+      const dir = words.at(-1)!;
+      if (dir === "-" || dir.startsWith("~")) return null;
+      changes.push(dir);
+    } else if (words.some(word => /^(?:-C|--(?:cwd|dir|directory|prefix))(?:=|$)/.test(word) || /^-C.+/.test(word))) return null;
+  }
+  return changes;
+}
+
 function checkSegment(words: string[]): boolean {
   const [head, ...rest] = words;
   if (!head) return false;
@@ -450,14 +575,30 @@ function isReadOnlyCommand(command: string): boolean {
  * the tool's final exit status cannot prove earlier checks passed across ;, ||, pipes or backgrounding.
  * `noWrites` rejects output redirection; its destination could be a file the check was meant to verify.
  */
-function segments(command: string, options: { noWrites?: boolean; checks?: boolean } = {}): string[][] | null {
+function segments(command: string, options: { noWrites?: boolean; checks?: boolean; portable?: boolean } = {}, depth = 0): string[][] | null {
+  if (options.portable && depth > 16) return null;
   const out: string[][] = [];
   let words: string[] = [];
   let word = "";
   let quote: string | null = null;
   let quoted = false;
+  let portable = true;
   const endWord = () => { if (word || quoted) words.push(word); word = ""; quoted = false; };
-  const endSegment = () => { endWord(); while (words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0]!)) words.shift(); if (words.length) out.push(words); words = []; };
+  const endSegment = () => { endWord();
+    if (options.portable && words.length) {
+      const program = (words[0] ?? "").split("/").pop()!;
+      const shell = /^(sh|bash|zsh|dash)$/.test(program) && words.length === 3 && /^-l?c$/.test(words[1] ?? "");
+      if (!shell && !portableInvocation(words)) portable = false;
+      if (words.some((word, index) => !(shell && index === 2) && !portableWord(word, index === 0, program === "printf" && index > 0, (program === "printf" || program === "echo") && index > 0))) portable = false;
+      if ((/^node(?:js)?$/.test(program) && words.slice(1).some(word => /^-[ep]|^--(?:eval|print)(?:=|$)/.test(word)))
+        || (/^python[0-9.]*$/.test(program) && words.slice(1).some(word => /^-c|^--command/.test(word)))
+        || (/^(perl|ruby)$/.test(program) && words.slice(1).some(word => /^-[^-]*e/.test(word)))
+        || /^(cmd|powershell|pwsh)$/.test(program)
+        || (program === "env" && words.some(word => word === "-S" || word.startsWith("--split-string")))
+        || (program === "sed" && !(words[1] === "-n" && /^\d+(?:,\d+)?p$/.test(words[2] ?? "")))
+        || (program === "awk" && !words.includes("-f"))) portable = false;
+    }
+    while (words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0]!)) words.shift(); if (words.length) out.push(words); words = []; };
   for (let i = 0; i < command.length; i++) {
     const c = command[i]!;
     if (quote) {
@@ -485,6 +626,7 @@ function segments(command: string, options: { noWrites?: boolean; checks?: boole
   }
   if (quote || (options.checks && !word && !quoted && !words.length)) return null;
   endSegment();
+  if (!portable) return null;
   // `/bin/zsh -lc '<script>'`: the script is the command.
   const result: string[][] = [];
   for (const segment of out) {
@@ -493,7 +635,7 @@ function segments(command: string, options: { noWrites?: boolean; checks?: boole
     // parse the script; their successful receipt says nothing about its checks.
     if (/^(sh|bash|zsh|dash)$/.test(program)) {
       if (segment.length !== 3 || !/^-l?c$/.test(segment[1] ?? "")) return null;
-      const inner = segments(segment[2]!, options);
+      const inner = segments(segment[2]!, options, depth + 1);
       if (inner === null) return null;
       result.push(...inner);
     } else result.push(segment);
@@ -511,7 +653,105 @@ export interface ContextFile { path: string; relations: ("read" | "changed" | "s
  * by the rule that makes a check stale. They are listed as commands; Modex does not guess their files.
  * Absent in records saved before it existed.
  */
-export interface TaskContext { files: ContextFile[]; outside: number; unlisted?: string[] }
+export interface TaskContext { files: ContextFile[]; outside: number; unlisted?: string[]; unlistedOmissions?: { index: number; omission: CommandOmission }[] }
+
+const portableItemId = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 32768 && !/[\\/\u0000-\u001f\u007f]/.test(value);
+const commandKey = (command: Pick<TaskCommand, "command" | "commandOmission">) => command.commandOmission ? `omitted:${command.commandOmission.id}` : `text:${command.command}`;
+export const omittedCommandLabel = (omission: CommandOmission) => `Recorded command ${omission.id}: text omitted for privacy; result retained`;
+function validUnlistedOmissions(context: TaskContext): boolean {
+  const rows = context.unlistedOmissions;
+  return rows === undefined || (Array.isArray(rows) && rows.every(row => row && Object.keys(row).length === 2 && Object.hasOwn(row, "index") && Object.hasOwn(row, "omission")
+    && Number.isSafeInteger(row.index) && row.index >= 0 && context.unlisted?.[row.index] === OMITTED_COMMAND && isCommandOmission(row.omission))
+    && new Set(rows.map(row => row.index)).size === rows.length);
+}
+
+/** A detached portable view, never a refresh or a new verification calculation. */
+export function portableTaskRecord(record: TaskRecord): TaskRecord {
+  if (record.contextEvidence !== undefined && !isTaskContextEvidence(record.contextEvidence)) throw new Error("Invalid task context metadata.");
+  const automatic = [...record.commands, ...(record.verification?.checks ?? []), ...(record.contextEvidence?.checks ?? [])];
+  if (!automatic.every(isTaskCommandText) || (record.context && !validUnlistedOmissions(record.context))) throw new Error("Invalid command omission metadata.");
+  const ids = [...automatic.flatMap(c => c.commandOmission ? [c.commandOmission.id] : []), ...(record.context?.unlistedOmissions?.map(row => row.omission.id) ?? [])];
+  let next = ids.reduce((max, id) => Math.max(max, id), 0) + 1;
+  const omitted = new Map<string, CommandOmission>();
+  const project = <T extends { command: string; commandOmission?: CommandOmission }>(command: T): T => {
+    if (command.commandOmission || isPortableCommand(command.command)) return command;
+    let omission = omitted.get(command.command);
+    if (!omission) {
+      if (!Number.isSafeInteger(next)) throw new Error("Invalid command omission identity.");
+      omission = { id: next++, reason: "privacy" }; omitted.set(command.command, omission);
+    }
+    return { ...command, command: OMITTED_COMMAND, commandOmission: { ...omission } };
+  };
+  const result = structuredClone(record);
+  result.commands = result.commands.map(project);
+  if (result.verification) result.verification.checks = result.verification.checks.map(project);
+  if (result.contextEvidence) result.contextEvidence.checks = result.contextEvidence.checks.map(project);
+  if (result.context?.unlisted) {
+    const old = new Map(result.context.unlistedOmissions?.map(row => [row.index, row.omission]));
+    const rows: NonNullable<TaskContext["unlistedOmissions"]> = [];
+    result.context.unlisted = result.context.unlisted.map((command, index) => {
+      const safe = project({ command, ...(old.has(index) ? { commandOmission: old.get(index)! } : {}) });
+      if (safe.commandOmission) rows.push({ index, omission: { ...safe.commandOmission } });
+      return safe.command;
+    });
+    if (rows.length) result.context.unlistedOmissions = rows;
+  }
+  return result;
+}
+
+/** Classify retained text only. Ambiguous syntax is withheld, never resolved with a shell or filesystem. */
+function isPortableCommand(command: string): boolean {
+  if (!command || command.length > 8192 || /[\u0000-\u001f\u007f]|(?:^|[^A-Za-z0-9_])[A-Za-z]:[\\/]|%[0-9a-f]{2}/i.test(command)) return false;
+  const parsed = segments(command, { portable: true });
+  return parsed !== null && parsed.length > 0;
+}
+// Portable text has a deliberately positive grammar. Unknown programs and inline
+// interpreter forms are not classified by an ever-growing list of script flags.
+const PORTABLE_PROGRAMS = new Set(["pnpm", "npm", "yarn", "bun", "npx", "git", "cat", "head", "tail", "wc", "ls", "rg", "grep", "find", "tree", "sort", "uniq", "sed", "printf", "echo", "touch", "mkdir", "rm", "rmdir", "cp", "mv", "true", "false", "exit", "test", "pwd", "cd", "make", "cmake", "ninja", "cargo", "go", "rustc", "cc", "gcc", "clang", "tsc", "vitest", "jest", "playwright", "eslint", "prettier"]);
+function portableInvocation(words: string[], depth = 0): boolean {
+  if (depth > 16) return false;
+  const program = words[0] ?? "";
+  // Inline-source switches are unclassified even when reached through a utility
+  // such as find. Safe shell wrappers are handled separately by recursive parsing.
+  if (words.slice(1).some(word => /^--(?:eval|execute|command)(?:=|$)|^-[eEc]/.test(word))) return false;
+  if (program === "npx") return portableInvocation(words.slice(words[1] === "--" ? 2 : 1), depth + 1);
+  if (["pnpm", "npm", "yarn", "bun"].includes(program)) {
+    let at = 1;
+    while (words[at]?.startsWith("-")) {
+      if (["--filter", "-F"].includes(words[at]!)) { if (!words[at + 1]) return false; at += 2; }
+      else if (["--silent", "-s", "--recursive", "-r", "--workspace-root", "-w", "--offline", "--frozen-lockfile"].includes(words[at]!)) at++;
+      else return false;
+    }
+    const action = words[at++];
+    if (action === "exec") return portableInvocation(words.slice(words[at] === "--" ? at + 1 : at), depth + 1);
+    if (action === "run" || action === "run-script") return /^(?:build|test|lint|typecheck|check|format|verify)(?::[A-Za-z0-9_-]+)*$/.test(words[at] ?? "");
+    return /^(?:build|test|lint|typecheck|check|format|verify)(?::[A-Za-z0-9_-]+)*$/.test(action ?? "")
+      || ["install", "ci", "fetch", "update", "outdated", "list", "why", "audit", "pack", "publish", "prune", "dedupe"].includes(action ?? "");
+  }
+  if (PORTABLE_PROGRAMS.has(program)) return true;
+  // A named relative script is a reference, not embedded source. Options before
+  // it and inline/-m modes stay unclassified rather than guessing their grammar.
+  const scripts = /^(?:node(?:js)?|python[0-9.]*|ruby|perl|lua|php)$/;
+  return scripts.test(program) && /^[A-Za-z0-9_./-]+\.(?:[cm]?js|ts|py|rb|pl|lua|php)$/.test(words[1] ?? "")
+    && !words.slice(2).some(word => /^--?(?:eval|execute|command|[eEc])(?:=|$)/.test(word));
+}
+function portableWord(word: string, executable: boolean, printfFormat = false, literalData = false): boolean {
+  if (executable && /^\/(?:usr\/)?bin\/(?:sh|bash|zsh|dash)$/.test(word)) return true;
+  // Compact option values and response-file operands have tool-specific boundaries.
+  // Do not mistake -I/private or @/private for ordinary relative path words.
+  if ((word.startsWith("-") && /[\\/]/.test(word)) || /^@[\\/~]/.test(word)) return false;
+  // Format escapes/substitutions can move a slash to an absolute-path boundary.
+  // Keep static text/redirects, but do not classify path-bearing printf operands.
+  if (printfFormat && word.includes("/")) return false;
+  if (/^https?:\/\//i.test(word)) {
+    try { const url = new URL(word); return !url.username && !url.password && !url.search && !url.hash && /^[A-Za-z0-9:/.~_-]+$/.test(word); } catch { return false; }
+  }
+  // Opaque multiword arguments can be another program's source. Only the two
+  // literal-output utilities classify spaces as data; other quoted forms omit.
+  if (!literalData && /\s/.test(word)) return false;
+  if (!(printfFormat ? /^(?:[A-Za-z0-9_@.,:+%=~ /-]|\\[abefnrtv\\])*$/ : /^(?:[A-Za-z0-9_@.:+=~ /-]*|\d+(?:,\d+)?p)$/).test(word)) return false;
+  return !/(?:^|[\s=:])(?:[\\/]|~)|(?:^|[^A-Za-z0-9_.\/-])\/|(?:^|[=/])\.\.(?:\/|$)|file:|[()[\]{}$`;|&]|^[A-Za-z_][A-Za-z0-9_]*=|^--?(?:token|secret|password|api[-_]?key|auth)|\bauthorization\b|\bbearer\b/i.test(word);
+}
 
 /** Tools that read one file, and the argument that names it. */
 const READ_ARGS: Record<string, string> = { Read: "file_path", read_file: "path", NotebookRead: "notebook_path" };
@@ -528,10 +768,22 @@ const SEARCH_ARGS: Record<string, string> = { Grep: "path", Glob: "path", LS: "p
  * have written files without naming them is listed in `unlisted`, once, so the map never reads as complete
  * when it might not be.
  */
-export function taskContext(items: readonly ThreadItem[], cwd: string): TaskContext {
+export function taskContext(items: readonly ThreadItem[], cwd: string, evidence?: TaskContextEvidence): TaskContext {
   const files = new Map<string, ContextFile>();
   const outsidePaths = new Set<string>();
   const unlisted: string[] = [];
+  type Relation = TaskContextEvidence["refs"][number]["relations"][number];
+  const native = new Map<string, { relation: Relation; path: string }[]>();
+  for (const user of items) {
+    if (user.kind !== "user") continue;
+    const context = evidence ?? user.contextEvidence;
+    if (!context || !isTaskContextEvidence(context)) continue;
+    for (const ref of context.refs) for (const relation of ref.relations) {
+      if (ref.target.kind !== "file" || relation.source.kind !== "native" || relation.source.origin.turn !== user.id) continue;
+      const rows = native.get(relation.source.itemId) ?? [];
+      rows.push({ relation, path: ref.target.path }); native.set(relation.source.itemId, rows);
+    }
+  }
   const add = (raw: unknown, relation: ContextFile["relations"][number], commandCwd = cwd) => {
     if (typeof raw !== "string" || !raw.trim()) return;
     const path = relative(raw.trim(), cwd, commandCwd);
@@ -553,6 +805,17 @@ export function taskContext(items: readonly ThreadItem[], cwd: string): TaskCont
     // A failed command can have written before failing; keep that uncertainty without guessing paths.
     if (command && !EDIT_TOOLS.has(item.name) && mayWrite(command) && !unlisted.includes(command)) unlisted.push(command);
     if (outcome === "failed") continue;
+    const recorded = (native.get(item.id) ?? []).filter(({ relation }) => {
+      if (relation.source.kind !== "native" || !item.origin) return false;
+      const a = relation.source.origin, b = item.origin;
+      return a.thread === b.thread && a.turn === b.turn && a.attempt === b.attempt && a.backend === b.backend && a.account === b.account
+        && a.native.runtime === b.native.runtime && a.native.item === b.native.item && a.native.thread === b.native.thread && a.native.turn === b.native.turn && a.native.part === b.native.part;
+    });
+    if (recorded.length) {
+      for (const { relation, path } of recorded) if (relation.provenance === "observed" && relation.kind !== "relevant") add(path, relation.kind);
+      continue;
+    }
+    if (item.displayOnlyInputs) continue;
     if (EDIT_TOOLS.has(item.name)) {
       for (const file of patchFiles(item)) add(file, "changed");
       if (item.name === "write_file") add(item.args.path, "changed");
@@ -567,7 +830,7 @@ export function taskContext(items: readonly ThreadItem[], cwd: string): TaskCont
 }
 
 /** Whether a command may have written files: neither a check nor known to be read-only (the rule that makes a check stale). */
-function mayWrite(command: string): boolean {
+export function mayWrite(command: string): boolean {
   return !isCheckCommand(command) && !isReadOnlyCommand(command);
 }
 

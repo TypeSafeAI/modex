@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CONVERSATION_SCHEMA, projectConversation, type ConversationEvent, type Observation, type AttemptMark, type TurnRef } from "../src/shared/conversation-events.js";
-import { CONTEXT_SHOWN, UNLISTED_WORDS, contextCount, displayCommand, isCheckCommand, isTaskSnapshot, noPlan, taskContext, taskRecord, taskMarkdown, verification } from "../src/shared/task-context.js";
+import { CONTEXT_SHOWN, UNLISTED_WORDS, contextCount, displayCommand, isCheckCommand, isTaskSnapshot, noPlan, portableTaskRecord, taskContext, taskRecord, taskMarkdown, verification } from "../src/shared/task-context.js";
 import { CodexBackend } from "../src/main/engine/backends/codex.js";
 import { ClaudeBackend } from "../src/main/engine/backends/claude.js";
 import type { ThreadItem } from "../src/shared/types.js";
@@ -256,7 +256,7 @@ for (const move of ["Finder across projects", "watched Finder across projects", 
 // Reopen (CF-7 #280): a saved task note opens as the record it saved, read-only.
 
 /** A runner whose scripted Claude reports a plan, an edit and a passing check, counting every call into the backend. */
-async function reopenFixture() {
+async function reopenFixture(command = "pnpm test") {
   const { Store } = await import("../src/main/engine/store.js");
   const { ThreadRunner } = await import("../src/main/engine/runner.js");
   const { gitRepo, tmpdir } = await import("./helpers.js");
@@ -270,7 +270,7 @@ async function reopenFixture() {
     sink.observe({ type: "plan.update", native: { runtime: "R", item: "todos" }, from: "claude-todo", steps: [{ text: "Fix the import", status: "completed" }, { text: "Run the tests", status: "completed" }] });
     local(sink).toolStart({ id: `e${calls.turns}`, name: "Edit", title: "edit src/a.ts", args: { file_path: `${repo}/src/a.ts` } });
     local(sink).toolUpdate(`e${calls.turns}`, { status: "done", ok: true });
-    sink.observe({ type: "tool.start", native: { runtime: "R", item: `c${calls.turns}` }, tool: { name: "Bash", title: "$ pnpm test", args: { command: "pnpm test" }, exec: { command: "pnpm test" } } });
+    sink.observe({ type: "tool.start", native: { runtime: "R", item: `c${calls.turns}` }, tool: { name: "Bash", title: "$ native command", args: { command }, exec: { command } } });
     sink.observe({ type: "tool.done", native: { runtime: "R", item: `c${calls.turns}` }, outcome: "succeeded" });
     local(sink).assistant(`Fixed the import (turn ${calls.turns}).`);
     return { status: "completed" as const };
@@ -308,7 +308,8 @@ test("a saved task note reopens as the record it saved: plan, files, verificatio
     assert.deepEqual(view.record, expected, "the record as saved, not rebuilt from today's transcript");
     assert.deepEqual(view.record.plan?.steps.map((step) => step.status), ["completed", "completed"]);
     assert.deepEqual(view.record.context?.files.map((file) => file.path), ["src/a.ts"]);
-    assert.equal(view.record.verification?.state, "verified");
+    assert.equal(view.record.verification?.state, "unknown", "new receipts without confirmed coverage cannot inherit legacy verification");
+    assert.equal(view.record.verification?.basis, "context-snapshots");
     assert.match(view.record.answer ?? "", /turn 1/);
     assert.deepEqual([view.threadId, view.turnId, view.savedRevision, view.note.revision], [thread.id, turnId, saved.revision, saved.revision]);
     assert.equal(view.edited, undefined);
@@ -582,7 +583,9 @@ test("a Codex in-place edit it parsed as unknown still gives the note a files se
   assert.equal(contextCount(context), "not listed");
   const note = taskMarkdown(taskRecord(items, { threadId: "T", title: "Say hello, live", cwd: "/repo" }));
   assert.match(note, /## Files the turn touched\n\nAs the CLI reported them\. Modex did not index the project\.\n\nThese commands may have changed files/);
-  assert.ok(note.includes(`- \`${perl.replace(/`/g, "'")}\`\n`));
+  assert.match(note, /Recorded command 1: text omitted for privacy; result retained/);
+  assert.equal(note.includes(perl), false, "embedded interpreter scripts are withheld in the portable Note");
+  assert.deepEqual(context.unlisted, [perl], "live command evidence remains exact");
 });
 
 test("a command that fails after a possible write remains in the context map and saved note", () => {
@@ -733,4 +736,404 @@ test("a finished turn that did work without a plan says which CLI reported none;
   const planned = turn("claude", [{ id: "p", kind: "plan", from: "claude-todo", revision: 1, steps: [{ text: "Fix", status: "completed" }], outcome: "succeeded", origin: origin("claude"), at } as ThreadItem]);
   assert.equal(noPlan(planned), null);
   assert.ok(!md(planned).includes("reported no plan"));
+});
+
+/** Modern evidence cannot inherit the legacy command-order claim. */
+function scopedCheck() {
+  const e = stream(), native = { runtime: "R", item: "check" };
+  const attempt = e({ type: "attempt.start" });
+  const start = e({ type: "tool.start", native, tool: { name: "exec_command", title: "test", args: {}, exec: { command: "pnpm test", cwd: "/repo" } } });
+  const end = e({ type: "tool.done", native, outcome: "succeeded", progress: { exitCode: 0 } });
+  const tool = projectConversation([attempt, start, end]).items[0]!;
+  assert.ok(tool.kind === "tool" && tool.origin);
+  const source = { kind: "native" as const, itemId: tool.id, origin: tool.origin };
+  const target = { kind: "file" as const, path: "src/main.ts" };
+  const capture = (id: string, phase: "check-start-observed" | "check-end-observed", at: string) => ({ id, target, source, phase, startedAt: at, finishedAt: at, repository: { state: "available" as const, head: "a".repeat(40) }, revision: { state: "available" as const, algorithm: "sha256" as const, digest: "b".repeat(64), bytes: 3 } });
+  const evidence: import("../src/shared/task-context-evidence.js").TaskContextEvidence = { revision: 1,
+    refs: [{ id: "ref", target, relations: [{ kind: "relevant", provenance: "user-confirmed", source: { kind: "human", actionId: "selection", at: start.at } }], captureIds: ["start", "end"] }],
+    captures: [capture("start", "check-start-observed", start.at), capture("end", "check-end-observed", end.at)],
+    checks: [{ itemId: tool.id, eventIds: [start.id, end.id], origin: tool.origin, startedAt: start.at, finishedAt: end.at, command: "pnpm test", outcome: "succeeded", exitCode: 0, scope: "project", relevantRefIds: ["ref"], relevance: "user-confirmed", startCaptureIds: ["start"], endCaptureIds: ["end"], staleness: "current-observation" }],
+  };
+  const user: ThreadItem = { kind: "user", id: "U", text: "Fix main", at: start.at, contextEvidence: evidence };
+  return { evidence, tool, items: [user, tool] as ThreadItem[] };
+}
+
+for (const [name, alter] of [
+  ["unrelated exit-zero command", (f: ReturnType<typeof scopedCheck>) => { f.evidence.checks[0]!.relevance = "unestablished"; f.evidence.checks[0]!.relevantRefIds = []; }],
+  ["green command outside the project", (f: ReturnType<typeof scopedCheck>) => { f.evidence.checks[0]!.scope = "outside"; }],
+  ["nested cwd with unestablished relevance", (f: ReturnType<typeof scopedCheck>) => { f.evidence.checks[0]!.relevance = "unestablished"; if (f.tool.kind === "tool") f.tool.exec!.cwd = "/repo/nested"; }],
+  ["human confirmation bound to the wrong item", (f: ReturnType<typeof scopedCheck>) => { f.evidence.checks[0]!.itemId = "foreign-item"; }],
+  ["foreign native origin", (f: ReturnType<typeof scopedCheck>) => { f.evidence.checks[0]!.origin = { ...f.evidence.checks[0]!.origin!, attempt: "foreign" }; }],
+  ["unavailable command identity", (f: ReturnType<typeof scopedCheck>) => { if (f.tool.kind === "tool") f.tool.unavailableInputs = ["exec.command"]; }],
+  ["nonzero reported exit", (f: ReturnType<typeof scopedCheck>) => { f.evidence.checks[0]!.exitCode = 1; }],
+  ["unknown exit", (f: ReturnType<typeof scopedCheck>) => { delete f.evidence.checks[0]!.exitCode; }],
+  ["missing start receipt", (f: ReturnType<typeof scopedCheck>) => { f.evidence.checks[0]!.startCaptureIds = []; }],
+  ["missing boundary times", (f: ReturnType<typeof scopedCheck>) => { delete f.evidence.checks[0]!.startedAt; delete f.evidence.checks[0]!.finishedAt; }],
+  ["start and end snapshots both delayed past completion", (f: ReturnType<typeof scopedCheck>) => { f.evidence.captures[0]!.startedAt = f.evidence.captures[0]!.finishedAt = "2026-10-18T09:00:04.000Z"; f.evidence.captures[1]!.startedAt = f.evidence.captures[1]!.finishedAt = "2026-10-18T09:00:05.000Z"; }],
+  ["changed start/end bytes", (f: ReturnType<typeof scopedCheck>) => { const rev = f.evidence.captures[1]!.revision; if (rev.state === "available") rev.digest = "c".repeat(64); }],
+  ["late start observation", (f: ReturnType<typeof scopedCheck>) => { f.evidence.captures[0]!.finishedAt = "2026-10-18T09:00:04.000Z"; }],
+  ["later context hash change", (f: ReturnType<typeof scopedCheck>) => { const c = structuredClone(f.evidence.captures[1]!); c.id = "later"; c.startedAt = c.finishedAt = "2026-10-18T09:00:04.000Z"; if (c.revision.state === "available") c.revision.digest = "c".repeat(64); f.evidence.captures.push(c); f.evidence.refs[0]!.captureIds.push(c.id); }],
+  ["later plan revision", (f: ReturnType<typeof scopedCheck>) => { f.evidence.checks[0]!.planRevision = 1; f.items.push({ id: "plan", kind: "plan", steps: [], from: "codex-plan", revision: 2, outcome: "succeeded", at: "2026-10-18T09:00:04.000Z" }); }],
+] as const) test(`modern verification refuses ${name}`, () => {
+  const f = scopedCheck(); alter(f);
+  assert.notEqual(verification(f.items).state, "verified");
+  assert.notEqual(taskRecord(f.items, { threadId: "T", title: "Task", cwd: "/repo" }).verification!.state, "verified");
+});
+
+test("matching modern observations are labeled snapshots, never check-input attestation", () => {
+  const f = scopedCheck(), record = taskRecord(f.items, { threadId: "T", title: "Task", cwd: "/repo" });
+  assert.equal(record.verification!.state, "verified");
+  assert.match(taskMarkdown(record), /matching.*snapshots/i);
+  assert.match(taskMarkdown(record), /do not prove.*(?:consumed|read)/i);
+  assert.doesNotMatch(taskMarkdown(record), /every check after the turn's last change passed/);
+});
+
+test("later possible writers invalidate a modern observation while legacy wording stays historical", () => {
+  const f = scopedCheck();
+  f.items.push({ id: "writer", kind: "tool", name: "exec_command", title: "write", args: {}, exec: { command: "node mutate.js", cwd: "/repo" }, outcome: "failed", status: "done", at: "2026-10-18T09:00:04.000Z" });
+  assert.equal(verification(f.items).state, "stale");
+  const legacy = scopedCheck().items.slice(1);
+  const markdown = taskMarkdown(taskRecord([{ kind: "user", id: "U", text: "Old", at: "2026-10-18T09:00:00.000Z" }, ...legacy], { threadId: "T", title: "Old", cwd: "/repo" }));
+  assert.match(markdown, /Verified: every check after the turn's last change passed/);
+  assert.doesNotMatch(markdown, /matching.*snapshots/i);
+});
+
+test("a later complete check supersedes stale snapshots without rewriting their history", () => {
+  const f = scopedCheck(), next = scopedCheck();
+  f.evidence.checks[0]!.staleness = "stale";
+  assert.ok(next.tool.kind === "tool" && next.tool.origin);
+  next.tool.id += "-next"; next.tool.origin.native.item = "next-check"; next.tool.at = "2026-10-18T09:00:04.000Z";
+  const check = next.evidence.checks[0]!; check.itemId = next.tool.id; check.origin = structuredClone(next.tool.origin); check.eventIds = ["next-start", "next-end"];
+  check.startedAt = "2026-10-18T09:00:04.000Z"; check.finishedAt = "2026-10-18T09:00:05.000Z";
+  check.startCaptureIds = ["next-start-capture"]; check.endCaptureIds = ["next-end-capture"];
+  for (const [i, capture] of next.evidence.captures.entries()) {
+    capture.id = i ? "next-end-capture" : "next-start-capture";
+    capture.startedAt = capture.finishedAt = i ? check.finishedAt : check.startedAt;
+    capture.source = { kind: "native", itemId: next.tool.id, origin: structuredClone(next.tool.origin) };
+  }
+  f.evidence.checks.push(check); f.evidence.captures.push(...next.evidence.captures); f.evidence.refs[0]!.captureIds.push(...next.evidence.captures.map(c => c.id)); f.items.push(next.tool);
+  assert.equal(verification(f.items).state, "verified");
+  assert.equal(f.evidence.checks[0]!.staleness, "stale", "projecting a current result must not rewrite old receipts");
+});
+
+function portableContextRecord() {
+  const f = scopedCheck(), source = { kind: "human" as const, actionId: "selection", at: "2026-10-18T09:00:01.000Z" };
+  for (let i = 1; i < 26; i++) f.evidence.refs.push({ id: `ref-${i}`, target: { kind: "file", path: `src/reference-${i}.ts` }, relations: [{ kind: "relevant", provenance: "user-confirmed", source }], captureIds: [] });
+  f.evidence.refs.push({ id: "note-ref", target: { kind: "note", pageId: "portable-note" }, relations: [{ kind: "relevant", provenance: "model-proposed", role: "note", source: { kind: "model-proposal", turn, leaseId: "public-lease", receiptId: "public-receipt", requestId: "request", at: source.at } }], captureIds: [] });
+  const missing = { ...structuredClone(f.evidence.captures[0]!), id: "unavailable-reference", target: f.evidence.refs[25]!.target, source, phase: "selected" as const, repository: { state: "unavailable" as const, reason: "unreadable" as const }, revision: { state: "unavailable" as const, reason: "missing" as const } };
+  f.evidence.captures.push(missing); f.evidence.refs[25]!.captureIds.push(missing.id);
+  f.evidence.checks[0]!.relevantRefIds.push("ref-25");
+  return taskRecord(f.items, { threadId: "T", title: "Portable task", cwd: "/repo" });
+}
+
+test("modern default Markdown bounds the combined reference list and explicitly retains overflow", () => {
+  const record = portableContextRecord(), markdown = taskMarkdown(record);
+  assert.match(markdown, /## Context references/);
+  assert.match(markdown, /7 more context references/);
+  assert.ok(markdown.includes("src/main.ts")); assert.ok(markdown.includes("src/reference-19.ts"));
+  assert.equal(markdown.includes("src/reference-25.ts"), false);
+  assert.equal(markdown.includes("portable-note"), false);
+  assert.match(markdown, /full.*export/i);
+});
+
+test("explicit full Markdown retains every reference, capture outcome and check edge without refreshing evidence", () => {
+  const record = portableContextRecord(), before = structuredClone(record);
+  const markdown = Reflect.apply(taskMarkdown, undefined, [record, { fullContext: true }]) as string;
+  assert.ok(markdown.includes("src/reference-25.ts")); assert.ok(markdown.includes("portable-note"));
+  assert.match(markdown, /## Full context provenance/);
+  const json = markdown.split("## Full context provenance")[1]!.match(/```json\n([\s\S]*?)\n```/)?.[1]; assert.ok(json);
+  const exported = JSON.parse(json); assert.deepEqual(exported, record.contextEvidence);
+  assert.ok(exported);
+  assert.equal(exported.refs.length, 27); assert.deepEqual(exported.captures.at(-1)?.revision, { state: "unavailable", reason: "missing" });
+  assert.ok(exported.checks[0]!.relevantRefIds.includes("ref-25"));
+  assert.deepEqual(record, before, "export cannot reconstruct or mutate historical observations");
+});
+
+test("full export rejects malformed or private absolute metadata instead of rendering a plausible record", () => {
+  for (const alter of [
+    (record: ReturnType<typeof portableContextRecord>) => { record.contextEvidence!.refs[0]!.target = { kind: "file", path: "/outside/private" }; },
+    (record: ReturnType<typeof portableContextRecord>) => { Object.assign(record.contextEvidence!.captures[0]!, { body: "secret-body" }); },
+  ]) {
+    const record = portableContextRecord(); alter(record);
+    assert.throws(() => Reflect.apply(taskMarkdown, undefined, [record, { fullContext: true }]), /metadata|context|invalid/i);
+  }
+});
+
+for (const stage of ["snapshot", "association"] as const) test(`Save reports retained recovery identity when the ${stage} write fails`, async () => {
+  const { store, runner, thread, turnId } = await reopenFixture();
+  const notes = store.space, snapshotWrite = notes.writeTaskSnapshot, threadWrite = store.updateThread;
+  try {
+    if (stage === "snapshot") notes.writeTaskSnapshot = () => { throw Error("synthetic snapshot failure"); };
+    else store.updateThread = () => { throw Error("synthetic association failure"); };
+    let failure: unknown;
+    try { runner.saveTaskNote(thread.id, turnId); } catch (error) { failure = error; }
+    assert.ok(failure instanceof Error);
+    const retained = notes.list().find(page => page.title.startsWith("Task:")); assert.ok(retained);
+    assert.ok(failure.message.includes(retained.id), "failure must identify the note that was already written");
+    assert.match(failure.message, /revision 1/);
+    assert.match(failure.message, /saving again may create another copy/i);
+    assert.equal(store.thread(thread.id)?.taskNotes?.[turnId], undefined);
+    assert.equal(Boolean(notes.taskSnapshot(retained.id)), stage === "association");
+    notes.writeTaskSnapshot = snapshotWrite; store.updateThread = threadWrite;
+    const before = notes.list().find(page => page.id === retained.id);
+    const retry = runner.saveTaskNote(thread.id, turnId);
+    assert.notEqual(retry.pageId, retained.id, "retry must not guess ownership of an unassociated partial save");
+    assert.deepEqual(notes.list().find(page => page.id === retained.id), before, "partial evidence stays available for recovery");
+  } finally { notes.writeTaskSnapshot = snapshotWrite; store.updateThread = threadWrite; await runner.dispose(); }
+});
+
+test("queued explicit Saves keep one associated Note and unchanged retained context", async () => {
+  const { store, runner, thread, turnId, calls } = await reopenFixture();
+  try {
+    const user = runner.items(thread.id).find(item => item.kind === "user"); assert.ok(user?.kind === "user");
+    const evidence = structuredClone(user.contextEvidence), before = { ...calls };
+    const saves = await Promise.all(Array.from({ length: 3 }, () => Promise.resolve().then(() => runner.saveTaskNote(thread.id, turnId))));
+    assert.equal(new Set(saves.map(save => save.pageId)).size, 1);
+    const last = saves.at(-1)!;
+    assert.equal(store.space.list().filter(page => page.title.startsWith("Task:")).length, 1);
+    assert.deepEqual(store.thread(thread.id)?.taskNotes?.[turnId], { pageId: last.pageId, revision: last.revision });
+    const view = runner.taskNote(last.pageId)!;
+    assert.deepEqual(view.record.contextEvidence, evidence);
+    assert.deepEqual([view.projectId, view.pageId], [thread.projectId, last.pageId]);
+    assert.deepEqual(calls, before, "repeated Saves and reopen cannot call the backend");
+    assert.equal(store.space.history(last.pageId).at(-1)?.actor, "human");
+  } finally { await runner.dispose(); }
+});
+
+test("removing a project keeps its frozen task portable and unlinked without a thread", async () => {
+  const { store, runner, thread, turnId, project, calls } = await reopenFixture();
+  try {
+    const saved = runner.saveTaskNote(thread.id, turnId), original = runner.taskNote(saved.pageId)!;
+    store.removeProject(project.id);
+    const before = { ...calls }, view = runner.taskNote(saved.pageId)!;
+    assert.deepEqual(view.record, original.record);
+    assert.equal(view.projectId, project.id); assert.equal(view.pageId, saved.pageId);
+    assert.equal(view.unlinked, true); assert.equal(view.thread, false);
+    assert.deepEqual(calls, before);
+    assert.throws(() => runner.saveTaskNote(thread.id, turnId), /unknown thread/);
+    assert.deepEqual(runner.taskNote(saved.pageId), view);
+  } finally { await runner.dispose(); }
+});
+
+test("invalid modern snapshot writes preserve the previous saved record", async () => {
+  const { store, runner, thread, turnId } = await reopenFixture();
+  try {
+    const saved = runner.saveTaskNote(thread.id, turnId), snapshot = store.space.taskSnapshot(saved.pageId)!;
+    const invalid = structuredClone(snapshot); invalid.record.contextEvidence!.refs[0]!.target = { kind: "file", path: "/private/outside" };
+    assert.throws(() => store.space.writeTaskSnapshot(invalid), /Invalid task record/);
+    assert.deepEqual(store.space.taskSnapshot(saved.pageId), snapshot);
+    const old = structuredClone(snapshot); delete old.record.contextEvidence;
+    store.space.writeTaskSnapshot(old);
+    assert.deepEqual(runner.taskNote(saved.pageId)!.record, old.record, "legacy snapshots remain readable without invented receipts");
+  } finally { await runner.dispose(); }
+});
+
+const privateCommandSentinel = "modex-command-private-sentinel";
+for (const command of [
+  `cat /private/${privateCommandSentinel}`,
+  `cat '/private/${privateCommandSentinel} with spaces'`,
+  `/bin/zsh -lc 'cat /private/${privateCommandSentinel}'`,
+  `cat ~/${privateCommandSentinel}`,
+  `type C:\\Users\\QA\\${privateCommandSentinel}`,
+  `type \\\\server\\share\\${privateCommandSentinel}`,
+  `node -e 'console.log("/private/${privateCommandSentinel}")'`,
+]) test(`portable automatic commands withhold private paths: ${command.split(" ")[0]}`, () => {
+  const u: ThreadItem = { kind: "user", id: "U", text: "Inspect task inputs", at: at(1) };
+  const c: ThreadItem = { kind: "tool", id: "C", name: "shell", title: "Native command", args: {}, status: "done", outcome: "succeeded", exitCode: 0, exec: { command }, at: at(2) };
+  const input = [u, c], before = structuredClone(input);
+  const record = taskRecord(input, { threadId: "T", title: "Portable task", cwd: "/repo" });
+  assert.equal(JSON.stringify(record).includes(privateCommandSentinel), false, "the serialized saved record must be safe, not just its rendered Markdown");
+  const omission = Reflect.get(record.commands[0]!, "commandOmission");
+  assert.equal(omission?.reason, "privacy"); assert.ok(Number.isSafeInteger(omission?.id));
+  assert.equal(record.commands[0]!.outcome, "succeeded"); assert.equal(record.commands[0]!.exitCode, 0);
+  assert.equal(Reflect.get(record.commands[0]!, "itemId"), "C", "retain the available native source identity");
+  assert.equal(taskMarkdown(record).includes(privateCommandSentinel), false);
+  assert.equal(taskMarkdown(record, { fullContext: true }).includes(privateCommandSentinel), false);
+  assert.deepEqual(input, before, "portable projection must not alter the native transcript");
+});
+
+test("portable snapshot omits all automatic command copies without changing frozen verification or provenance", () => {
+  const f = scopedCheck(), command = `pnpm test --config /private/${privateCommandSentinel}`;
+  assert.ok(f.tool.kind === "tool" && f.tool.exec); f.tool.exec.command = command; f.evidence.checks[0]!.command = command;
+  const before = structuredClone(f.items), expected = verification(f.items);
+  assert.equal(expected.state, "verified", "fixture has genuine scoped native result and matching timed snapshots before portable projection");
+  const record = taskRecord(f.items, { threadId: "T", title: "Portable check", cwd: "/repo" });
+  assert.equal(JSON.stringify(record).includes(privateCommandSentinel), false);
+  const omission = Reflect.get(record.commands[0]!, "commandOmission"); assert.equal(omission?.reason, "privacy");
+  assert.deepEqual(Reflect.get(record.verification!.checks[0]!, "commandOmission"), omission);
+  assert.deepEqual(Reflect.get(record.contextEvidence!.checks[0]!, "commandOmission"), omission);
+  assert.equal(record.context!.unlisted, undefined, "a genuine check does not invent an unlisted write");
+  // Legacy records can retain the same command in an unlisted warning. Project every copy without reclassifying it.
+  const legacy = structuredClone(record);
+  legacy.context!.unlisted = [command];
+  const projected = portableTaskRecord(legacy);
+  assert.equal(JSON.stringify(projected).includes(privateCommandSentinel), false);
+  assert.deepEqual(projected.context!.unlistedOmissions, [{ index: 0, omission: { id: omission.id + 1, reason: "privacy" } }]);
+  assert.equal(record.verification!.state, expected.state); assert.equal(record.verification!.checks[0]!.passed, true);
+  const retained = Object.fromEntries(Object.entries(record.contextEvidence!.checks[0]!).filter(([key]) => key !== "command" && key !== "commandOmission"));
+  const original = Object.fromEntries(Object.entries(f.evidence.checks[0]!).filter(([key]) => key !== "command"));
+  assert.deepEqual(retained, original, "results, origin/event IDs, capture IDs, relevance edges and staleness remain exact");
+  const snapshot = { version: 1, pageId: "P", revision: 1, projectId: "p", threadId: "T", turnId: "U", savedAt: at(3), record };
+  assert.equal(isTaskSnapshot(snapshot), true, "validated additive omission metadata belongs in the saved format");
+  assert.deepEqual(f.items, before);
+});
+
+test("legacy default and full exports withhold private automatic commands without rewriting the saved object", () => {
+  const f = scopedCheck(), record = taskRecord(f.items, { threadId: "T", title: "Old task", cwd: "/repo" });
+  const command = `pnpm test --config /private/${privateCommandSentinel}`, second = `touch /private/${privateCommandSentinel}-second`;
+  // Simulate an older frozen record, before portable-command omission metadata existed.
+  record.commands[0]!.command = command;
+  record.commands.push({ command: second, outcome: "unknown" });
+  record.verification!.state = "unknown"; record.verification!.checks[0]!.command = command;
+  record.contextEvidence!.checks[0]!.command = command;
+  record.context!.unlisted = [command, second];
+  const before = structuredClone(record);
+  for (const fullContext of [false, true]) {
+    const markdown = taskMarkdown(record, { fullContext });
+    assert.equal(markdown.includes(privateCommandSentinel), false);
+    assert.match(markdown, /omitted.*privacy/i);
+    assert.match(markdown, /may have changed files/);
+    assert.match(markdown, /exit code 0/);
+  }
+  assert.deepEqual(record, before, "export must not rewrite old snapshots or invent a refreshed verification result");
+});
+
+for (const command of ["node -e 'console.log(1)'", "python3 -c 'pass'", "bash -c \"$DYNAMIC_SCRIPT\""]) test(`embedded automatic command text stays unavailable in portable records: ${command.split(" ")[0]}`, () => {
+  const record = taskRecord([{ kind: "user", id: "U", text: "Run the task", at: at(1) }, { kind: "tool", id: "C", name: "shell", title: "Native command", args: {}, status: "done", outcome: "succeeded", exec: { command }, at: at(2) }], { threadId: "T", title: "Task", cwd: "/repo" });
+  assert.equal(Reflect.get(record.commands[0]!, "commandOmission")?.reason, "privacy");
+  assert.notEqual(record.commands[0]!.command, command);
+});
+
+test("ordinary portable command text keeps its existing exact wording", () => {
+  for (const command of ["pnpm --filter @modex/desktop test", "/bin/zsh -lc 'pnpm build && pnpm test'", "cat src/file.ts", "printf 'hello\\n' > greeting.txt"]) {
+    const record = taskRecord([{ kind: "user", id: "U", text: "Run the task", at: at(1) }, { kind: "tool", id: "C", name: "shell", title: "Native command", args: {}, status: "done", outcome: "succeeded", exec: { command }, at: at(2) }], { threadId: "T", title: "Task", cwd: "/repo" });
+    assert.equal(record.commands[0]!.command, command); assert.equal(Reflect.get(record.commands[0]!, "commandOmission"), undefined);
+  }
+});
+
+
+test("portable omission descriptors validate shape and marker consistency on every stored surface", () => {
+  const f = scopedCheck();
+  f.tool.kind === "tool" && f.tool.exec && (f.tool.exec.command = `pnpm test --config /private/${privateCommandSentinel}`);
+  f.evidence.checks[0]!.command = `pnpm test --config /private/${privateCommandSentinel}`;
+  const record = taskRecord(f.items, { threadId: "T", title: "Check", cwd: "/repo" });
+  const snapshot = { version: 1, pageId: "P", revision: 1, projectId: "p", threadId: "T", turnId: "U", savedAt: at(3), record };
+  for (const descriptor of [{ id: 0, reason: "privacy" }, { id: 1.5, reason: "privacy" }, { id: 1, reason: "other" }, { id: 1, reason: "privacy", original: "/private/hidden" }]) {
+    for (const surface of ["commands", "verification", "evidence", "unlisted"]) {
+      const invalid = structuredClone(snapshot);
+      if (surface === "commands") Reflect.set(invalid.record.commands[0]!, "commandOmission", descriptor);
+      if (surface === "verification") Reflect.set(invalid.record.verification!.checks[0]!, "commandOmission", descriptor);
+      if (surface === "evidence") Reflect.set(invalid.record.contextEvidence!.checks[0]!, "commandOmission", descriptor);
+      if (surface === "unlisted") { invalid.record.context!.unlisted = [invalid.record.commands[0]!.command]; Reflect.set(invalid.record.context!, "unlistedOmissions", [{ index: 0, omission: descriptor }]); }
+      assert.equal(isTaskSnapshot(invalid), false, surface);
+      assert.throws(() => portableTaskRecord(invalid.record), /Invalid/);
+    }
+  }
+  const mismatch = structuredClone(snapshot); mismatch.record.commands[0]!.command = "pnpm test";
+  assert.equal(isTaskSnapshot(mismatch), false);
+  assert.throws(() => portableTaskRecord(mismatch.record), /Invalid/);
+});
+
+test("portable projection preserves distinct omitted command equality and receipt counts", () => {
+  const f = scopedCheck(), original = taskRecord(f.items, { threadId: "T", title: "Old", cwd: "/repo" });
+  const first = `pnpm test --config /private/${privateCommandSentinel}`, second = `${first}-second`;
+  original.commands = [{ command: first, outcome: "failed", exitCode: 1 }, { command: second, outcome: "succeeded", exitCode: 0 }, { command: first, outcome: "succeeded", exitCode: 0 }];
+  original.verification!.checks[0]!.command = first; original.contextEvidence!.checks[0]!.command = first;
+  original.context!.unlisted = [first, second];
+  const before = structuredClone(original), result = portableTaskRecord(original);
+  assert.equal(result.commands.length, 3); assert.equal(result.context!.unlisted!.length, 2);
+  assert.deepEqual(result.commands.map(c => c.commandOmission!.id), [1, 2, 1]);
+  assert.equal(result.verification!.checks[0]!.commandOmission!.id, 1);
+  assert.equal(result.contextEvidence!.checks[0]!.commandOmission!.id, 1);
+  assert.deepEqual(result.context!.unlistedOmissions!.map(row => row.omission.id), [1, 2]);
+  assert.deepEqual(portableTaskRecord(result), result, "projection is idempotent");
+  assert.deepEqual(original, before);
+  assert.equal(JSON.stringify(result).includes(privateCommandSentinel), false);
+});
+
+
+test("new private-command Save is portable and reopen/export perform no CLI call or write", async () => {
+  const command = `pnpm test --config /private/${privateCommandSentinel}`;
+  const { home, store, runner, thread, turnId, calls } = await reopenFixture(command);
+  try {
+    const live = structuredClone(runner.items(thread.id));
+    assert.ok(JSON.stringify(live).includes(privateCommandSentinel));
+    const saved = runner.saveTaskNote(thread.id, turnId);
+    const snapshot = store.space.taskSnapshot(saved.pageId)!;
+    const note = store.space.list().find(page => page.id === saved.pageId)!;
+    assert.equal(JSON.stringify(snapshot).includes(privateCommandSentinel), false);
+    assert.equal(note.markdown.includes(privateCommandSentinel), false);
+    assert.equal(snapshot.record.commands[0]!.commandOmission!.reason, "privacy");
+    const files = await filesUnder(home), beforeCalls = { ...calls };
+    const view = runner.taskNote(saved.pageId)!;
+    assert.deepEqual(view.record, snapshot.record);
+    for (const fullContext of [false, true]) assert.equal(taskMarkdown(view.record, { fullContext }).includes(privateCommandSentinel), false);
+    assert.equal(await filesUnder(home), files);
+    assert.deepEqual(calls, beforeCalls);
+    const commands = runner.items(thread.id).filter(item => item.kind === "tool" && item.exec).map(item => item.kind === "tool" ? item.exec!.command : "");
+    assert.ok(commands.includes(command), "Save never rewrites genuine native commands");
+  } finally { await runner.dispose(); }
+});
+
+
+test("portable unlisted omission maps reject duplicates, invalid indices and marker mismatches", () => {
+  const record = taskRecord([user, bash("touch output.txt")], { threadId: "T", title: "Task", cwd: "/repo" });
+  const snapshot = { version: 1, pageId: "P", revision: 1, projectId: "p", threadId: "T", turnId: "U", savedAt: at(3), record };
+  for (const rows of [[{ index: -1, omission: { id: 1, reason: "privacy" } }], [{ index: 2, omission: { id: 1, reason: "privacy" } }], [{ index: 0, omission: { id: 1, reason: "privacy" } }, { index: 0, omission: { id: 2, reason: "privacy" } }], [{ index: 0, omission: { id: 1, reason: "privacy" }, original: "/private/hidden" }]]) {
+    const invalid = structuredClone(snapshot); Reflect.set(invalid.record.context!, "unlistedOmissions", rows);
+    assert.equal(isTaskSnapshot(invalid), false); assert.throws(() => portableTaskRecord(invalid.record), /Invalid/);
+  }
+});
+
+for (const command of ["PRIVATE_ROOT=/private/secret pnpm test", "/private/bin/zsh -lc 'pnpm test'", "cat --input=/private/secret", "cat /pri\\vate/secret", "cat file:///private/secret", "cat %2Fprivate%2Fsecret", "env -S 'node -e 1'"]) test(`ambiguous portable command syntax is explicitly omitted: ${command}`, () => {
+  const record = taskRecord([user, bash(command)], { threadId: "T", title: "Task", cwd: "/repo" });
+  assert.equal(record.commands[0]!.commandOmission!.reason, "privacy");
+  assert.equal(record.commands[0]!.outcome, "succeeded");
+});
+
+for (const command of ["cc -I/private/modex-compact-option-sentinel app.c", "cc -L'/private/modex-compact-option-sentinel' app.c", "cat @/private/modex-compact-option-sentinel", "cc -isystem/private/modex-compact-option-sentinel app.c"]) test(`compact path-bearing arguments are withheld: ${command}`, () => {
+  const input = [user, bash(command)], before = structuredClone(input);
+  const record = taskRecord(input, { threadId: "T", title: "Task", cwd: "/repo" });
+  assert.equal(JSON.stringify(record).includes("modex-compact-option-sentinel"), false);
+  assert.equal(record.commands[0]!.commandOmission!.reason, "privacy");
+  assert.deepEqual(input, before);
+});
+
+for (const command of ["perl -E 'say q</private/modex-script-delimiter-sentinel>'", "lua -e 'io.open\"/private/modex-script-delimiter-sentinel\"'", "unclassified-interpreter --execute 'q</private/modex-script-delimiter-sentinel>'"]) test(`unclassified inline scripts cannot bypass any portable surface: ${command}`, () => {
+  const f = scopedCheck(), record = taskRecord(f.items, { threadId: "T", title: "Legacy", cwd: "/repo" });
+  record.commands[0]!.command = command; record.verification!.checks[0]!.command = command;
+  record.contextEvidence!.checks[0]!.command = command; record.context!.unlisted = [command];
+  const before = structuredClone(record), projected = portableTaskRecord(record);
+  assert.equal(JSON.stringify(projected).includes("modex-script-delimiter-sentinel"), false);
+  assert.equal(projected.commands[0]!.commandOmission!.reason, "privacy");
+  assert.deepEqual(projected.verification!.checks[0]!.commandOmission, projected.commands[0]!.commandOmission);
+  assert.deepEqual(projected.contextEvidence!.checks[0]!.commandOmission, projected.commands[0]!.commandOmission);
+  assert.deepEqual(projected.context!.unlistedOmissions, [{ index: 0, omission: projected.commands[0]!.commandOmission }]);
+  for (const fullContext of [false, true]) assert.equal(taskMarkdown(record, { fullContext }).includes("modex-script-delimiter-sentinel"), false);
+  assert.deepEqual(record, before);
+});
+
+test("portable grammar classifies ordinary references and withholds unsupported invocation forms", () => {
+  for (const command of ["perl -E text", "lua -e hello", "unclassified-interpreter ordinarytext", "node --eval hello", "echo https://example.com/?path=\"/private/hidden\""]) {
+    const record = taskRecord([user, bash(command)], { threadId: "T", title: "Task", cwd: "/repo" });
+    assert.equal(record.commands[0]!.commandOmission!.reason, "privacy", command);
+  }
+  for (const command of ["node check.js", "python3 scripts/check.py", "git diff --stat", "rg needle src/file.ts", "git fetch https://example.com/repo"]) {
+    const record = taskRecord([user, bash(command)], { threadId: "T", title: "Task", cwd: "/repo" });
+    assert.equal(record.commands[0]!.command, command); assert.equal(record.commands[0]!.commandOmission, undefined);
+  }
+});
+
+for (const command of ["printf 'x\\n/private/modex-wrapper-sentinel'", "printf '%s/private/modex-wrapper-sentinel' ''", "find . -exec perl -E q_/private/modex-wrapper-sentinel_ +", "git submodule foreach 'perl -E q_/private/modex-wrapper-sentinel_'", "pnpm exec perl -E 'say q,/private/modex-wrapper-sentinel,'", "npm exec -- perl -E 'say q,/private/modex-wrapper-sentinel,'", "npx perl -E 'say q,/private/modex-wrapper-sentinel,'", "pnpm --filter @modex/desktop exec lua -e 'io.open\"/private/modex-wrapper-sentinel\"'", "bun x perl -E 'say q,/private/modex-wrapper-sentinel,'"]) test(`execution wrappers cannot preserve inline source: ${command}`, () => {
+  const f = scopedCheck(), record = taskRecord(f.items, { threadId: "T", title: "Legacy", cwd: "/repo" });
+  record.commands[0]!.command = command; record.verification!.checks[0]!.command = command;
+  record.contextEvidence!.checks[0]!.command = command; record.context!.unlisted = [command];
+  const before = structuredClone(record), projected = portableTaskRecord(record);
+  assert.equal(JSON.stringify(projected).includes("modex-wrapper-sentinel"), false);
+  assert.equal(projected.commands[0]!.commandOmission!.reason, "privacy");
+  assert.deepEqual(projected.verification!.checks[0]!.commandOmission, projected.commands[0]!.commandOmission);
+  assert.deepEqual(projected.contextEvidence!.checks[0]!.commandOmission, projected.commands[0]!.commandOmission);
+  assert.deepEqual(projected.context!.unlistedOmissions, [{ index: 0, omission: projected.commands[0]!.commandOmission }]);
+  for (const fullContext of [false, true]) assert.equal(taskMarkdown(record, { fullContext }).includes("modex-wrapper-sentinel"), false);
+  assert.deepEqual(record, before);
 });

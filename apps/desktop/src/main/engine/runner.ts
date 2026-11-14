@@ -1,3 +1,9 @@
+import { TaskContextCapture } from "./task-context-capture.js";
+import { TaskContextAttempt } from "./task-context-attempt.js";
+import { ContextPrivacy } from "./context-privacy.js";
+import type { TaskContextAgents } from "./task-context-agents.js";
+import { TaskContextService } from "./task-context-service.js";
+import { describeTaskContext, isContextDraftBinding, isTaskContextEvidence, taskContextBelongsTo, copyTaskContextEvidence, type ContextDraftOwner, type ContextDraftBinding, type ContextTarget, type TaskContextEvidence, type PendingTaskContext } from "../../shared/task-context-evidence.js";
 import { executionBinding } from "./execution-binding.js";
 import { resolveCli } from "./cli-path.js";
 import type { LocalExecution } from "./local-models/execution.js";
@@ -35,7 +41,7 @@ import type { PendingCreation, PendingSendRecord } from "./pending-sends.js";
 import { copyComposerRecovery } from "./update-recovery.js";
 import { parseRecoveryJSON, recoveryJSON } from "./attachment-recovery-file.js";
 import type { DraftRemovalScope } from "../../shared/native-drafts.js";
-import { boundOutput } from "../../shared/evidence.js";
+import { boundOutput, type Exec } from "../../shared/evidence.js";
 import { taskMarkdown, taskRecord, type TaskNoteView } from "../../shared/task-context.js";
 import { openingTitle } from "./titles.js";
 import { actionDigest, emptyRequests, publicAnswers, register as registerRequest, resolve as resolveRequest, settle as settleRequest, validateAnswers, withdraw as withdrawRequests, type Question, type RequestBinding, type RequestsState, type Resolution } from "../../shared/human-requests.js";
@@ -50,6 +56,7 @@ type UserItem = Extract<ThreadItem, { kind: "user" }>;
 export interface DurableSendAdmission {
   readonly id: string;
   readonly at: string;
+  readonly contextEvidence?: TaskContextEvidence;
   /** Main-only synchronous callback; never IPC data. Called after the raw user
    * item is durable and before routing/backend work. No automatic replay. */
   readonly committed: (item: Readonly<Omit<UserItem, "attachments">> & { readonly attachments?: readonly Readonly<Attachment>[] }) => void;
@@ -88,9 +95,14 @@ interface Live {
   followUp?: { key: string; abort: AbortController; result: Promise<FollowUp | null> };
   /** Processes a Stop asked to end that never confirmed their exit; their thread's files stay while one lives. */
   unconfirmed?: Set<number>;
+  /** Known context capabilities and loaded credentials survive retries/turns in main memory; never serialized. */
+  privateConnections?: Set<string>;
 }
 
 export interface RunnerOptions {
+  taskContext?: Pick<TaskContextAgents, "prepare">;
+  /** Main shares draft, native and Notes capture scheduling through one engine. */
+  contextCapture?: TaskContextCapture;
   /** Runs threads with a local target through their own Codex children (#379). Without it, such threads refuse to run. */
   localExecution?: LocalExecution;
   beforeSend?(thread: Thread): void;
@@ -151,6 +163,7 @@ export class ThreadRunner {
   /** Threads running an unattended routine turn: no person is there to answer, so approvals are refused. */
   private readonly unattended = new Set<string>();
   private readonly creating = new Map<string, Set<Promise<Thread>>>();
+  private readonly contextCreations = new Map<string, { projectId: string; binding: ContextDraftBinding; promise: Promise<Thread> }>();
   private readonly pendingCreations = new Map<string, { signature: string; promise: Promise<Thread> }>();
   private readonly backends: Record<BackendId, Backend>;
   /** Auto routing: judges a request (Jev or the offline heuristic) and picks model/effort/fast per turn. */
@@ -158,8 +171,13 @@ export class ThreadRunner {
   readonly attachments: AttachmentStore;
   /** Raw output of tools that outgrew the transcript's preview (main/engine/tool-logs.ts). */
   readonly toolLogs: ToolLogStore;
+  private readonly contextDrafts: TaskContextService;
+  private readonly contextCapture: TaskContextCapture;
+  private readonly contextAttempts = new Map<string, TaskContextAttempt>();
 
   constructor(private readonly o: RunnerOptions) {
+    this.contextCapture = o.contextCapture ?? new TaskContextCapture();
+    this.contextDrafts = new TaskContextService({ store: o.store, capture: this.contextCapture });
     this.attachments = o.attachments ?? new AttachmentStore(path.join(o.home, "attachments"));
     this.toolLogs = new ToolLogStore(path.join(o.home, "app", "tool-logs"));
     const s = () => o.store.settings;
@@ -202,6 +220,7 @@ export class ThreadRunner {
 
   async dispose(): Promise<void> {
     this.disposing = true;
+    this.contextDrafts.dispose();
     for (const abort of this.naming.values()) abort.abort();
     this.naming.clear();
     const runs = [...this.live.values()].flatMap((l) => l.run ? [l.run] : []);
@@ -217,7 +236,7 @@ export class ThreadRunner {
   holdForRestart(): () => void {
     this.assertNotRestarting();
     if (this.disposing) throw new Error("Modex is shutting down.");
-    if (this.creating.size || this.deleting.size || this.removingProjects.size || this.titleRuns.size
+    if (this.creating.size || this.contextCreations.size || this.deleting.size || this.removingProjects.size || this.titleRuns.size
       || [...this.live.values()].some(l => l.run || l.pending.size || l.status === "running" || l.status === "waiting")) {
       throw new Error("Let current turns and worktree operations finish before restarting.");
     }
@@ -333,8 +352,30 @@ export class ThreadRunner {
     return this.o.store.thread(thread.id)!;
   }
 
-  async createThread(projectId: string, opts: { worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean } = {}): Promise<Thread> {
-    return this.trackCreation(projectId, opts);
+  async createThread(projectId: string, opts: { worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean; contextDraft?: ContextDraftBinding } = {}): Promise<Thread> {
+    if (opts.contextDraft === undefined) return this.trackCreation(projectId, opts);
+    if (!isContextDraftBinding(opts.contextDraft)) throw new Error("Invalid task context draft.");
+    const binding = structuredClone(opts.contextDraft);
+    this.assertContextEditing(binding.owner);
+    const existing = this.contextDrafts.creationFor(binding, projectId);
+    if (existing) return this.o.store.thread(existing)!;
+    const pending = this.contextCreations.get(binding.nonce);
+    if (pending) {
+      if (pending.projectId !== projectId || JSON.stringify(pending.binding) !== JSON.stringify(binding)) throw new Error("Context creation identity changed.");
+      return pending.promise;
+    }
+    const reserved = this.contextDrafts.reserveCreation(binding, opts.worktree === true);
+    let resolve!: (thread: Thread) => void, reject!: (error: unknown) => void;
+    const promise = new Promise<Thread>((yes, no) => { resolve = yes; reject = no; });
+    this.contextCreations.set(binding.nonce, { projectId, binding, promise });
+    void this.trackCreation(projectId, opts, reserved).then(thread => { this.contextDrafts.bindCreatedThread(binding, thread.id); return thread; }).then(thread => {
+      this.contextCreations.delete(binding.nonce); resolve(thread);
+    }, error => {
+      // A failed worktree script may have made evidence. Never run it again from this nonce.
+      if (!opts.worktree) this.contextCreations.delete(binding.nonce);
+      reject(error);
+    });
+    return promise;
   }
 
   /**
@@ -367,6 +408,86 @@ export class ThreadRunner {
     } finally { this.unattended.delete(threadId); }
   }
 
+  private assertContextEditing(owner: ContextDraftOwner): void {
+    this.assertNotRestarting();
+    if (this.disposing) throw new Error("Modex is shutting down.");
+    if (owner?.kind === "thread") this.assertThreadAvailable(owner.threadId);
+    else if (owner?.kind === "project" && this.removingProjects.has(owner.projectId)) throw new Error("This project is being removed.");
+  }
+  openContextDraft(owner: ContextDraftOwner): ContextDraftBinding {
+    this.assertContextEditing(owner);
+    return this.contextDrafts.openContextDraft(owner);
+  }
+  selectTaskContext(binding: ContextDraftBinding, targets: ContextTarget[]): Promise<{ binding: ContextDraftBinding; context: TaskContextEvidence }> {
+    this.assertContextEditing(binding?.owner);
+    return this.background.run(() => this.contextDrafts.selectTaskContext(binding, targets));
+  }
+  closeContextDraft(binding: ContextDraftBinding): void { this.contextDrafts.closeContextDraft(binding); }
+  draftTaskContext(binding: ContextDraftBinding): TaskContextEvidence {
+    this.assertContextEditing(binding?.owner); return this.contextDrafts.draftTaskContext(binding);
+  }
+  confirmTaskContext(threadId: string, turnId: string, expectedRevision: number, refIds: string[]): TaskContextEvidence {
+    this.assertContextEditing({ kind: "thread", threadId });
+    const thread = this.o.store.thread(threadId)!, context = this.taskContext(threadId, turnId);
+    if (!Number.isSafeInteger(expectedRevision) || context.revision !== expectedRevision) throw new Error("Task context changed; review it again.");
+    if (!Array.isArray(refIds) || refIds.length > context.refs.length || new Set(refIds).size !== refIds.length || refIds.some(id => !context.refs.some(ref => ref.id === id))) throw new Error("Choose existing references from this task.");
+    this.contextDrafts.assertReferenceScope(thread.projectId, context.refs.filter(ref => refIds.includes(ref.id)).map(ref => ref.target));
+    const source = { kind: "human" as const, actionId: newId(), at: new Date().toISOString() };
+    this.updateTaskContext(threadId, this.slot(threadId), { thread: threadId, turn: turnId, attempt: source.actionId, backend: thread.backend }, thread.projectId, evidence => {
+      if (evidence.revision !== expectedRevision) throw new Error("Task context changed; review it again.");
+      for (const ref of evidence.refs) {
+        ref.relations = ref.relations.filter(relation => relation.provenance !== "user-confirmed");
+        if (refIds.includes(ref.id)) ref.relations.push({ kind: "relevant", provenance: "user-confirmed", source });
+      }
+      evidence.revision++;
+    });
+    return this.taskContext(threadId, turnId);
+  }
+  taskContext(threadId: string, turnId: string): TaskContextEvidence {
+    const thread = this.o.store.thread(threadId);
+    if (!thread || !this.o.store.project(thread.projectId)) throw new Error("Task context project is unavailable.");
+    const user = this.items(threadId).find(item => item.kind === "user" && item.id === turnId);
+    if (user?.kind !== "user") throw new Error("That request is no longer in this thread.");
+    const context = copyTaskContextEvidence(user.contextEvidence ?? { revision: 0, refs: [], captures: [], checks: [] });
+    if (!taskContextBelongsTo(context, threadId, turnId, thread.projectId)) throw new Error("Task context scope changed.");
+    return context;
+  }
+  confirmTaskCheck(threadId: string, turnId: string, expectedRevision: number, itemId: string, refIds: string[]): TaskContextEvidence {
+    this.assertContextEditing({ kind: "thread", threadId });
+    const thread = this.o.store.thread(threadId)!;
+    const context = this.taskContext(threadId, turnId);
+    if (!Number.isSafeInteger(expectedRevision) || context.revision !== expectedRevision) throw new Error("Task context changed; review it again.");
+    if (!Array.isArray(refIds) || refIds.length > context.refs.length || refIds.some(id => typeof id !== "string") || new Set(refIds).size !== refIds.length
+      || refIds.some(id => !context.refs.some(ref => ref.id === id))) throw new Error("Choose existing references from this task.");
+    const items = this.items(threadId), start = items.findIndex(item => item.kind === "user" && item.id === turnId);
+    const next = items.findIndex((item, i) => i > start && item.kind === "user");
+    const check = context.checks.find(check => check.itemId === itemId);
+    const item = items.slice(start + 1, next < 0 ? undefined : next).find(item => item.kind === "tool" && item.id === itemId);
+    if (!check?.origin || item?.kind !== "tool" || !item.origin || JSON.stringify(check.origin) !== JSON.stringify(item.origin) || item.exec?.command !== check.command)
+      throw new Error("This check does not belong to the requested task.");
+    // Confirmation adds relevance only. It never changes the native result, plan or timed captures.
+    this.updateTaskContext(threadId, this.slot(threadId), check.origin, thread.projectId, evidence => {
+      if (evidence.revision !== expectedRevision) throw new Error("Task context changed; review it again.");
+      const current = evidence.checks.find(c => c.itemId === itemId)!;
+      current.relevantRefIds = [...refIds]; current.relevance = refIds.length ? "user-confirmed" : "unestablished"; evidence.revision++;
+    });
+    return this.taskContext(threadId, turnId);
+  }
+  invalidateContextDocument(): void { this.contextDrafts.invalidateDocument(); this.contextCreations.clear(); }
+  taskContextCandidates(binding: ContextDraftBinding): ReturnType<TaskContextService["candidates"]> {
+    this.assertContextEditing(binding?.owner);
+    return this.background.run(() => this.contextDrafts.candidates(binding));
+  }
+  snapshotContextForPending(binding: ContextDraftBinding, owner: ContextDraftOwner): PendingTaskContext {
+    this.assertContextEditing(owner); return this.contextDrafts.snapshotForPending(binding, owner);
+  }
+  preparePendingTaskContext(binding: ContextDraftBinding, turnId: string, threadId: string, threadCreatedAt: string): void {
+    this.contextDrafts.preparePending(binding, { kind: "pending", turnId, threadId, threadCreatedAt });
+  }
+  pendingTaskContextPersisted(binding: ContextDraftBinding, turnId: string): void { this.contextDrafts.pendingPersisted(binding, turnId); }
+  pendingContextForThread(context: PendingTaskContext, threadId: string): PendingTaskContext { return this.contextDrafts.pendingForThread(context, threadId); }
+
+
   /**
    * Saves a turn's task record (shared/task-context.ts) to the thread's project notes, at a person's
    * request. Saving again updates the same note, unless it was edited since: then the edit stays and
@@ -394,8 +515,19 @@ export class ThreadRunner {
     if (!project) throw new Error("This project has no notes yet. Open Notes for it, then save again.");
     const existing = saved ? notes.list().find(page => page.id === saved.pageId && !page.trashedAt) : undefined;
     const page = reused ?? notes.create({ title: existing ? `${record.title} (saved again)` : record.title, markdown, containerId: project.id }, change);
-    notes.writeTaskSnapshot({ version: 1, pageId: page.id, revision: page.revision, projectId: thread.projectId, threadId, turnId, savedAt: page.updatedAt, record });
-    const updated = this.o.store.updateThread(threadId, { taskNotes: { ...thread.taskNotes, [turnId]: { pageId: page.id, revision: page.revision } } });
+    // These are separate durable writes, not a transaction. Preserve the completed
+    // note and identify it if a later write cannot be confirmed; never guess rollback.
+    try {
+      notes.writeTaskSnapshot({ version: 1, pageId: page.id, revision: page.revision, projectId: thread.projectId, threadId, turnId, savedAt: page.updatedAt, record });
+    } catch (error) {
+      throw new Error(`Note ${page.id}, revision ${page.revision}, was written, but its saved task record could not be confirmed. Keep this note for recovery; saving again may create another copy.`, { cause: error });
+    }
+    let updated: Thread;
+    try {
+      updated = this.o.store.updateThread(threadId, { taskNotes: { ...thread.taskNotes, [turnId]: { pageId: page.id, revision: page.revision } } });
+    } catch (error) {
+      throw new Error(`Note ${page.id}, revision ${page.revision}, and its saved task record were written, but the thread link could not be confirmed. Keep this note for recovery; saving again may create another copy.`, { cause: error });
+    }
     this.o.emit({ threadId, type: "thread", thread: updated });
     return { pageId: page.id, title: page.title, revision: page.revision, created: !reused, preserved: Boolean(existing && !reused) };
   }
@@ -432,7 +564,7 @@ export class ThreadRunner {
     const latest = thread?.taskNotes?.[snapshot.turnId];
     const other = latest && latest.pageId !== pageId ? notes.list().find((p) => p.id === latest.pageId && !p.trashedAt) : undefined;
     return {
-      record: snapshot.record, threadId: snapshot.threadId, turnId: snapshot.turnId, savedAt: snapshot.savedAt, savedRevision: snapshot.revision,
+      record: snapshot.record, pageId: snapshot.pageId, projectId: snapshot.projectId, threadId: snapshot.threadId, turnId: snapshot.turnId, savedAt: snapshot.savedAt, savedRevision: snapshot.revision,
       note: { title: page.title, revision: page.revision, trashed: Boolean(page.trashedAt) },
       ...(edited ? { edited } : {}),
       ...(!home ? { unlinked: true as const } : now && now.id !== home.id ? { moved: { from: home.name, to: now.name } } : {}),
@@ -553,6 +685,7 @@ export class ThreadRunner {
   private async removeProjectHeld(projectId: string): Promise<void> {
     if (this.removingProjects.has(projectId)) throw new Error("This project is being removed.");
     this.removingProjects.add(projectId);
+    this.contextDrafts.cancelProjectCaptures(projectId);
     try {
       await Promise.allSettled(this.creating.get(projectId) ?? []);
       const threads = this.o.store.snapshot().threads.filter((thread) => thread.projectId === projectId);
@@ -560,6 +693,7 @@ export class ThreadRunner {
       const failure = removals.find((result): result is PromiseRejectedResult => result.status === "rejected");
       if (failure) throw failure.reason;
       this.o.store.removeProject(projectId);
+      this.contextDrafts.invalidateProject(projectId);
     } finally {
       this.removingProjects.delete(projectId);
     }
@@ -573,6 +707,7 @@ export class ThreadRunner {
   private async deleteThreadHeld(threadId: string, removeWorktree = false): Promise<void> {
     if (this.deleting.has(threadId)) throw new Error("This thread is being deleted. If its CLI has not confirmed the stop, press Stop again to force it.");
     this.deleting.add(threadId);
+    this.contextDrafts.cancelThreadCaptures(threadId);
     this.naming.get(threadId)?.abort();
     this.naming.delete(threadId);
     try {
@@ -602,6 +737,7 @@ export class ThreadRunner {
       }
       clearTimeout(l?.flushTimer);
       this.o.store.deleteThread(threadId);
+      this.contextDrafts.invalidateThread(threadId);
       this.attachments.removeThread(threadId);
       this.toolLogs.removeThread(threadId);
       this.live.delete(threadId);
@@ -655,9 +791,11 @@ export class ThreadRunner {
   }
 
   /** Runs one user turn. Resolves when the thread is idle again (or errored). */
-  async send(threadId: string, text: string, attachments: Attachment[] = [], by = "desktop"): Promise<void> {
+  async send(threadId: string, text: string, attachments: Attachment[] = [], by = "desktop", contextDraft?: ContextDraftBinding): Promise<void> {
     this.assertLocalSender(threadId, by);
-    return this.start(threadId, text, undefined, attachments);
+    if (contextDraft !== undefined && !isContextDraftBinding(contextDraft)) throw new Error("Invalid task context draft.");
+    if (contextDraft !== undefined && by !== "desktop" && by !== "browser") throw new Error("Select draft context from this Mac.");
+    return this.start(threadId, text, undefined, attachments, undefined, contextDraft);
   }
 
   private assertLocalSender(threadId: string, by: string): void {
@@ -669,13 +807,13 @@ export class ThreadRunner {
   /** Native durable adapter only. Files have already crossed its journaled
    * ownership transaction. Existing generic send and explicit Retry stay separate. */
   async sendDurably(threadId: string, rawText: string, attachments: readonly Readonly<Attachment>[], admission: DurableSendAdmission): Promise<void> {
-    const id = admission.id, at = admission.at, committed = admission.committed;
+    const id = admission.id, at = admission.at, committed = admission.committed, contextEvidence = admission.contextEvidence;
     if (!this.o.store.supportsDurableAdmission) throw new Error("Durable native message admission is unavailable.");
     if (typeof rawText !== "string" || rawText.length > 1024 * 1024 || !/^[A-Za-z0-9_-]{1,128}$/.test(id)
       || typeof at !== "string" || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(at)
       || !Number.isFinite(Date.parse(at)) || typeof committed !== "function") throw new Error("Invalid durable message admission.");
     const files = attachments.map(file => ({ ...file }));
-    await this.start(threadId, rawText.trim(), undefined, files, Object.freeze({ id, at, committed, rawText }));
+    await this.start(threadId, rawText.trim(), undefined, files, Object.freeze({ id, at, committed, rawText, ...(contextEvidence !== undefined ? { contextEvidence } : {}) }));
   }
 
   /**
@@ -698,7 +836,7 @@ export class ThreadRunner {
     return this.start(threadId, user.text, user.id, user.attachments);
   }
 
-  private async start(threadId: string, text: string, reuse?: string, attachments: Attachment[] = [], prepared?: PreparedAdmission): Promise<void> {
+  private async start(threadId: string, text: string, reuse?: string, attachments: Attachment[] = [], prepared?: PreparedAdmission, contextDraft?: ContextDraftBinding): Promise<void> {
     this.assertThreadAvailable(threadId);
     this.o.beforeSend?.(this.o.store.thread(threadId)!);
     const l = this.slot(threadId);
@@ -711,13 +849,13 @@ export class ThreadRunner {
     // A new message on an archived thread brings it back: an archived thread is never one that is working.
     try {
       this.unarchive(threadId);
-      await this.runTurn(threadId, text, reuse, attachments, prepared);
+      await this.runTurn(threadId, text, reuse, attachments, prepared, contextDraft);
     }
     finally { if (l.run === reservation) l.run = null; release(); }
   }
 
   /** `reuse` names an existing user item to run again instead of adding one (Retry). */
-  private async runTurn(threadId: string, text: string, reuse?: string, attachments: Attachment[] = [], prepared?: PreparedAdmission): Promise<void> {
+  private async runTurn(threadId: string, text: string, reuse?: string, attachments: Attachment[] = [], prepared?: PreparedAdmission, contextDraft?: ContextDraftBinding): Promise<void> {
     const savedThread = this.o.store.thread(threadId);
     if (!savedThread) throw new Error(`unknown thread ${threadId}`);
     let thread = savedThread;
@@ -727,6 +865,7 @@ export class ThreadRunner {
     l.completed = false;
 
     if (prepared) {
+      if (prepared.contextEvidence !== undefined && (!isTaskContextEvidence(prepared.contextEvidence) || !taskContextBelongsTo(prepared.contextEvidence, threadId, prepared.id, thread.projectId))) throw new Error("Prepared task context does not belong to this message.");
       if (reuse !== undefined || l.items.some(item => item.id === prepared.id)) throw new Error("This message was already admitted. Use Retry explicitly.");
       const checkpoint = this.o.store.checkpointThread(threadId);
       if (checkpoint.projectId !== savedThread.projectId || checkpoint.createdAt !== savedThread.createdAt) throw new Error("Prepared message target changed.");
@@ -756,6 +895,9 @@ export class ThreadRunner {
       claude: thread.claudeAccount ?? (thread.backend === "claude" && thread.sessionHandle ? "cli" : prospectiveClaudeAccount),
     };
     const admittedExecution = executionBinding(thread, prospectiveCodexAccount);
+    const turnId = reuse ?? prepared?.id ?? newId();
+    if (contextDraft && (reuse !== undefined || prepared)) throw new Error("Editable draft context cannot replace an admitted message.");
+    const contextAdmission = contextDraft ? this.contextDrafts.prepareContextDraft(contextDraft, threadId, turnId) : undefined;
     // Staged files move into the thread's folder now, so a Retry (or a restart) still finds them.
     let draft: AttachmentDraft | undefined;
     if ((prepared || retry) && Array.isArray(attachments) && attachments.length) {
@@ -779,13 +921,14 @@ export class ThreadRunner {
     l.followUp?.abort.abort();
     l.followUp = undefined;
     // The Modex turn is the user message it answers: Retry runs the same turn again as a new attempt.
-    const turnId = reuse ?? prepared?.id ?? newId();
     if (!retry) {
       const item: UserItem = { id: turnId, kind: "user", text: prepared?.rawText ?? text, execution: admittedExecution,
-        at: prepared?.at ?? new Date().toISOString(), ...(files.length ? { attachments: files } : {}) };
-      this.addItem(threadId, item, prepared ? () => {
+        at: prepared?.at ?? new Date().toISOString(), ...(files.length ? { attachments: files } : {}), ...(contextAdmission ? { contextEvidence: contextAdmission.context } : prepared?.contextEvidence !== undefined ? { contextEvidence: copyTaskContextEvidence(prepared.contextEvidence) } : {}) };
+      this.addItem(threadId, item, prepared || contextAdmission ? () => {
+        contextAdmission?.commit();
+        if (contextDraft) this.contextDrafts.contextPersisted(contextDraft, threadId, turnId);
         const receipt = Object.freeze({ ...item, ...(item.attachments ? { attachments: Object.freeze(item.attachments.map(file => Object.freeze({ ...file }))) } : {}) });
-        if (prepared.committed(receipt) !== undefined) throw new Error("Durable admission callback must complete synchronously.");
+        if (prepared && prepared.committed(receipt) !== undefined) throw new Error("Durable admission callback must complete synchronously.");
       } : undefined);
       this.assertThreadAvailable(threadId);
       if (thread.title === "New thread" && thread.titleSource !== "manual") this.updateThread(threadId, { title: derivedTitle }, { automaticTitle: true });
@@ -885,32 +1028,19 @@ export class ThreadRunner {
     const turnStart = l.items.length;
     let knowledge: KnowledgeLease | undefined;
     let pages: PagesLease | undefined;
+    let taskContext: import("./task-context-agents.js").TaskContextLease | undefined;
     let images: import("./images/agent.js").ImagesLease | undefined;
     const revokeConnections = () => {
       void pages?.close().catch(() => {});
+      void taskContext?.close().catch(() => {});
       void images?.close().catch(() => {});
       void knowledge?.close().catch(() => {});
     };
     abort.signal.addEventListener("abort", revokeConnections, { once: true });
+    let publicationAborted = false;
     try {
       this.o.beforeSend?.(thread);
       if (thread.imageJobId && this.o.images) images = await this.o.images.prepare(thread, abort.signal);
-      // Prepare Pages first: snapshot the turn's read-only ceiling before knowledge setup awaits.
-      // Always attach its stable route, including when the project's setting currently disables it.
-      // Modex's note and knowledge tools are not offered to a local model until they are qualified for it.
-      if (!local && thread.backend !== "mock" && this.o.pages) {
-        pages = await this.o.pages.prepare(connectionTurn, change => this.addItem(threadId, {
-          id: newId(), kind: "notice", level: "info", text: `Note updated: ${change.summary}`, pages: change, at: new Date().toISOString(),
-        }), abort.signal);
-        if (abort.signal.aborted) { this.setStatus(threadId, "idle"); return; }
-      }
-      if (!local && thread.backend !== "mock" && this.o.knowledge) {
-        knowledge = await this.o.knowledge.prepare(connectionTurn, change => this.addItem(threadId, {
-          id: newId(), kind: "notice", level: "info", text: `Knowledge updated: ${change.summary}`, knowledge: change, at: new Date().toISOString(),
-        }), abort.signal);
-        if (knowledge.warning) sink.notice("warn", knowledge.warning);
-        if (abort.signal.aborted) { this.setStatus(threadId, "idle"); return; }
-      }
       // Preserve Codex's admitted identity across asynchronous setup; Claude keeps its account-pool binding.
       const bound = threadAccount(thread);
       const account = !local && (thread.backend === "codex" || thread.backend === "claude") && backend.identity
@@ -920,31 +1050,128 @@ export class ThreadRunner {
       if (account && !bound) this.o.store.updateThread(threadId, thread.backend === "codex" ? { codexAccount: account } : { claudeAccount: account });
       const accountFor = (ran: Thread) => threadAccount(ran) ?? account;
       const freshConversation = !thread.sessionHandle;
-      const turnFiles: TurnAttachment[] = files.map((f) => {
-        const file = this.attachments.resolve(f.rel);
-        if (!file) throw new Error(`Attachment ${f.name} is missing or changed. Attach it again before retrying.`);
-        return { name: f.name, mime: f.mime, kind: f.kind, path: file };
-      });
       // Each run of the backend is one attempt with its own sink; ending it settles whatever it left open.
       const runOn = async (ran: Thread): Promise<TurnResult> => {
-        const attempt = this.beginAttempt(threadId, l, { thread: threadId, turn: turnId, attempt: newId(), backend: ran.backend, ...(accountFor(ran) ? { account: accountFor(ran) } : {}) });
+        const codingCwd = ran.cwd, projectId = ran.projectId;
+        const actualTurn: TurnRef = { thread: threadId, turn: turnId, attempt: newId(), backend: ran.backend, ...(accountFor(ran) ? { account: accountFor(ran) } : {}) };
+        const privacy = new ContextPrivacy(l.privateConnections ??= new Set());
+        let publicationFailure: { error: Error; stage: string } | undefined;
+        const shutdownNotices: { level: "info" | "warn" | "error"; text: string }[] = [];
+        let shutdownBytes = 0, shutdownTruncated = false, nativeSettled = false;
+        const retainShutdownNotice = (level: "info" | "warn" | "error", text: string) => {
+          const safe = privacy.text(text), bytes = Buffer.byteLength(safe);
+          if (shutdownNotices.length >= 20 || shutdownBytes + bytes > 64 * 1024) { shutdownTruncated = true; return; }
+          shutdownNotices.push({ level, text: safe }); shutdownBytes += bytes;
+        };
+        const failPublication = (error: unknown, stage: string) => {
+          publicationFailure ??= { error: privacy.error(error), stage };
+          publicationAborted = true;
+          this.contextAttempts.get(actualTurn.attempt)?.seal();
+          try { privacy.finish(); }
+          catch (cleanup) { retainShutdownNotice("warn", privacy.error(cleanup).message); }
+          finally { abort.abort(); }
+        };
+        const attempt = this.beginAttempt(threadId, l, actualTurn, privacy, error => failPublication(error, "publish native observation"));
+        const context = new TaskContextAttempt({ turn: actualTurn, cwd: codingCwd, projectId, signal: abort.signal, capture: this.contextCapture,
+          privateValue: value => privacy.contains(value),
+          read: () => {
+            const user = l.items.find(item => item.kind === "user" && item.id === turnId);
+            if (user?.kind !== "user" || !user.contextEvidence) throw new Error("Task context user item is missing.");
+            return user.contextEvidence;
+          },
+          planRevision: () => {
+            const index = l.items.findIndex(item => item.kind === "user" && item.id === turnId);
+            const plan = l.items.slice(index + 1).reverse().find(item => item.kind === "plan");
+            return plan?.kind === "plan" ? plan.revision : undefined;
+          },
+          current: () => {
+            const current = this.o.store.thread(threadId);
+            return this.live.get(threadId) === l && l.abort === abort && l.attempt === actualTurn.attempt && Boolean(current)
+              && current!.projectId === projectId && current!.cwd === codingCwd && current!.backend === actualTurn.backend && (threadAccount(current!) ?? null) === (actualTurn.account ?? null)
+              && !this.deleting.has(threadId) && !this.removingProjects.has(projectId);
+          },
+          update: change => this.updateTaskContext(threadId, l, actualTurn, projectId, change),
+          publicationFailed: error => failPublication(error, "persist task context metadata"),
+        });
+        this.contextAttempts.set(actualTurn.attempt, context);
+        const ceiling = local ? "local-execution-unqualified" : ran.backend !== "claude" && ran.backend !== "codex" ? "unsupported-adapter" : undefined;
+        const reportCapability: NonNullable<TurnSink["taskContextCapability"]> = value => {
+          if (!context.accepting()) return;
+          try { context.capability(ceiling ? { state: "unavailable", reason: ceiling } : value.state === "available" && !taskContext ? { state: "unavailable", reason: "configuration-not-bound" } : value); }
+          catch (error) { failPublication(error, "persist task context capability"); }
+        };
+        let failed = false, failure: unknown;
         try {
-          const result = await backend.runTurn(
-            describeAttachments(text, turnFiles),
+          context.capability({ state: "unavailable", reason: ceiling ?? "configuration-not-bound" });
+          if (!local && (ran.backend === "claude" || ran.backend === "codex") && this.o.taskContext) {
+            taskContext = await this.o.taskContext.prepare({ turn: actualTurn, cwd: codingCwd, projectId, isCurrent: () => context.accepting(), accept: proposal => context.proposed(proposal) }, context.signal);
+            privacy.addConnection(taskContext.connection.url);
+          }
+          if (!local && ran.backend !== "mock" && this.o.pages) {
+            pages = await this.o.pages.prepare(connectionTurn, change => this.addItem(threadId, {
+              id: newId(), kind: "notice", level: "info", text: `Note updated: ${change.summary}`, pages: change, at: new Date().toISOString(),
+            }), context.signal, { attempt: actualTurn, cwd: codingCwd, isCurrent: () => context.accepting(), observed: receipt => context.observedNotes(receipt) });
+            privacy.addConnection(pages.connection.url);
+          }
+          if (!knowledge && !local && thread.backend !== "mock" && this.o.knowledge) {
+            knowledge = await this.o.knowledge.prepare(connectionTurn, change => this.addItem(threadId, {
+              id: newId(), kind: "notice", level: "info", text: `Knowledge updated: ${change.summary}`, knowledge: change, at: new Date().toISOString(),
+            }), abort.signal);
+            if (knowledge.warning) attempt.sink.notice("warn", knowledge.warning);
+          }
+          if (abort.signal.aborted) { context.seal(); privacy.finish(); attempt.end("interrupted"); return { status: "interrupted" }; }
+          const turnFiles: TurnAttachment[] = files.map((f) => {
+            const file = this.attachments.resolve(f.rel);
+            if (!file) throw new Error(`Attachment ${f.name} is missing or changed. Attach it again before retrying.`);
+            return { name: f.name, mime: f.mime, kind: f.kind, path: file };
+          });
+          let result = privacy.redact(await backend.runTurn(
+            describeAttachments(describeTaskContext(text, contextAdmission?.context ?? (l.items.find(item => item.id === turnId && item.kind === "user") as UserItem | undefined)?.contextEvidence), turnFiles),
             {
               cwd: ran.cwd, mode: ran.mode, plan: ran.plan, model: ran.model, effort: ran.effort, fast, ...(conserveCredits ? { conserveCredits: true } : {}), resume: ran.sessionHandle, account: accountFor(ran),
               // Files the CLI reads by path sit outside cwd; --add-dir keeps that from prompting.
               addDirs: turnFiles.some((f) => f.kind === "file") ? [path.join(this.attachments.root, threadId)] : [],
-              ...(turnFiles.length ? { attachments: turnFiles } : {}), ...(knowledge ? { knowledge: knowledge.connection } : {}), ...(pages ? { pages: pages.connection } : {}), ...(images ? { images: images.connection } : {}),
+              ...(turnFiles.length ? { attachments: turnFiles } : {}), ...(knowledge ? { knowledge: knowledge.connection } : {}), ...(pages ? { pages: pages.connection } : {}), ...(taskContext ? { taskContext: taskContext.connection } : {}), ...(images ? { images: images.connection } : {}),
             },
-            attempt.sink,
+            { ...attempt.sink, taskContextCapability: reportCapability, protectCredential: value => { if (context.accepting()) privacy.addCredential(value); }, notice: (level, text) => {
+              if (nativeSettled) return;
+              if (publicationFailure) { retainShutdownNotice(level, text); return; }
+              try { attempt.sink.notice(level, text); } catch (error) { failPublication(error, "publish native notice"); }
+            } },
             abort.signal,
-          );
-          attempt.end(abort.signal.aborted ? "interrupted" : ATTEMPT_OUTCOME[result.status]);
+          ));
+          nativeSettled = true;
+          // Preserve this independently of later persistence: a failed journal cannot prove exit.
+          if (result.stop?.outcome === "unconfirmed" && result.stop.pid) (l.unconfirmed ??= new Set()).add(result.stop.pid);
+          if (!publicationFailure && result.taskContextCapability) reportCapability(result.taskContextCapability);
+          if (publicationFailure) {
+            failed = true; failure = publicationFailure.error;
+            result = { ...result, status: "failed", error: publicationFailure.error.message, detail: { ...result.detail, stage: publicationFailure.stage, shutdownNotices: shutdownNotices.map(notice => ({ ...notice })), ...(shutdownTruncated ? { shutdownTruncated: true } : {}) }, taskContextCapability: { state: "unavailable", reason: "configuration-not-bound" } };
+          }
+          context.seal(); privacy.finish();
+          attempt.end(publicationFailure ? "failed" : abort.signal.aborted ? "interrupted" : ATTEMPT_OUTCOME[result.status]);
+          for (const notice of shutdownNotices) this.addItem(threadId, { id: newId(), kind: "notice", ...notice, at: new Date().toISOString() });
+          if (shutdownTruncated) this.addItem(threadId, { id: newId(), kind: "notice", level: "warn", text: "Some native shutdown diagnostics could not be retained.", at: new Date().toISOString() });
+          if (taskContext) { const closing = taskContext; taskContext = undefined; await closing.close(); }
+          if (pages) { const closing = pages; pages = undefined; await closing.close(); }
+          const drain = context.flush();
+          if (drain) await drain;
+          if (publicationFailure) result = { ...result, status: "failed", error: publicationFailure.error.message, detail: { ...result.detail, stage: publicationFailure.stage }, taskContextCapability: { state: "unavailable", reason: "configuration-not-bound" } };
           return result;
         } catch (err) {
+          failed = true; failure = err;
+          context.seal(); privacy.finish();
           attempt.end(abort.signal.aborted ? "interrupted" : "failed");
-          throw err;
+          throw privacy.error(err);
+        } finally {
+          nativeSettled = true;
+          context.seal(); privacy.finish();
+          context.close();
+          this.contextAttempts.delete(actualTurn.attempt);
+          const closing = [taskContext, pages]; taskContext = undefined; pages = undefined;
+          const closed = await Promise.allSettled(closing.filter(lease => lease !== undefined).map(lease => Promise.resolve().then(() => lease.close())));
+          const errors = closed.flatMap(result => result.status === "rejected" ? [privacy.error(result.reason).message] : []);
+          if (errors.length) throw new Error(`${failed ? `${privacy.error(failure).message} ` : ""}Connection cleanup failed: ${errors.join("; ")}`);
         }
       };
       let replacementBlocked = false;
@@ -1046,7 +1273,7 @@ export class ThreadRunner {
         this.setStatus(threadId, "idle");
       }
     } catch (err) {
-      if (abort.signal.aborted) {
+      if (abort.signal.aborted && !publicationAborted) {
         sink.notice("info", "Stopped.");
         this.setStatus(threadId, "idle");
       } else {
@@ -1058,6 +1285,7 @@ export class ThreadRunner {
       await Promise.all([
         images?.close().catch(err => sink.notice("warn", `Images connection could not close: ${(err as Error).message}`)),
         pages?.close().catch(err => sink.notice("warn", `Pages connection could not close: ${(err as Error).message}`)),
+        taskContext?.close().catch(err => sink.notice("warn", `Task context connection could not close: ${(err as Error).message}`)),
         knowledge?.close().catch(err => sink.notice("warn", `Knowledge connection could not close: ${(err as Error).message}`)),
       ]);
       // Attempts settle their own items. An item from before the conversation contract can still be
@@ -1133,6 +1361,7 @@ export class ThreadRunner {
   }
 
   stop(threadId: string): void {
+    this.contextDrafts.cancelThreadCaptures(threadId);
     const l = this.live.get(threadId);
     if (!l) return;
     l.followUp?.abort.abort();
@@ -1447,7 +1676,7 @@ export class ThreadRunner {
    * with an id, its ingress order and time, and projects it into transcript items. Starting an
    * attempt makes every earlier attempt's sink inert.
    */
-  private beginAttempt(threadId: string, l: Live, turn: TurnRef): { sink: TurnSink; end: (outcome: SettledOutcome) => void } {
+  private beginAttempt(threadId: string, l: Live, turn: TurnRef, privacy?: ContextPrivacy, publicationFailed?: (error: unknown) => void): { sink: TurnSink; end: (outcome: SettledOutcome) => void } {
     l.attempt = turn.attempt;
     let seq = 0;
     const seen = new Set<string>();
@@ -1462,17 +1691,19 @@ export class ThreadRunner {
         if (seen.has(observation.source)) return;
         seen.add(observation.source);
       }
-      this.project(threadId, l, stamp(redactObservation(observation)));
+      const original = privacy?.original(observation);
+      try { this.project(threadId, l, stamp(redactObservation(observation)), original?.args ?? (observation.type === "tool.start" ? observation.tool.args : observation.type === "tool.done" ? observation.progress?.args : undefined), original?.exec); }
+      catch (error) { if (publicationFailed) publicationFailed(error); else throw error; }
     });
     this.project(threadId, l, stamp({ type: "attempt.start" }));
-    return { sink, end: (outcome) => {
+    return { sink: privacy ? privacy.wrap(sink) : sink, end: (outcome) => {
       this.toolLogs.endThread(threadId);
       if (this.live.get(threadId) === l) this.project(threadId, l, stamp({ type: "attempt.end", outcome }));
     } };
   }
 
   /** Applies one event to the turn's conversation and emits what changed as item events. */
-  private project(threadId: string, l: Live, event: ConversationEvent): void {
+  private project(threadId: string, l: Live, event: ConversationEvent, nativeArgs?: Record<string, unknown>, nativeExec?: Exec): void {
     const before = l.conversation;
     const after = applyConversationEvent(before, event);
     if (after === before) return;
@@ -1486,6 +1717,27 @@ export class ThreadRunner {
       const patch = Object.fromEntries(Object.entries(item).filter(([key, value]) => (old as Record<string, unknown>)[key] !== value));
       this.patchItem(threadId, item.id, patch as Partial<ThreadItem>, { persist });
     });
+    if (event.type === "tool.start" || event.type === "tool.done") {
+      const id = toolItemId(after, event.turn, event.native);
+      const item = id ? l.items.find(item => item.id === id) : undefined;
+      if (item?.kind === "tool") this.contextAttempts.get(event.turn.attempt)?.accepted(event, item, nativeArgs, nativeExec);
+    }
+    if (event.type === "plan.update") this.contextAttempts.get(event.turn.attempt)?.planChanged();
+  }
+
+  /** Context publication is transactional: failed storage never changes live metadata or emits success. */
+  private updateTaskContext(threadId: string, l: Live, turn: TurnRef, projectId: string, change: (context: TaskContextEvidence) => void): void {
+    const index = l.items.findIndex(item => item.kind === "user" && item.id === turn.turn);
+    const user = l.items[index];
+    if (user?.kind !== "user") throw new Error("Task context user item is missing.");
+    const next = user.contextEvidence ? copyTaskContextEvidence(user.contextEvidence) : { revision: 0, refs: [], captures: [], checks: [] };
+    change(next);
+    const contextEvidence = copyTaskContextEvidence(next);
+    if (!taskContextBelongsTo(contextEvidence, threadId, turn.turn, projectId)) throw new Error("Task context scope changed.");
+    const items = l.items.map((item, i) => i === index ? { ...user, contextEvidence } : item);
+    this.o.store.saveItems(threadId, items);
+    l.items = items;
+    this.o.emit({ threadId, type: "item_update", id: user.id, patch: { contextEvidence } });
   }
 
   /** A sink for the running turn. One bound to `attempt` goes inert, every method of it, once another attempt starts. */

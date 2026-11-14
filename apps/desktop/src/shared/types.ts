@@ -8,7 +8,7 @@ import type { CanvasSnapshot } from "./canvas.js";
 import type { BrowserBounds, BrowserSnapshot, BrowserToolsSnapshot, WorkspaceShortcut } from "./browser.js";
 import type { Theme } from "./theme.js";
 import type { UsageEvent } from "./usage.js";
-import type { ExecutionOutcome, ItemOrigin, MessageAsk, MessagePhase, PlanSource, PlanStep, ReasoningRepresentation } from "./conversation-events.js";
+import type { ExecutionOutcome, ItemOrigin, MessageAsk, MessagePhase, PlanSource, PlanStep, ReasoningRepresentation, UnavailableNativeInput } from "./conversation-events.js";
 import type { Evidence, Exec } from "./evidence.js";
 import type { Question, Refusal } from "./human-requests.js";
 import type { CodeReviewReply, CodeReviewRequest } from "./code-review.js";
@@ -123,7 +123,7 @@ export type AnswerResult = { ok: true } | { ok: false; reason: Refusal; error?: 
 
 export type ThreadItem =
   /** `attachments` are the files sent with the message; main keeps them under its attachments folder. */
-  | { id: string; kind: "user"; execution?: PendingExecutionBinding; text: string; at: string; attachments?: import("./attachments.js").Attachment[] }
+  | { id: string; kind: "user"; execution?: PendingExecutionBinding; text: string; at: string; attachments?: import("./attachments.js").Attachment[]; contextEvidence?: import("./task-context-evidence.js").TaskContextEvidence }
   /**
    * `origin`, `phase`, `outcome` (and `reasoning` on thinking items) come from the conversation-event
    * contract (shared/conversation-events.ts). Items saved before it have none; read them through `itemFacts`.
@@ -134,7 +134,7 @@ export type ThreadItem =
       vote?: "up" | "down" | null }
   /** `ok` is kept for older readers: true only for `succeeded`, false only for `failed` or `denied`. */
   /** `exec`, `exitCode`, `outputBytes` and `outputTruncated` (shared/evidence.ts): the command that ran and its output, bounded. */
-  | { id: string; kind: "tool"; name: string; title: string; args: Record<string, unknown>; output?: string; ok?: boolean; status: "running" | "done"; durationMs?: number; at: string; agent?: AgentActivity; outcome?: ExecutionOutcome; origin?: ItemOrigin; exec?: Exec; exitCode?: number | null; outputBytes?: number; outputTruncated?: boolean; search?: NativeWebSearch }
+  | { id: string; kind: "tool"; displayOnlyInputs?: true; unavailableInputs?: UnavailableNativeInput[]; name: string; title: string; args: Record<string, unknown>; output?: string; ok?: boolean; status: "running" | "done"; durationMs?: number; at: string; agent?: AgentActivity; outcome?: ExecutionOutcome; origin?: ItemOrigin; exec?: Exec; exitCode?: number | null; outputBytes?: number; outputTruncated?: boolean; search?: NativeWebSearch }
   /** `title` is the action's short title ("$ npm test"), recorded when a rule answers it, for the compact receipt row. */
   /**
    * `withdrawn` says why a card closed without a human answer: the CLI withdrew the request (`native`), the turn
@@ -476,6 +476,8 @@ export type TerminalEvent = { threadId: string; sessionId: string; sequence: num
 
 /** The API the preload exposes to the renderer as `window.modex`. */
 export interface ModexBridge {
+  /** Presentation capability only. Main still validates every context-edit request. */
+  taskContextEditing?: boolean;
   /** Explicit local main-owned recovery capability; absent on remote/Store/Windows clients. */
   nativeDrafts?: NativeDraftBridge;
   /** Main-owned attempt; invalidation revokes even a completed preparation.
@@ -623,14 +625,22 @@ export interface BridgeCommands extends NativeDraftCommands, ImageCommands, Plug
   /** Asks for a folder with the system's own dialog and returns its path; nothing is added. */
   "project:pick-folder": { req: undefined; res: string | null };
   "project:remove": { req: { projectId: string }; res: AppState };
-  "thread:create": { req: { projectId: string; worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean }; res: Thread };
+  "thread:create": { req: { projectId: string; worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean; contextDraft?: import("./task-context-evidence.js").ContextDraftBinding }; res: Thread };
   "thread:items": { req: { threadId: string }; res: ThreadItem[] };
   /** Saves one turn's task record to its project's notes, or updates the note it was saved to (docs/task-context.md). */
+  "task:context-draft-open": { req: { owner: import("./task-context-evidence.js").ContextDraftOwner }; res: import("./task-context-evidence.js").ContextDraftBinding };
+  "task:context-draft-select": { req: { binding: import("./task-context-evidence.js").ContextDraftBinding; targets: import("./task-context-evidence.js").ContextTarget[] }; res: { binding: import("./task-context-evidence.js").ContextDraftBinding; context: import("./task-context-evidence.js").TaskContextEvidence } };
+  "task:context-draft-close": { req: { binding: import("./task-context-evidence.js").ContextDraftBinding }; res: void };
+  "task:context-candidates": { req: { binding: import("./task-context-evidence.js").ContextDraftBinding }; res: import("./task-context-evidence.js").TaskContextCandidates };
+  "task:context-draft": { req: { binding: import("./task-context-evidence.js").ContextDraftBinding }; res: import("./task-context-evidence.js").TaskContextEvidence };
+  "task:context": { req: { threadId: string; turnId: string }; res: import("./task-context-evidence.js").TaskContextEvidence };
+  "task:context-confirm": { req: { threadId: string; turnId: string; expectedRevision: number; refIds: string[] }; res: import("./task-context-evidence.js").TaskContextEvidence };
+  "task:check-confirm": { req: { threadId: string; turnId: string; expectedRevision: number; itemId: string; refIds: string[] }; res: import("./task-context-evidence.js").TaskContextEvidence };
   "task:save-note": { req: { threadId: string; turnId: string }; res: { pageId: string; title: string; revision: number; created: boolean; preserved: boolean } };
   /** A saved task note, reopened read-only; null when the page is not one. Runs and writes nothing. */
   "task:note": { req: { pageId: string }; res: import("./task-context.js").TaskNoteView | null };
   "thread:followup": { req: { threadId: string }; res: FollowUp | null };
-  "thread:send": { req: { threadId: string; text: string; attachments?: import("./attachments.js").Attachment[] }; res: { ok: boolean; error?: string } };
+  "thread:send": { req: { threadId: string; text: string; attachments?: import("./attachments.js").Attachment[]; contextDraft?: import("./task-context-evidence.js").ContextDraftBinding }; res: { ok: boolean; error?: string } };
   /** Copies dropped, pasted or picked files into main's staging folder; over-limit files come back as errors. */
   "attachments:stage": { req: { files: import("./attachments.js").StagedFile[] }; res: { staged: import("./attachments.js").Attachment[]; errors: string[] } };
   /** Opens the file picker (or stages `paths` directly, for tests) and stages the choice. */

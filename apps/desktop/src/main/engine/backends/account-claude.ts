@@ -37,6 +37,7 @@ export class AccountClaudeBackend extends ClaudeBackend {
       catch (error) { return { status: "failed", error: (error as Error).message }; }
     }
     if (!secret) return super.runTurn(text, opts, sink, signal);
+    sink.protectCredential?.(secret);
     const protectedSink = claudeSecretSink(sink, secret);
     try { return protectedSink.redact(await super.runTurn(text, opts, protectedSink.sink, signal)); }
     catch (error) { throw new Error(protectedSink.redact(error instanceof Error ? error.message : String(error))); }

@@ -56,7 +56,7 @@ import { codexCall } from "../src/main/engine/backends/usage.js";
 import { OUTPUT_PREVIEW_BYTES } from "../src/shared/evidence.js";
 
 /** Minimal scripted app-server: answers initialize, thread/start|resume, turn/start, model/list. */
-function fakeServer(proc: FakeProcess, opts: { threadId?: string; turnId?: string; provider?: string | null; acknowledgeInterruptOnly?: boolean } = {}) {
+function fakeServer(proc: FakeProcess, opts: { threadId?: string; turnId?: string; provider?: string | null; acknowledgeInterruptOnly?: boolean; resumeError?: string } = {}) {
   const threadId = opts.threadId ?? "thr-1";
   const turnId = opts.turnId ?? "turn-1";
   const seen: { method: string; params: Record<string, unknown> }[] = [];
@@ -68,6 +68,7 @@ function fakeServer(proc: FakeProcess, opts: { threadId?: string; turnId?: strin
       if (msg.method === "initialize") proc.emitLine({ id: msg.id, result: { userAgent: "fake" } });
       else if (msg.method === "model/list") proc.emitLine({ id: msg.id, result: { data: [{ id: "gpt-6-astra", displayName: "GPT-6-Astra", hidden: false, isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: "low" }, { reasoningEffort: "high" }], defaultReasoningEffort: "medium" }, { id: "secret", displayName: "hidden", hidden: true, isDefault: false }], nextCursor: null } });
       // Like codex-cli 0.164.0, the open reply names the model and provider the thread got; `provider` scripts a server that disagrees.
+      else if (msg.method === "thread/resume" && opts.resumeError) proc.emitLine({ id: msg.id, error: { code: -32602, message: opts.resumeError } });
       else if (msg.method === "thread/start" || msg.method === "thread/resume") proc.emitLine({ id: msg.id, result: { thread: { id: threadId }, model: msg.params?.model, modelProvider: Object.hasOwn(opts, "provider") ? opts.provider : msg.params?.modelProvider } });
       else if (msg.method === "turn/start") {
         proc.emitLine({ id: msg.id, result: { turn: { id: turnId } } });
@@ -80,6 +81,152 @@ function fakeServer(proc: FakeProcess, opts: { threadId?: string; turnId?: strin
   });
   return { seen, threadId, turnId };
 }
+
+test("Codex reports configured proposal capability only after open succeeds; local and missing channels stay unavailable", async () => {
+  for (const kind of ["fresh", "resume", "refused", "local", "missing"] as const) {
+    const proc = new FakeProcess(), server = fakeServer(proc, { ...(kind === "refused" ? { resumeError: "refused binding" } : {}) });
+    const backend = new CodexBackend("codex", fakeSpawn(proc).spawn, kind === "local" ? { args: [], env: {}, redact: text => text, local: { model: "fixture-model", provider: "fixture-provider" } } : undefined);
+    const reports: unknown[] = [], sink = Object.assign(collectSink().sink, { taskContextCapability: (value: unknown) => reports.push(value) });
+    try {
+      const run = backend.runTurn("hello", { cwd: "/repo", mode: "agent", plan: false, model: kind === "local" ? "fixture-model" : "", ...(kind === "resume" || kind === "refused" ? { resume: server.threadId } : {}), ...(kind === "missing" ? {} : { taskContext: { url: "http://127.0.0.1:1234/private", instructions: "METADATA ONLY" } }) }, sink, new AbortController().signal);
+      if (kind !== "refused") { await proc.waitFor(line => line.includes('"turn/start"')); proc.emitLine({ method: "turn/completed", params: { threadId: server.threadId, turn: { id: server.turnId, status: "completed" } } }); }
+      const result = await run, expected = kind === "local" ? { state: "unavailable", reason: "local-execution-unqualified" } : kind === "missing" || kind === "refused" ? { state: "unavailable", reason: "configuration-not-bound" } : { state: "available" };
+      assert.deepEqual((result as unknown as { taskContextCapability: unknown }).taskContextCapability, expected); assert.deepEqual(reports.at(-1), expected);
+      if (kind === "local") assert.equal(JSON.stringify(server.seen).includes("METADATA ONLY"), false);
+    } finally { await backend.dispose(); }
+  }
+});
+
+test("Codex refuses credential-altered approval requests before the approval or delivery broker", async () => {
+  const secret = "synthetic-codex-approval-credential-123456", proc = new FakeProcess(), { threadId, turnId } = fakeServer(proc);
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn, { args: [], env: {}, redact: text => text.split(secret).join("[redacted]") });
+  const collected = collectSink(Array(20).fill("always")); let deliveries = 0;
+  const run = backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "" }, { ...collected.sink, deliverRequest: async (_native, write) => { deliveries++; await write(); } }, new AbortController().signal);
+  try {
+    await proc.waitFor(line => line.includes('"turn/start"'));
+    const requests = [
+      { id: "command", method: "item/commandExecution/requestApproval", params: { command: `echo ${secret}`, cwd: "/repo" } },
+      { id: "cwd", method: "item/commandExecution/requestApproval", params: { command: "pwd", cwd: `/repo/${secret}` } },
+      { id: secret, method: "item/commandExecution/requestApproval", params: { command: "pwd", cwd: "/repo" } },
+      { id: "key", method: "item/commandExecution/requestApproval", params: { command: "pwd", cwd: "/repo", extra: { [secret]: true } } },
+    ];
+    const replies: unknown[] = [];
+    for (const request of requests) {
+      proc.emitLine({ ...request, params: { threadId, turnId, itemId: "native-action", ...request.params } });
+      const reply = JSON.parse(await proc.waitFor(line => { const msg = JSON.parse(line); return (msg.id === request.id || msg.id === request.id.split(secret).join("[redacted]")) && (msg.error || msg.result); }));
+      replies.push({ id: reply.id, error: reply.error?.code, result: reply.result });
+    }
+    assert.deepEqual(replies, requests.map(request => ({ id: request.id, error: -32602, result: undefined })), "changed actions must be refused with their exact transport ID, even when the broker would answer Always");
+    assert.equal(collected.requests.length, 0); assert.equal(deliveries, 0);
+    assert.equal(JSON.stringify(collected).includes(secret), false);
+    proc.emitLine({ id: "public", method: "item/commandExecution/requestApproval", params: { threadId, turnId, itemId: "public-action", command: "echo '[redacted]'", cwd: "/repo" } });
+    const publicReply = JSON.parse(await proc.waitFor(line => { const msg = JSON.parse(line); return msg.id === "public" && msg.result; }));
+    assert.equal(publicReply.result.decision, "acceptForSession"); assert.equal(collected.requests.length, 1); assert.equal(deliveries, 1);
+  } finally { proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } }); await run; await backend.dispose(); }
+});
+
+test("Codex refuses an altered native thread identity instead of saving a masked session handle", async () => {
+  const secret = "synthetic-codex-thread-identity-123456", proc = new FakeProcess(); fakeServer(proc, { threadId: secret });
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn, { args: [], env: {}, redact: text => text.split(secret).join("[redacted]") }), collected = collectSink();
+  try {
+    const run = backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "" }, collected.sink, new AbortController().signal);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    if (proc.sent(message => message.method === "turn/start").length > 0) proc.emitLine({ method: "turn/completed", params: { threadId: secret, turn: { id: "turn-1", status: "completed" } } });
+    const result = await run;
+    assert.equal(result.status, "failed"); assert.equal(collected.events.some(event => event.startsWith("session:")), false);
+    assert.equal(JSON.stringify(result).includes(secret), false);
+  } finally { await backend.dispose(); }
+});
+
+for (const changed of ["path", "diff"] as const) test(`Codex refuses a file-change approval whose cached ${changed} contained a credential`, async () => {
+  const secret = "synthetic-codex-patch-credential-123456", proc = new FakeProcess(), { threadId, turnId } = fakeServer(proc);
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn, { args: [], env: {}, redact: text => text.split(secret).join("[redacted]") });
+  const collected = collectSink(["always"]), run = backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "" }, collected.sink, new AbortController().signal);
+  try {
+    await proc.waitFor(line => line.includes('"turn/start"'));
+    const item = { id: "patch", type: "fileChange", changes: [{ path: changed === "path" ? `src/${secret}.ts` : "src/public.ts", kind: { type: "update" }, diff: changed === "diff" ? `+${secret}` : "+public" }] };
+    proc.emitLine({ method: "item/started", params: { threadId, turnId, item } });
+    for (const [index, completed] of [false, true].entries()) {
+      if (completed) proc.emitLine({ method: "item/completed", params: { threadId, turnId, item: { ...item, status: "completed" } } });
+      const id = `approval-${index}`;
+      proc.emitLine({ id, method: "item/fileChange/requestApproval", params: { threadId, turnId, itemId: "patch" } });
+      const reply = JSON.parse(await proc.waitFor(line => { const msg = JSON.parse(line); return msg.id === id && (msg.error || msg.result); }));
+      assert.equal(reply.error?.code, -32602); assert.equal(reply.result, undefined);
+    }
+    assert.equal(collected.requests.length, 0);
+  } finally { proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } }); await run; await backend.dispose(); }
+});
+
+test("Codex omits credential-altered native identities and preserves an actual literal marker identity", async () => {
+  const secret = "synthetic-codex-native-id-123456", proc = new FakeProcess(), { threadId, turnId } = fakeServer(proc);
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn, { args: [], env: {}, redact: text => text.split(secret).join("[redacted]") });
+  const collected = collectSink(), run = backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "" }, collected.sink, new AbortController().signal);
+  try {
+    await proc.waitFor(line => line.includes('"turn/start"'));
+    for (const id of [secret, "[redacted]"]) {
+      const item = { id, type: "commandExecution", command: "cat README.md", cwd: "/repo", commandActions: [{ type: "read", path: "README.md" }] };
+      proc.emitLine({ method: "item/started", params: { threadId, turnId, item } });
+      proc.emitLine({ method: "item/commandExecution/outputDelta", params: { threadId, turnId, itemId: id, delta: "public" } });
+      proc.emitLine({ method: "item/completed", params: { threadId, turnId, item: { ...item, status: "completed", exitCode: 0 } } });
+    }
+    proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } }); await run;
+    assert.equal(collected.observations.filter(event => event.type === "tool.start").length, 1);
+    assert.equal(collected.observations.filter(event => event.type === "tool.done").length, 1);
+    assert.equal(JSON.stringify(collected).includes(secret), false);
+  } finally { await backend.dispose(); }
+});
+
+test("Codex metadata connections rotate on a loaded resume and removed channels are explicitly disabled", async () => {
+  const proc = new FakeProcess(), { threadId, turnId, seen } = fakeServer(proc), backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  try {
+    for (const index of [0, 1, 2]) {
+      const before = seen.length, taskContext = index < 2 ? { url: `http://127.0.0.1:1234/mcp/proposal-${index}`, instructions: "Only candidate relevance" } : undefined;
+      const pages = index < 2 ? { url: `http://127.0.0.1:1234/mcp/pages-${index}`, instructions: "Scoped Notes" } : undefined;
+      const run = backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "", ...(index ? { resume: threadId } : {}), taskContext, pages }, collectSink().sink, new AbortController().signal);
+      await proc.waitFor(line => line.includes('"turn/start"') && seen.filter(s => s.method === "turn/start").length === index + 1);
+      proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } }); assert.equal((await run).status, "completed");
+      const current = seen.slice(before), opening = current.find(s => s.method === (index ? "thread/resume" : "thread/start"));
+      assert.ok(opening, "a loaded conversation must rebind fresh metadata connections before turn/start");
+      assert.ok(current.indexOf(opening) < current.findIndex(s => s.method === "turn/start"));
+      const config = opening.params.config as Record<string, unknown>;
+      assert.deepEqual(config["mcp_servers.modex_task_context"], index < 2 ? { url: taskContext!.url, enabled_tools: ["propose_refs"], tools: { propose_refs: { approval_mode: "approve" } } } : { enabled: false });
+      if (index === 2) assert.deepEqual(config["mcp_servers.modex_pages"], { enabled: false });
+      else assert.match(JSON.stringify(current.find(s => s.method === "turn/start")?.params.input), /Only candidate relevance/);
+    }
+  } finally { await backend.dispose(); }
+});
+
+test("Codex refuses to start another turn when a loaded metadata rebind fails", async () => {
+  const proc = new FakeProcess(), behavior: { resumeError?: string } = {}, { threadId, turnId, seen } = fakeServer(proc, behavior), backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  const opts = { cwd: "/repo", mode: "agent" as const, plan: false, model: "", taskContext: { url: "http://127.0.0.1:1234/mcp/A", instructions: "Candidates" } };
+  try {
+    const first = backend.runTurn("first", opts, collectSink().sink, new AbortController().signal); await proc.waitFor(line => line.includes('"turn/start"'));
+    proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } }); await first;
+    behavior.resumeError = "metadata connection refused";
+    const second = backend.runTurn("second", { ...opts, resume: threadId, taskContext: { ...opts.taskContext, url: "http://127.0.0.1:1234/mcp/B" } }, collectSink().sink, new AbortController().signal);
+    await proc.waitFor(line => line.includes('"thread/resume"') || (line.includes('"turn/start"') && seen.filter(s => s.method === "turn/start").length === 2));
+    if (seen.filter(s => s.method === "turn/start").length === 2) proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } });
+    const result = await second;
+    assert.equal(result.status, "failed"); assert.deepEqual(result.taskContextCapability, { state: "unavailable", reason: "configuration-not-bound" });
+    assert.equal(seen.filter(s => s.method === "turn/start").length, 1);
+  } finally { await backend.dispose(); }
+});
+
+test("Codex completion retains final structured patch paths when the started item had no changes", async () => {
+  const proc = new FakeProcess(), { threadId, turnId } = fakeServer(proc), backend = new CodexBackend("codex", fakeSpawn(proc).spawn), collected = collectSink();
+  try {
+    const run = backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "" }, collected.sink, new AbortController().signal);
+    await proc.waitFor(line => line.includes('"turn/start"'));
+    proc.emitLine({ method: "item/started", params: { threadId, turnId, item: { type: "fileChange", id: "late-files", changes: [], status: "inProgress" } } });
+    proc.emitLine({ method: "item/completed", params: { threadId, turnId, item: { type: "fileChange", id: "late-files", changes: [{ path: "/repo/old.ts", kind: { type: "update", move_path: "/repo/new.ts" }, diff: "-old\n+new" }], status: "completed" } } });
+    proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } });
+    assert.equal((await run).status, "completed");
+    const done = collected.observations.find(event => event.type === "tool.done");
+    assert.ok(done?.type === "tool.done");
+    assert.deepEqual(done.progress?.args?.files, [{ path: "/repo/old.ts", kind: "update", movePath: "/repo/new.ts", lines: 2 }]);
+    assert.equal(done.progress?.args?.patch, "-old\n+new", "final structured arguments retain the existing diff preview");
+  } finally { await backend.dispose(); }
+});
 
 test("Codex receives attached images as localImage inputs after the text; other files ride in the text", async () => {
   const proc = new FakeProcess();
@@ -341,7 +488,7 @@ test("a server crash settles an active turn and a new server can recover", async
   assert.equal(spawns, 2);
   assert.ok(recovered.seen.some((request) => request.method === "thread/resume"));
   replacement.emitLine({ method: "turn/completed", params: { threadId: recovered.threadId, turn: { id: recovered.turnId, status: "completed" } } });
-  assert.deepEqual(await next, { status: "completed" });
+  assert.deepEqual(await next, { status: "completed", taskContextCapability: { state: "unavailable", reason: "configuration-not-bound" } });
   await backend.dispose();
 });
 
@@ -389,7 +536,7 @@ test("a stale Codex sign-in restarts the app-server and retries the turn once, w
   assert.equal(second.seen.find((s) => s.method === "thread/resume")?.params.threadId, "thr-a", "the retry resumes the thread the first attempt opened");
   fresh.emitLine({ method: "item/agentMessage/delta", params: { threadId: "thr-a", turnId: "turn-ok", itemId: "m", delta: "Hi" } });
   fresh.emitLine({ method: "turn/completed", params: { threadId: "thr-a", turn: { id: "turn-ok", status: "completed" } } });
-  assert.deepEqual(await run, { status: "completed" });
+  assert.deepEqual(await run, { status: "completed", taskContextCapability: { state: "unavailable", reason: "configuration-not-bound" } });
   assert.ok(events.some((e) => e.startsWith("notice:info:Codex's sign-in changed")), events.join(" | "));
   assert.equal(events.some((e) => e.startsWith("notice:error")), false, "the first attempt's error is not shown");
   assert.ok(events.includes("delta:Hi"));
@@ -425,9 +572,9 @@ test("with another Codex turn in progress, a stale sign-in retries on the runnin
   assert.equal(proc.killed, false);
   assert.equal(proc.written.some((w) => w.includes('"thread/resume"')), false, "the thread is still loaded on this server");
   proc.emitLine({ method: "turn/completed", params: { threadId: "thr-1", turn: { id: "turn-3", status: "completed" } } });
-  assert.deepEqual(await a, { status: "completed" });
+  assert.deepEqual(await a, { status: "completed", taskContextCapability: { state: "unavailable", reason: "configuration-not-bound" } });
   proc.emitLine({ method: "turn/completed", params: { threadId: "thr-2", turn: { id: "turn-2", status: "completed" } } });
-  assert.deepEqual(await b, { status: "completed" });
+  assert.deepEqual(await b, { status: "completed", taskContextCapability: { state: "unavailable", reason: "configuration-not-bound" } });
   assert.ok(events.some((e) => e.startsWith("notice:info:Codex's sign-in changed")));
   await backend.dispose();
 });
@@ -497,7 +644,7 @@ test("cancellation during setup never starts a coding turn", async () => {
   proc.emitLine({ id: init.id, result: {} });
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(proc.written.some((l) => l.includes('"turn/start"')), false);
-  assert.deepEqual(await run, { status: "interrupted" });
+  assert.deepEqual(await run, { status: "interrupted", taskContextCapability: { state: "unavailable", reason: "configuration-not-bound" } });
 });
 
 test("a previous turn's completion cannot finish the next turn", async () => {
@@ -510,7 +657,7 @@ test("a previous turn's completion cannot finish the next turn", async () => {
   proc.emitLine({ method: "item/agentMessage/delta", params: { threadId, turnId: "previous", itemId: "old", delta: "stale" } });
   proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: "previous", status: "interrupted" } } });
   proc.emitLine({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed" } } });
-  assert.deepEqual(await run, { status: "completed" });
+  assert.deepEqual(await run, { status: "completed", taskContextCapability: { state: "unavailable", reason: "configuration-not-bound" } });
   assert.equal(events.some((e) => e.includes("stale")), false);
 });
 
@@ -540,7 +687,7 @@ test("Stop interrupts a known started turn before turn/start replies and waits f
   assert.equal(settled, false, "an interrupt request is not proof that execution stopped");
   proc.emitLine({ id: startId, result: { turn: { id: "turn" } } });
   proc.emitLine({ method: "turn/completed", params: { threadId: "thread", turn: { id: "turn", status: "interrupted" } } });
-  assert.deepEqual(await run, { status: "interrupted" });
+  assert.deepEqual(await run, { status: "interrupted", taskContextCapability: { state: "unavailable", reason: "configuration-not-bound" } });
   assert.equal(proc.written.filter((line) => line.includes('"turn/interrupt"')).length, 1);
 });
 
@@ -579,7 +726,7 @@ test("force-stop ends an unacknowledged turn, fails other turns, and a fresh ser
   await proc.waitFor((line) => line.includes('"turn/interrupt"'));
   await backend.forceStop();
   assert.equal(proc.killed, true);
-  assert.deepEqual(await stuck, { status: "interrupted" });
+  assert.deepEqual(await stuck, { status: "interrupted", taskContextCapability: { state: "unavailable", reason: "configuration-not-bound" } });
   const bystander = await other;
   assert.equal(bystander.status, "failed");
   assert.match(bystander.error ?? "", /force-stopped/);
@@ -587,7 +734,7 @@ test("force-stop ends an unacknowledged turn, fails other turns, and a fresh ser
   await replacement.waitFor((line) => line.includes('"turn/start"'));
   assert.equal(spawns, 2);
   replacement.emitLine({ method: "turn/completed", params: { threadId: recovered.threadId, turn: { id: recovered.turnId, status: "completed" } } });
-  assert.deepEqual(await next, { status: "completed" });
+  assert.deepEqual(await next, { status: "completed", taskContextCapability: { state: "unavailable", reason: "configuration-not-bound" } });
   await backend.forceStop();
   await backend.dispose();
 });

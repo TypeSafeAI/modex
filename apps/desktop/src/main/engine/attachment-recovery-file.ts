@@ -17,7 +17,8 @@ const freeze = <T>(value: T): Immutable<T> => {
 
 /** Same data-only and duplicate-member boundaries as UpdateRecovery, with an
  * explicit per-record bound for the separately stored pending intent/journal. */
-export function recoveryJSON(value: unknown, limit: number): string {
+export function recoveryJSON(value: unknown, limit: number, maxNodes = 20000): string {
+  if (!Number.isSafeInteger(maxNodes) || maxNodes < 1 || maxNodes > 1024 * 1024) throw invalid();
   let bytes = 0, nodes = 0;
   const ancestors = new Set<object>();
   const add = (n: number) => { bytes += n; if (bytes > limit) throw invalid(); };
@@ -34,7 +35,7 @@ export function recoveryJSON(value: unknown, limit: number): string {
     }
   };
   const visit = (v: unknown, depth: number): unknown => {
-    if (++nodes > 20000 || depth > 12) throw invalid();
+    if (++nodes > maxNodes || depth > 12) throw invalid();
     if (v === null) { add(4); return null; }
     if (typeof v === "string") { text(v); return v; }
     if (typeof v === "boolean") { add(v ? 4 : 5); return v; }
@@ -62,7 +63,7 @@ export function recoveryJSON(value: unknown, limit: number): string {
   return body;
 }
 
-export function parseRecoveryJSON(body: string, limit: number): unknown {
+export function parseRecoveryJSON(body: string, limit: number, maxNodes = 20000): unknown {
   if (Buffer.byteLength(body) > limit) throw invalid();
   const stack: ({ keys: Set<string>; expectingKey: boolean } | null)[] = [];
   for (let i = 0; i < body.length; i++) {
@@ -84,7 +85,7 @@ export function parseRecoveryJSON(body: string, limit: number): unknown {
     else if (char === ",") { const object = stack.at(-1); if (object) object.expectingKey = true; }
   }
   const value: unknown = JSON.parse(body);
-  recoveryJSON(value, limit);
+  recoveryJSON(value, limit, maxNodes);
   return value;
 }
 
@@ -105,8 +106,11 @@ export class AttachmentRecoveryFile<T> {
   private busy = false;
   private reentered = false;
   private uncertain = false;
-  constructor(directory: string, filename: string, private readonly limit: number, private readonly validate: (value: unknown) => void) {
-    if (!/^[A-Za-z0-9_-]{1,128}\.json$/.test(filename) || !Number.isSafeInteger(limit) || limit < 1 || limit > 4 * 1024 * 1024) throw invalid();
+  constructor(directory: string, filename: string, private readonly limit: number, private readonly validate: (value: unknown) => void, private readonly maxNodes = 20000) {
+    // Pending messages retain independently bounded composer and context data.
+    // Each caller still supplies its own smaller read/write limit.
+    if (!/^[A-Za-z0-9_-]{1,128}\.json$/.test(filename) || !Number.isSafeInteger(limit) || limit < 1 || limit > 8 * 1024 * 1024) throw invalid();
+    if (!Number.isSafeInteger(maxNodes) || maxNodes < 1 || maxNodes > 1024 * 1024) throw invalid();
     fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
     const stat = fs.lstatSync(directory);
     if (!stat.isDirectory() || stat.isSymbolicLink()) throw invalid();
@@ -147,7 +151,7 @@ export class AttachmentRecoveryFile<T> {
   }
   private snapshot(observed: Observed | null): RecoveryFileSnapshot<T> {
     let value: unknown = null;
-    if (observed) { value = parseRecoveryJSON(observed.body, this.limit); this.validate(value); if (this.reentered) throw invalid(); }
+    if (observed) { value = parseRecoveryJSON(observed.body, this.limit, this.maxNodes); this.validate(value); if (this.reentered) throw invalid(); }
     const snapshot = Object.freeze({ value: freeze(value as T | null), sha256: observed ? digest(observed.body) : null }) as RecoveryFileSnapshot<T>;
     this.proofs.set(snapshot, observed); return snapshot;
   }
@@ -201,7 +205,7 @@ export class AttachmentRecoveryFile<T> {
       if (this.uncertain) throw new RecoveryFileWriteError(false, invalid());
       if (process.platform === "win32") throw new RecoveryFileWriteError(true, invalid());
       const before = this.expected(expected);
-      const body = recoveryJSON(input, this.limit), checked = parseRecoveryJSON(body, this.limit);
+      const body = recoveryJSON(input, this.limit, this.maxNodes), checked = parseRecoveryJSON(body, this.limit, this.maxNodes);
       this.validate(checked); if (this.reentered) throw invalid();
       const temporary = `${this.file}.${randomUUID()}.tmp`;
       let fd: number | undefined, created = false;

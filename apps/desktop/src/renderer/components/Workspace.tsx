@@ -18,6 +18,8 @@ type Tab = { id: string; kind: "new" | "review" | "files" | "terminal" | "browse
 const makeTab = (): Tab => ({ id: crypto.randomUUID(), kind: "new", title: "New tab" });
 const tabIcon = (kind: Tab["kind"]): IconName => kind === "canvas" ? "grid" : kind === "review" ? "review" : kind === "files" ? "folder" : kind === "terminal" ? "terminal-box" : kind === "subagents" ? "agents" : "globe";
 interface Props {
+  onIncludeContext?: (path: string) => Promise<void>;
+  contextBusy?: boolean;
   thread: Thread; changes: ChangesSnapshot | null; onRefresh: () => void; onRevert: (path: string) => void;
   visible: boolean; onShow: () => void; onHide: () => void; suspended: boolean;
   terminal: ReactNode; onOpenTerminal: () => void; onHideTerminal: () => void; onFocusChat: () => void;
@@ -27,7 +29,7 @@ interface Props {
   subagentsSignal: number;
 }
 
-export function Workspace({ thread, changes, onRefresh, onRevert, visible, onShow, onHide, suspended, terminal, onOpenTerminal, onHideTerminal, onFocusChat, items, subagentsSignal }: Props) {
+export function Workspace({ onIncludeContext, contextBusy, thread, changes, onRefresh, onRevert, visible, onShow, onHide, suspended, terminal, onOpenTerminal, onHideTerminal, onFocusChat, items, subagentsSignal }: Props) {
   const streamerMode = useStreamerMode();
   const [tabs, setTabs] = useState<Tab[]>(() => [{ id: "review", kind: "review", title: "Review" }]);
   const [active, setActive] = useState(terminal ? "terminal" : "review");
@@ -223,7 +225,7 @@ export function Workspace({ thread, changes, onRefresh, onRevert, visible, onSho
       {tabs.some((tab) => tab.kind === "review") && <div className="workspace-tool-pane" hidden={!visible || current.kind !== "review"}>
         <ChangesPanel visible={visible && current.kind === "review"} thread={thread} changes={changes} onRefresh={onRefresh} onRevert={onRevert} />
       </div>}
-      {visible && current.kind === "files" && <FilesPanel key={thread.id} thread={thread} onShowChanges={() => openTool("review")} />}
+      {visible && current.kind === "files" && <FilesPanel key={thread.id} thread={thread} onShowChanges={() => openTool("review")} onIncludeContext={onIncludeContext} contextBusy={contextBusy} />}
       {visible && current.kind === "terminal" && terminal}
       {visible && current.kind === "subagents" && <SubagentsPanel items={items} />}
       {browserPage && <>
@@ -295,7 +297,7 @@ function FileTree({ index, dir, depth, open, onToggle, onOpen, selected, focus }
   </ul>;
 }
 
-function FilesPanel({ thread, onShowChanges }: { thread: Thread; onShowChanges(): void }) {
+function FilesPanel({ thread, onShowChanges, onIncludeContext, contextBusy }: { thread: Thread; onShowChanges(): void; onIncludeContext?: (path: string) => Promise<void>; contextBusy?: boolean }) {
   const [listing, setListing] = useState<{ paths: string[]; truncated: boolean } | null>(null);
   const [selected, setSelected] = useState("");
   const [filter, setFilter] = useState("");
@@ -354,6 +356,7 @@ function FilesPanel({ thread, onShowChanges }: { thread: Thread; onShowChanges()
       <button type="button" className="file-pill" onClick={onShowChanges}><Icon name="diff-color" size={15} />Show changes</button>
       {markdown && <button type="button" className="file-pill" data-testid="file-view-source" aria-pressed={source} onClick={() => setSource((value) => !value)}><Icon name="file" size={15} />{source ? "View rendered" : "View source"}</button>}
       {selected && <button type="button" className="file-pill" onClick={() => void bridge.invoke("shell:openPath", { path: `${thread.cwd}/${selected}` }).catch((e: Error) => setError(e.message))}><Icon name="external" size={15} />Open</button>}
+      {selected && onIncludeContext && <button type="button" className="file-pill" disabled={contextBusy} onClick={() => void onIncludeContext(selected).catch((error: Error) => setError(error.message))}>Include in next request</button>}
       {selected && <IconButton icon={copied ? "check" : "copy"} label={copied ? "Copied" : "Copy file contents"} size="md" className="file-round" onClick={copy} />}
       <IconButton icon="restart" label="Refresh files" size="md" className="file-round" onClick={() => setRevision((n) => n + 1)} />
       {crumb !== null && <div ref={pop} className="file-crumb-pop" data-testid="file-crumb-pop">

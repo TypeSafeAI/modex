@@ -26,6 +26,8 @@ export interface Draft {
 }
 
 interface Props {
+  contextControls?: React.ReactNode;
+  contextBusy?: boolean;
   draft: Draft;
   projects: Project[];
   /** True while the first send is creating the thread (a worktree can take a moment). */
@@ -50,7 +52,7 @@ interface Props {
  * The "What should we build in <project>?" screen: a live composer before any thread exists.
  * The project name is a picker; the context strip's Local/Worktree item is a toggle.
  */
-export function DraftView({ draft, projects, creating, models, modelsError, onRetryModels, local, branch, onChange, onSend, inputRef, text, onText, attachments, attachmentActions }: Props) {
+export function DraftView({ contextControls, contextBusy, draft, projects, creating, models, modelsError, onRetryModels, local, branch, onChange, onSend, inputRef, text, onText, attachments, attachmentActions }: Props) {
   const project = projects.find((p) => p.id === draft.projectId);
   const set = (patch: Partial<DraftSettings>) => onChange({ ...draft, settings: { ...draft.settings, ...patch } });
   if (!project) return null;
@@ -64,6 +66,8 @@ export function DraftView({ draft, projects, creating, models, modelsError, onRe
         </div>
       </div>
       <Composer
+        contextControls={contextControls}
+        sendBlocked={contextBusy}
         text={text}
         onText={onText}
         attachments={attachments}

@@ -3,7 +3,7 @@ import type { ThreadItem } from "../../../shared/types";
 import type { PlanStep } from "../../../shared/conversation-events";
 import { bridge } from "../../bridge";
 import { ErrorNotice } from "../ui/ErrorNotice";
-import { CONTEXT_SHOWN, UNLISTED_WORDS, contextCount, displayCommand, noPlan, noPlanText, taskContext, verification, type TaskCheck, type TaskVerification } from "../../../shared/task-context";
+import { CONTEXT_SHOWN, UNLISTED_WORDS, contextCount, displayCommand, omittedCommandLabel, noPlan, noPlanText, taskContext, verification, verificationWords, type TaskCheck, type TaskContext, type TaskVerification } from "../../../shared/task-context";
 
 export const PLAN_STATUS: Record<PlanStep["status"], string> = { pending: "Not started", "in-progress": "In progress", completed: "Reported done", unknown: "Status unknown" };
 export const PLAN_FROM = { "codex-plan": "Codex's plan", "claude-todo": "Claude's todo list", "claude-tasks": "Claude's task list", "acp-plan": "The agent's plan" } as const;
@@ -64,13 +64,15 @@ export function TaskNoPlanLine({ items }: { items: readonly ThreadItem[] }) {
 
 /** One check, as its script, with the exact command the CLI reported on hover. */
 function Check({ check }: { check: TaskCheck }) {
-  return <code title={check.command}>{displayCommand(check.command)}</code>;
+  const label = check.commandOmission ? omittedCommandLabel(check.commandOmission) : displayCommand(check.command);
+  return <code title={check.commandOmission ? label : check.command}>{label}</code>;
 }
 
 /** The checks named in a line: the first two, then how many more. */
 function Checks({ checks }: { checks: TaskCheck[] }) {
-  const unique = checks.filter((check, i) => checks.findIndex((other) => displayCommand(other.command) === displayCommand(check.command)) === i);
-  return <>{unique.slice(0, 2).map((check, i) => <span key={check.command}>{i ? " and " : ""}<Check check={check} /></span>)}{unique.length > 2 ? ` and ${unique.length - 2} more` : ""}</>;
+  const key = (check: TaskCheck) => check.commandOmission ? `omitted:${check.commandOmission.id}` : `text:${displayCommand(check.command)}`;
+  const unique = checks.filter((check, i) => checks.findIndex(other => key(other) === key(check)) === i);
+  return <>{unique.slice(0, 2).map((check, i) => <span key={key(check)}>{i ? " and " : ""}<Check check={check} /></span>)}{unique.length > 2 ? ` and ${unique.length - 2} more` : ""}</>;
 }
 
 /**
@@ -86,6 +88,7 @@ export function TaskVerificationLine({ items }: { items: readonly ThreadItem[] }
 
 /** What a turn's checks say, in words: the footer's line, and a reopened task note's (docs/task-context.md#reopening-a-saved-note). */
 export function VerificationText({ v }: { v: TaskVerification }) {
+  if (v.basis === "context-snapshots") return <>{verificationWords(v)}{v.checks.length ? <> Recorded checks: <Checks checks={v.checks} />.</> : null}</>;
   const current = v.checks.filter((check) => !check.stale);
   const failing = current.filter((check) => !check.passed && (check.outcome === "failed" || check.outcome === "denied" || (typeof check.exitCode === "number" && check.exitCode !== 0)));
   const text = v.state === "verified" ? <>Verified: <Checks checks={current} /> passed after the last change</>
@@ -130,11 +133,12 @@ export function TaskContextLine({ items, cwd }: { items: readonly ThreadItem[]; 
 }
 
 /** Commands that may have changed files no CLI named, shown as their scripts with the exact command on hover. */
-export function UnlistedCommands({ commands, testId }: { commands: readonly string[]; testId: string }) {
+export function UnlistedCommands({ commands, omissions, testId }: { commands: readonly string[]; omissions?: TaskContext["unlistedOmissions"]; testId: string }) {
+  const byIndex = new Map(omissions?.map(row => [row.index, row.omission]));
   return <>
     <p className="task-context-note">{UNLISTED_WORDS}</p>
     <ul className="task-context-files">
-      {commands.slice(0, CONTEXT_SHOWN).map((command) => <li key={command} data-testid={testId}><code title={command}>{displayCommand(command)}</code></li>)}
+      {commands.slice(0, CONTEXT_SHOWN).map((command, index) => { const omission = byIndex.get(index), label = omission ? omittedCommandLabel(omission) : displayCommand(command); return <li key={index} data-testid={testId}><code title={omission ? label : command}>{label}</code></li>; })}
       {commands.length > CONTEXT_SHOWN && <li>and {commands.length - CONTEXT_SHOWN} more</li>}
     </ul>
   </>;

@@ -45,8 +45,9 @@ export function groupTurns(items: ThreadItem[]): Turn[] {
  * Keep the final answer and actionable items visible; completed work stays inspectable. Which item
  * answers, which are live and which may fold comes from `layoutTurn` (shared/turn-layout.ts).
  */
-export function TurnContent({ turn, status, render, footer }: { turn: Turn; status?: Thread["status"]; render: (item: ThreadItem, live: boolean) => ReactNode; footer?: (turn: Turn) => ReactNode }) {
+export function TurnContent({ turn, status, render, footer }: { turn: Turn; status?: Thread["status"]; render: (item: ThreadItem, live: boolean) => ReactNode; footer?: (turn: Turn, revealItem: (id: string) => void) => ReactNode }) {
   const [expanded, setExpanded] = useExpansionState<boolean>(`turn:${turn.user?.id ?? turn.rest[0]?.id}`, false);
+  const [focusedItem, setFocusedItem] = useState<string | null>(null);
   const historyId = useId();
   const live = status !== undefined;
   const layout = layoutTurn(turn.rest, { busy: live });
@@ -57,6 +58,15 @@ export function TurnContent({ turn, status, render, footer }: { turn: Turn; stat
   const content = useRef<HTMLDivElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
   const wasLive = useRef(live);
+  useLayoutEffect(() => {
+    if (!focusedItem || !showWork) return;
+    const target = [...(content.current?.querySelectorAll<HTMLElement>("[data-item-id]") ?? [])].find(element => element.dataset.itemId === focusedItem);
+    target?.scrollIntoView({ block: "nearest" }); target?.focus({ preventScroll: true }); setFocusedItem(null);
+  }, [focusedItem, showWork]);
+  const revealItem = (id: string) => {
+    if (!turn.rest.some(item => item.kind === "tool" && item.id === id)) return;
+    setExpanded(true); setFocusedItem(id);
+  };
   useLayoutEffect(() => {
     const folded = wasLive.current && !live && !showWork;
     wasLive.current = live;
@@ -75,7 +85,7 @@ export function TurnContent({ turn, status, render, footer }: { turn: Turn; stat
         <div key={item.id} hidden={layout.work[index] && !showWork} data-final={index === layout.final ? "true" : undefined} data-live={layout.live[index] ? "true" : undefined}>{render(item, layout.live[index]!)}</div>,
       ])}
     </div>
-    {!live && turn.user && turn.rest.length > 0 && footer?.(turn)}
+    {!live && turn.user && turn.rest.length > 0 && footer?.(turn, revealItem)}
   </>;
 }
 

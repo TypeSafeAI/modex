@@ -105,6 +105,7 @@ const onOwnerRemovalPreparation = preparationBridge("drafts:remove-prepare", "dr
 const onOwnerRemovalAdoption = preparationBridge("drafts:remove-adopt", "drafts:remove-adopted");
 
 contextBridge.exposeInMainWorld("modex", {
+  taskContextEditing: true,
   ...(nativeDrafts ? { nativeDrafts } : {}),
   onRestartPreparation,
   onRecoveryQuitPreparation,

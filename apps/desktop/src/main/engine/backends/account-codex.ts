@@ -50,7 +50,7 @@ export class AccountCodexBackend implements Backend {
     if (this.busy(id)) throw new Error("Wait for this account's active or initializing turns to finish before signing out.");
     const runtime = this.runtimes.get(id); this.runtimes.delete(id); await runtime?.backend?.dispose();
   }
-  private async use<T>(id: string, action: (backend: CodexBackend) => Promise<T>): Promise<T> {
+  private async use<T>(id: string, action: (backend: CodexBackend, credential?: string) => Promise<T>): Promise<T> {
     if (this.disposed) throw new Error("Modex is shutting down.");
     if (this.changing.has(id)) throw new Error("Wait for this account's sign-in or sign-out to finish.");
     if (id === "cli") return action(this.cli);
@@ -75,14 +75,18 @@ export class AccountCodexBackend implements Backend {
         })();
       }
       const backend = runtime.preparing ? await runtime.preparing : runtime.backend!;
-      return await action(backend);
+      return await action(backend, runtime.token);
     } finally { runtime.leases--; if (runtime.leases === 0) runtime.preparing = null; }
   }
   runTurn(text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult> {
     const id = opts.account ?? this.identity();
     // Legacy resume handles are CLI-owned; explicitly bound handles stay with their original account.
     if (opts.resume && !opts.account && id !== "cli") return Promise.resolve({ status: "failed", error: "This conversation belongs to Codex CLI authentication. Select CLI authentication to resume it." });
-    return this.use(id, (backend) => signal.aborted ? Promise.resolve({ status: "interrupted" as const }) : backend.runTurn(text, opts, sink, signal));
+    return this.use(id, (backend, credential) => {
+      if (signal.aborted) return Promise.resolve({ status: "interrupted" as const });
+      if (credential) sink.protectCredential?.(credential);
+      return backend.runTurn(text, opts, sink, signal);
+    });
   }
   generateTitle(text: string, opts: TitleOptions, signal: AbortSignal): Promise<string | null> {
     const id = opts.account ?? this.identity();

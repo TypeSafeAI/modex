@@ -5,6 +5,7 @@ const subscribe = (channel, cb) => {
   return () => ipcRenderer.removeListener(channel, listener);
 };
 contextBridge.exposeInMainWorld("modex", {
+  taskContextEditing: false,
   platform: process.platform,
   invoke: (channel, payload) => ipcRenderer.invoke("store:invoke", { channel, payload }),
   onEvent: (cb) => subscribe("thread:event", cb),

@@ -19,6 +19,27 @@ function fixture(t: TestContext, validator = validate) {
 }
 const native = { skip: process.platform === "win32" };
 
+test("larger receipt node budgets are explicit and remain enforced across disk recovery", native, t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "modex-recovery-nodes-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const value = { rows: Array(20000).fill(0) }, bytes = 128 * 1024, nodes = 21000;
+  assert.throws(() => recoveryJSON(value, bytes), /recovery/i);
+  const body = recoveryJSON(value, bytes, nodes);
+  assert.throws(() => parseRecoveryJSON(body, bytes), /recovery/i);
+  const validateRows = (input: unknown) => { assert.ok(Array.isArray((input as typeof value).rows)); };
+  const file = new AttachmentRecoveryFile<typeof value>(root, "receipts.json", bytes, validateRows, nodes);
+  const saved = file.write(file.read(), value);
+  assert.deepEqual(new AttachmentRecoveryFile(root, "receipts.json", bytes, validateRows, nodes).read().value, value);
+  assert.throws(() => new AttachmentRecoveryFile(root, "receipts.json", bytes, validateRows).read(), /recovery/i);
+  assert.throws(() => file.write(saved, { rows: Array(nodes).fill(0) }), /recovery/i);
+  assert.equal(fs.readFileSync(file.file, "utf8"), body);
+  for (const invalid of [0, -1, 1.5, Infinity, 1024 * 1024 + 1]) {
+    assert.throws(() => recoveryJSON(value, bytes, invalid), /recovery/i);
+    assert.throws(() => new AttachmentRecoveryFile(root, "invalid.json", bytes, validateRows, invalid), /recovery/i);
+  }
+  assert.throws(() => new AttachmentRecoveryFile(root, "invalid.json", 8 * 1024 * 1024 + 1, validateRows), /recovery/i);
+});
+
 test("bounded recovery JSON rejects aliases, accessors, invalid unicode and ambiguous decoded members", () => {
   const input = { schema: 1, text: "raw 😀\n" }; assert.deepEqual(parseRecoveryJSON(recoveryJSON(input, 128), 128), input);
   let reads = 0;

@@ -3,6 +3,8 @@ import type { NativeDraftBridge, NativeDraftReadOnlyOpen, PendingSendView } from
 import type { ComposerRecovery } from "../shared/update-recovery";
 import type { Attachment, AttachmentDraftOwner } from "../shared/attachments";
 import { useComposerRecovery } from "./useComposerRecovery";
+import { useTaskContextDraft } from "./task-context-draft";
+import { TaskContextSelect } from "./components/transcript/TaskContextPanel";
 import { ComposerRestartPreparation } from "../shared/composer-restart-preparation";
 import { ComposerOwnerRemoval } from "../shared/composer-owner-removal";
 import { restartDrafts } from "./restart-drafts";
@@ -550,6 +552,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   }, [draftProjectId]);
 
   const thread = useMemo(() => state?.threads.find((t) => t.id === selected) ?? null, [state, selected]);
+  const contextUi = useTaskContextDraft(thread ? { kind: "thread", threadId: thread.id } : draft ? ownerFor(draftKey) : null);
   /** Choosing a thread (sidebar, history) discards any draft: an unsent draft never becomes a thread. */
   const selectThread = useCallback((id: string) => {
     if (nativeHoldRef.current) return;
@@ -728,13 +731,16 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
   const beginNativeSend = async (key: string, rawText: string, configuration: PendingSendView["configuration"]): Promise<void> => {
     const capability = nativeRef.current;
     if (!capability || localSelectionKeysRef.current.has(key) || nativeHoldRef.current || nativeRecoveryError || attachmentDrafts.get(key).copying || attachmentDrafts.get(key).sending) return;
+    const contextSend = contextUi.hold(key); if (!contextSend) return;
+    let contextAdmitted = false;
     holdNative(true);
     try {
       // Save the exact original before any IPC admission ambiguity or UI clear.
       composerRecovery.queue.update(captureDrafts()); await composerRecovery.flush();
       const hold = composerRecovery.queue.holdForTransfer(); await hold.drained;
       const files = attachmentDrafts.get(key).attachments;
-      const intent = await capability.begin({ source: ownerFor(key), rawText, configuration, files });
+      const intent = await capability.begin({ source: ownerFor(key), rawText, configuration, files, ...(contextSend.binding ? { contextDraft: contextSend.binding } : {}) });
+      contextAdmitted = true;
       const record = await capability.readPending(intent.id);
       if (!record || attachmentDrafts.beginSend(key) === null) throw new Error("The original message is preserved. Quit and reopen Modex to recover it.");
       rememberPending(record); setUnsentFor(key, "");
@@ -747,7 +753,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
       const message = error instanceof Error ? error.message : String(error);
       if (composerRecovery.queue.held) setNativeRecoveryError(message);
       else { holdNative(false); setError({ message }); }
-    }
+    } finally { contextUi.release(contextSend, contextAdmitted); }
   };
   // Send/create retries belong to the restored composer: replaying only an inner act() closure
   // would bypass its capacity and duplicate-send reservations.
@@ -761,14 +767,15 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
       const { effort, ...settings } = d.settings;
       return beginNativeSend(draftKey, text, { worktree: d.worktree, settings: { ...settings, ...(effort === undefined ? {} : { effort }) } });
     }
+    const contextSend = contextUi.hold(draftKey); if (!contextSend) return;
     const attachments = attachmentDrafts.beginSend(draftKey);
-    if (attachments === null) return;
+    if (attachments === null) { contextUi.release(contextSend, false); return; }
     setUnsentFor(draftKey, "");
     let restoreKey = draftKey;
     let restoreRevision = unsentRevision.current.get(draftKey)!;
     const sent = await act(async () => {
       const s = d.settings;
-      const t = await bridge.invoke("thread:create", { projectId: d.projectId, worktree: d.worktree, backend: s.backend, mode: s.mode, model: s.model || undefined, auto: s.auto });
+      const t = await bridge.invoke("thread:create", { projectId: d.projectId, worktree: d.worktree, backend: s.backend, mode: s.mode, model: s.model || undefined, auto: s.auto, ...(contextSend.binding ? { contextDraft: contextSend.binding } : {}) });
       if (s.plan || s.effort) await bridge.invoke("thread:update", { threadId: t.id, patch: { ...(s.plan ? { plan: true } : {}), ...(s.effort ? { effort: s.effort } : {}) } });
       await refresh();
       // Transfer ownership with selection, including edits made while thread creation was pending.
@@ -783,27 +790,30 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
         setDraft(null);
         setSelected(t.id);
       }
-      const r = await bridge.invoke("thread:send", { threadId: t.id, text: text.trim(), ...(attachments.length ? { attachments } : {}) });
+      const r = await bridge.invoke("thread:send", { threadId: t.id, text: text.trim(), ...(attachments.length ? { attachments } : {}), ...(contextSend.binding ? { contextDraft: contextSend.binding } : {}) });
       if (!r.ok) setError({ message: r.error ?? "send failed" });
       return r.ok;
     }, { retry: false });
     attachmentDrafts.finishSend(restoreKey, sent === true);
+    contextUi.release(contextSend, sent === true);
     if (sent !== true) restoreUnsentIfCurrent(restoreKey, restoreRevision, text);
   };
   const send = async (text: string): Promise<void> => {
     if (!thread || localSelectionKeysRef.current.has(thread.id) || thread.retired || thread.status === "running" || thread.status === "waiting") return;
     const threadId = thread.id;
     if (native) return beginNativeSend(threadId, text, { worktree: Boolean(thread.worktree), settings: { backend: thread.backend, mode: thread.mode, plan: thread.plan, auto: Boolean(thread.auto), model: thread.model, ...(thread.effort ? { effort: thread.effort } : {}) } });
+    const contextSend = contextUi.hold(threadId); if (!contextSend) return;
     const attachments = attachmentDrafts.beginSend(threadId);
-    if (attachments === null) return;
+    if (attachments === null) { contextUi.release(contextSend, false); return; }
     setUnsentFor(threadId, "");
     const revision = unsentRevision.current.get(threadId)!;
     const sent = await act(async () => {
-      const r = await bridge.invoke("thread:send", { threadId, text: text.trim(), ...(attachments.length ? { attachments } : {}) });
+      const r = await bridge.invoke("thread:send", { threadId, text: text.trim(), ...(attachments.length ? { attachments } : {}), ...(contextSend.binding ? { contextDraft: contextSend.binding } : {}) });
       if (!r.ok) setError({ message: r.error ?? "send failed" });
       return r.ok;
     }, { retry: false });
     attachmentDrafts.finishSend(threadId, sent === true);
+    contextUi.release(contextSend, sent === true);
     if (sent !== true) restoreUnsentIfCurrent(threadId, revision, text);
   };
   /** The failure card's Retry: main runs the thread's last message again without adding a second bubble. */
@@ -1123,6 +1133,8 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
           {thread && project ? (
             <QuestionDraftContext.Provider value={draftsForQuestions(thread.id)}>
             <div style={{ display: "contents" }} inert={localSelectionKeys.has(thread.id)}><ThreadView
+              contextControls={<TaskContextSelect key={contextUi.state.key} ui={contextUi} />}
+              contextBusy={contextUi.state.busy || contextUi.state.held}
               key={thread.id}
               thread={thread}
               project={project}
@@ -1150,6 +1162,8 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
             </QuestionDraftContext.Provider>
           ) : draft ? (
             <div style={{ display: "contents" }} inert={localSelectionKeys.has(draftKey)}><DraftView
+              contextControls={<TaskContextSelect key={contextUi.state.key} ui={contextUi} />}
+              contextBusy={contextUi.state.busy || contextUi.state.held}
               key={`${draft.projectId}:${draftRevision}`}
               draft={draft}
               projects={state.projects}
@@ -1172,6 +1186,8 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
           ) : null}
         </main>
         {thread && <Workspace key={thread.id} thread={thread} changes={changes} onRefresh={() => loadChanges(thread.id)} onRevert={revert}
+          onIncludeContext={!bridge.taskContextEditing || thread.retired ? undefined : path => contextUi.include({ kind: "file", path })}
+          contextBusy={contextUi.state.busy || contextUi.state.held || thread.status === "running" || thread.status === "waiting"}
           items={items[thread.id] ?? []} subagentsSignal={subagentsSignal}
           visible={surface === "chat" && showChanges} onShow={() => setLayout({ changes: true })} onHide={() => setLayout({ changes: false })}
           suspended={suspended || surface !== "chat" || showSettings || showCompanion}

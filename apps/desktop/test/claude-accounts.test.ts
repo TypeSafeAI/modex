@@ -11,7 +11,8 @@ import { Router } from "../src/main/engine/routing/router.js";
 import { Store } from "../src/main/engine/store.js";
 import { ThreadRunner } from "../src/main/engine/runner.js";
 import type { Backend, TurnOptions, TurnResult, TurnSink } from "../src/main/engine/backends/types.js";
-import { FakeProcess, collectSink, local } from "./fakeproc.js";
+import { FakeProcess, fakeSpawn, collectSink, local } from "./fakeproc.js";
+import { TaskContextAgents } from "../src/main/engine/task-context-agents.js";
 import { gitRepo, tmpdir } from "./helpers.js";
 
 const KEY = "sk-orca-SECRETkey1234567890";
@@ -26,6 +27,33 @@ function pool(now = () => Date.now()) {
   const secrets = memorySecrets();
   return { home, secrets, accounts: new ClaudeAccounts(home, secrets, now) };
 }
+
+test("the independent proposal channel refuses an already-loaded account credential before metadata publication", async t => {
+  const { home, accounts, secrets } = pool(), gateway = accounts.addGateway("Synthetic account", KEY); accounts.select(gateway.id);
+  const get = secrets.get; let secretReads = 0; t.mock.method(secrets, "get", (name: string) => { secretReads++; return get(name); });
+  const store = new Store(home), project = store.addProject(gitRepo()), proc = new FakeProcess(), spawned = fakeSpawn(proc);
+  const backend = new AccountClaudeBackend(accounts, "claude", spawned.spawn), proposals = new TaskContextAgents({ store }), events: unknown[] = [];
+  const runner = new ThreadRunner({ home, store, claudeAccounts: accounts, taskContext: proposals, backends: { claude: backend }, emit: event => events.push(structuredClone(event)) });
+  const thread = await runner.createThread(project.id, { backend: "claude", auto: false }); store.updateThread(thread.id, { title: "Fixture", titleSource: "manual" });
+  const running = runner.send(thread.id, "Check");
+  try {
+    await proc.waitFor(line => line.includes('"type":"user"'));
+    assert.equal(secretReads, 2, "registration reuses the existing redaction/environment reads");
+    const args = spawned.calls[0]!.args, url = JSON.parse(args[args.indexOf("--mcp-config") + 1]!).mcpServers.modex_task_context.url as string;
+    proc.emitLine({ type: "system", subtype: "init", session_id: "s", mcp_servers: [{ name: "modex_task_context", status: "connected" }] });
+    const propose = async (id: string, file: string) => {
+      const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id, method: "tools/call", params: { name: "propose_refs", arguments: { refs: [{ target: { kind: "file", path: file }, role: "file" }] } } }) });
+      return await response.json() as { result: { isError?: boolean } };
+    };
+    assert.equal((await propose("private", `src/${KEY}.ts`)).result.isError, true);
+    assert.equal((await propose(KEY, "README.md")).result.isError, true, "a private RPC identity cannot enter provenance either");
+    assert.equal(JSON.stringify(store.items(thread.id)).includes(KEY), false); assert.equal(JSON.stringify(events).includes(KEY), false);
+    assert.notEqual((await propose("public", "README.md")).result.isError, true);
+    const user = store.items(thread.id).find(item => item.kind === "user"); assert.ok(user?.kind === "user");
+    assert.deepEqual(user.contextEvidence?.refs.map(ref => ref.target), [{ kind: "file", path: "README.md" }]);
+    assert.equal(secretReads, 2, "proposal validation must not read the secret store again");
+  } finally { proc.emitLine({ type: "result", subtype: "success", result: "done" }); proc.close(0); await running; await runner.dispose(); await proposals.dispose(); }
+});
 
 test("a gateway key lives only in the secret store; the account file and status never carry it", () => {
   const { accounts, secrets } = pool();
@@ -335,6 +363,38 @@ test("gateway redaction preserves an ordinary trailing key-prefix character", as
   protectedSink.finish();
   const text = collected.observations.filter((o) => o.type === "message.delta").map((o) => o.text).join("");
   assert.equal(text, "ordinary words");
+});
+
+test("gateway redaction omits altered native and source identities instead of renaming them", async () => {
+  const { claudeSecretSink } = await import("../src/main/engine/backends/claude-secret-sink.js");
+  const collected = collectSink(), protectedSink = claudeSecretSink(collected.sink, KEY);
+  for (const identity of [{ native: { runtime: "r", item: KEY } }, { native: { runtime: "r", item: "public" }, source: KEY }]) {
+    protectedSink.sink.observe({ type: "message.start", ...identity, phase: "final" });
+    protectedSink.sink.observe({ type: "message.delta", ...identity, text: "unavailable identity" });
+    protectedSink.sink.observe({ type: "message.done", ...identity });
+  }
+  const native = { runtime: "r", item: "[redacted]" };
+  protectedSink.sink.observe({ type: "message.done", native, text: "real literal identity" }); protectedSink.finish();
+  assert.deepEqual(collected.observations, [{ type: "message.done", native, text: "real literal identity" }]);
+});
+
+test("gateway credential questions are withdrawn before publication and write only their fixed refusal", async () => {
+  const { claudeSecretSink } = await import("../src/main/engine/backends/claude-secret-sink.js");
+  const collected = collectSink(); let questions = 0, brokerDeliveries = 0, writes = 0;
+  const protectedSink = claudeSecretSink({ ...collected.sink, question: async () => { questions++; return { answers: { q: ["yes"] } }; }, deliverRequest: async (_native, write) => { brokerDeliveries++; await write(); } }, KEY);
+  const native = { runtime: "r", request: "q" };
+  const result = await protectedSink.sink.question!({ native, blocking: true, questions: [{ id: "q", header: "Choose", text: `Use ${KEY}?`, options: null, allowOther: true, secret: false }] });
+  assert.deepEqual(result, { withdrawn: "ended" }); assert.equal(questions, 0);
+  await protectedSink.sink.deliverRequest!(native, async () => { writes++; });
+  assert.equal(writes, 1); assert.equal(brokerDeliveries, 0); assert.equal(JSON.stringify(collected).includes(KEY), false);
+});
+
+test("gateway terminal output suppresses a long incomplete credential prefix", async () => {
+  const { claudeSecretSink } = await import("../src/main/engine/backends/claude-secret-sink.js");
+  const collected = collectSink(), protectedSink = claudeSecretSink(collected.sink, KEY);
+  protectedSink.sink.observe({ type: "message.delta", native: { runtime: "r", item: "m" }, text: `prefix ${KEY.slice(0, -1)}` }); protectedSink.finish();
+  const text = collected.observations.filter(event => event.type === "message.delta").map(event => event.text).join("");
+  assert.equal(text, "prefix [redacted]");
 });
 
 test("gateway redaction handles every key split independently for message and reasoning streams", async () => {

@@ -26,6 +26,8 @@ export interface ComposerContext {
 }
 
 interface Props {
+  contextControls?: React.ReactNode;
+  sendBlocked?: boolean;
   /** The unsent text. Owned by App so it survives switching threads (see App's `unsent`). */
   text: string;
   onText: (text: string) => void;
@@ -73,7 +75,7 @@ const MAX_INPUT = 180;
  * input and one control row — `+` (plan, auto, backend), the access pill (mode), any active chips,
  * the model picker, and a round send/stop button.
  */
-export function Composer({ text, onText: setText, attachments, attachmentActions, busy, context, backend, mode, approvals = "ask", onApprovals, plan, model, effort, auto, models, modelsError, onRetryModels, openModelPickerRequest, local, suggestion, onBackend, onMode, onPlan, onModel, onEffort, onAuto, onSend, onStop, inputRef }: Props) {
+export function Composer({ contextControls, sendBlocked, text, onText: setText, attachments, attachmentActions, busy, context, backend, mode, approvals = "ask", onApprovals, plan, model, effort, auto, models, modelsError, onRetryModels, openModelPickerRequest, local, suggestion, onBackend, onMode, onPlan, onModel, onEffort, onAuto, onSend, onStop, inputRef }: Props) {
   const fallbackRef = useRef<HTMLTextAreaElement>(null);
   const ta = inputRef ?? fallbackRef;
   const { copying, sending, warning: attachWarning, onFiles: attach, onPick: pick, onRemove, onDismissWarning } = attachmentActions;
@@ -95,7 +97,7 @@ export function Composer({ text, onText: setText, attachments, attachmentActions
   }, [busy]);
 
   const unsupportedImages = Boolean(local?.current && attachments.some(file => file.kind === "image"));
-  const canSend = Boolean(text.trim() || attachments.length) && !unsupportedImages;
+  const canSend = Boolean(text.trim() || attachments.length) && !unsupportedImages && !sendBlocked;
   const submit = () => {
     if (!canSend || busy || copying || sending) return;
     void onSend(text);
@@ -146,6 +148,7 @@ export function Composer({ text, onText: setText, attachments, attachmentActions
   return (
     <div className="composer" data-testid="composer">
       <div className="composer-inner" data-testid="attachment-dropzone">
+        {contextControls}
         <ContextStrip context={context} />
         {local?.current && <p className="local-inference-host" data-testid="local-inference-host">Runs through Codex at {local.entries.find(e => e.connection.id === local.current!.model.connection.id && e.connection.revision === local.current!.model.connection.revision)?.connection.origin ?? "an unavailable local server"} · connection revision {local.current.model.connection.revision}. A local address does not verify offline operation.</p>}
         {unsupportedImages && <p role="status" className="local-inference-host" data-testid="local-images-unavailable">Images are not qualified for local models. Remove the image or choose a cloud model before sending; the attachment is still here.</p>}

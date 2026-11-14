@@ -458,7 +458,7 @@ a.thread-pr:hover { text-decoration: underline; }
 
 /* ── Composer: 960×109 at rest, with a 38 px context strip inset 13 px. ── */
 .composer { flex: none; padding: 0 16px 16px; }
-.composer-inner { max-width: 960px; margin: 0 auto; }
+.composer-inner { container-type: inline-size; container-name: composer; max-width: 960px; margin: 0 auto; }
 .composer-context { display: flex; align-items: center; gap: 28px; height: 38px; margin: 0 13px; padding: 0 14px; overflow: hidden; border-radius: 12px 12px 0 0; background: var(--bg-composer-context); color: var(--text-1); font-size: var(--text-sm); white-space: nowrap; box-shadow: inset 0 1px rgba(255, 255, 255, .025); }
 .context-item { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
 .context-item .icon-svg { color: var(--text-2); }
@@ -1093,3 +1093,30 @@ button.turn-label:hover { color: var(--text-2); }
 .ui-size-options { display: inline-flex; gap: 4px; padding: 3px; border-radius: 10px; background: var(--bg-composer); }
 .ui-size-options button { height: 28px; padding: 0 14px; border: 0; border-radius: 7px; background: transparent; color: var(--text-2); font: inherit; font-size: 13px; cursor: pointer; }
 .ui-size-options button[aria-checked="true"] { background: var(--bg-row-selected); color: var(--text-1); }
+
+.task-context-select { position: relative; display: flow-root; margin: 0 27px; z-index: 4; font-size: 12px; }
+.task-context-select > button { position: absolute; top: calc(100% + 4px); right: 0; color: var(--muted); }
+.task-context-select > .task-context-panel { max-height: min(340px, calc(100vh - 360px)); background: var(--bg-elevated); }
+.composer-inner:has(> .task-context-select) > .composer-context { padding-right: 206px; }
+.task-context-compact-icon { display: none; }
+@container composer (max-width: 420px) {
+  .task-context-select > button.btn.small { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; }
+  .task-context-label { display: none; }
+  .task-context-compact-icon { display: inline-flex; }
+  .composer-inner:has(> .task-context-select) > .composer-context { gap: 12px; padding-left: 8px; padding-right: 48px; }
+  .composer-inner:has(> .task-context-select) > .composer-context .context-item { gap: 4px; }
+}
+.task-context-panel { max-height: 340px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin: 6px 0; text-align: left; }
+.task-context-panel p { margin: 6px 0; }
+.task-context-panel button { margin: 4px 8px 4px 0; }
+.task-context-candidates { display: grid; gap: 6px; }
+.task-context-candidates label { display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
+.task-context-refs { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 10px; }
+.task-context-refs li { display: grid; gap: 4px; overflow-wrap: anywhere; }
+.task-context-refs li > span { color: var(--muted); }
+.task-context-refs code { overflow-wrap: anywhere; }
+
+.task-view > .task-context-turn { display: block; min-width: 0; }
+.task-context-panel { box-sizing: border-box; width: 100%; min-width: 0; }
+.task-context-confirm { display: flex; align-items: center; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
+.task-context-panel fieldset { min-width: 0; margin: 8px 0; border: 1px solid var(--line); border-radius: 6px; padding: 8px; }

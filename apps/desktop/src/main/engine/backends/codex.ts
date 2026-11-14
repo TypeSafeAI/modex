@@ -2,17 +2,18 @@ import { codexQuota, type QuotaSnapshot } from "../routing/quota.js";
 import { requestedPermissions } from "./codex-permissions.js";
 import { AgentTracker } from "./agents.js";
 import { PAGES_TOOLS } from "../../../shared/pages.js";
+import { TASK_CONTEXT_TOOLS } from "../../../shared/task-context-tools.js";
 import { KNOWLEDGE_TOOLS } from "../../../shared/knowledge.js";
 import type { CliExecutable } from "../cli-path.js";
 import { generateTitle } from "../titles.js";
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { Backend, ModelInfo, NativeRequest, TitleOptions, TurnOptions, TurnResult, TurnSink } from "./types.js";
-import { LineBuffer, stderrTail, writeJsonResponse } from "./types.js";
+import { LineBuffer, stderrTail, writeJsonResponse, withTaskContextCapability } from "./types.js";
 import { codexCall, UsageMeter, withUsage } from "./usage.js";
 import { cliEnvironment, cliSpawn, health, installation } from "./health.js";
 import type { AgentActivity, BackendHealth } from "../../../shared/types.js";
-import type { MessageAsk, MessagePhase, NativeRef, PlanStepStatus, SettledOutcome } from "../../../shared/conversation-events.js";
+import type { MessageAsk, MessagePhase, NativeRef, PlanStepStatus, SettledOutcome, UnavailableNativeInput } from "../../../shared/conversation-events.js";
 import { boundOutput, byteLength, codexWebSearch, memoryEvidence, type ExecAction } from "../../../shared/evidence.js";
 import { actionDigest, codexAnswerResponse, codexQuestions } from "../../../shared/human-requests.js";
 
@@ -40,10 +41,11 @@ export class CodexBackend implements Backend {
   private readonly subscribers = new Set<(msg: RpcMessage) => void>();
   private readonly disconnects = new Set<(error: Error) => void>();
   private readonly loaded = new Set<string>();
+  private readonly metadataConnections = new Map<string, { pages?: string; taskContext?: string }>();
   /** The model Codex chose for each loaded thread, from thread/start or thread/resume: a Plan turn's collaboration mode needs one. */
   private readonly threadModels = new Map<string, string>();
   /** File paths of in-flight file changes, keyed `threadId:itemId`, so an approval can name them without the patch. */
-  private readonly changePaths = new Map<string, string[]>();
+  private readonly changePaths = new Map<string, { paths: string[]; protected: boolean }>();
   /** From the `initialize` reply: which codex build the server is. Kept for failure reports. */
   private userAgent: string | null = null;
   /** Opaque id of the running app-server process; native thread, turn and item ids are unique only within it. */
@@ -88,6 +90,7 @@ export class CodexBackend implements Backend {
       this.child = child;
       this.generation = randomUUID();
       this.loaded.clear();
+      this.metadataConnections.clear();
       this.threadModels.clear();
       const lines = new LineBuffer();
       let stderr = "";
@@ -121,6 +124,8 @@ export class CodexBackend implements Backend {
     this.child = null;
     this.ready = null;
     this.loaded.clear();
+    this.metadataConnections.clear();
+    this.changePaths.clear();
     this.threadModels.clear();
     for (const request of this.openRequests.values()) request.controller.abort();
     this.openRequests.clear();
@@ -132,20 +137,81 @@ export class CodexBackend implements Backend {
   private dispatch(line: string): void {
     let msg: RpcMessage;
     try {
-      msg = JSON.parse(line, (_key, value: unknown) => typeof value === "string" ? this.configuration?.redact(value) ?? value : value) as RpcMessage;
+      const fields = this.redactedInputs, protectedValues = this.protectedValues, rawIds = this.protectedTransportIds, redact = this.configuration?.redact;
+      msg = JSON.parse(line, function(this: object, key, value: unknown) {
+        if (redact && redact(key) !== key) protectedValues.add(this);
+        if (typeof value === "string") {
+          const safe = redact?.(value) ?? value;
+          if (safe !== value) {
+            const changed = fields.get(this) ?? new Set<string>(); changed.add(key); fields.set(this, changed); protectedValues.add(this);
+            // Exact protected RPC ids are retained only to send a fixed refusal back to their owner.
+            if (key === "id") rawIds.set(this, value);
+          }
+          return safe;
+        }
+        if (value && typeof value === "object") {
+          const object = value as Record<string, unknown>;
+          if (!Array.isArray(value) && redact && Object.keys(object).some(name => redact(name) !== name)) {
+            const safe = Object.fromEntries(Object.entries(object).map(([name, item]) => [redact(name), item]));
+            if (fields.has(object)) fields.set(safe, fields.get(object)!);
+            if (rawIds.has(object)) rawIds.set(safe, rawIds.get(object)!);
+            protectedValues.add(safe); value = safe;
+          }
+          if (protectedValues.has(value as object)) protectedValues.add(this);
+        }
+        return value;
+      }) as RpcMessage;
     } catch {
       return;
+    }
+    if (msg.method && msg.id !== undefined) {
+      const p = msg.params as Record<string, unknown> | undefined;
+      const patch = msg.method === "item/fileChange/requestApproval" ? this.changePaths.get(`${String(p?.threadId ?? "")}:${String(p?.itemId ?? "")}`) : undefined;
+      if (this.protectedValues.has(msg) || patch?.protected) {
+        this.send({ id: this.protectedTransportIds.get(msg) ?? msg.id, error: { code: -32602, message: "Modex refused this request because it contains protected credential data." } });
+        return;
+      }
     }
     if (typeof msg.id === "number" && !msg.method) {
       const p = this.pending.get(msg.id);
       if (p) {
         this.pending.delete(msg.id);
         if (msg.error) p.reject(new CodexError(msg.error.message ?? "codex error", { method: p.method, rpcCode: msg.error.code, rpcData: msg.error.data }));
+        else if (this.unavailableIdentity(msg.result, "thread") || this.unavailableIdentity(msg.result, "turn")) p.reject(new CodexError("Codex returned an unavailable protected protocol identity.", { method: p.method }));
         else p.resolve(msg.result);
       }
       return;
     }
+    const params = msg.params as Record<string, unknown> | undefined;
+    if (this.redactedInputs.get(msg)?.has("method") || (params && (["threadId", "turnId", "itemId"].some(key => this.redactedInputs.get(params)?.has(key))
+      || ["thread", "turn", "item"].some(key => this.unavailableIdentity(params, key))))) return;
     for (const s of this.subscribers) s(msg);
+  }
+
+  /** Object-local field names only: raw credentials and values are never retained here. */
+  private readonly redactedInputs = new WeakMap<object, Set<string>>();
+  private readonly protectedValues = new WeakSet<object>();
+  private readonly protectedTransportIds = new WeakMap<object, string>();
+  private unavailableIdentity(value: unknown, key: string): boolean {
+    if (!value || typeof value !== "object") return false;
+    const identity = (value as Record<string, unknown>)[key];
+    return !!identity && typeof identity === "object" && this.redactedInputs.get(identity)?.has("id") === true;
+  }
+  private inputAvailability(item: CodexItem): { displayOnlyInputs?: true; unavailableInputs?: UnavailableNativeInput[] } {
+    const fields: UnavailableNativeInput[] = [], changed = (object: object | undefined, key: string) => object !== undefined && this.redactedInputs.get(object)?.has(key);
+    if (changed(item, "command")) fields.push("exec.command");
+    if (changed(item, "cwd")) fields.push("exec.cwd");
+    let index = 0;
+    for (const action of Array.isArray(item.commandActions) ? item.commandActions : []) {
+      if (!codexActions([action])) continue;
+      if (changed(action, "path")) fields.push(`exec.actions.${index}.path`);
+      index++;
+    }
+    for (const [i, file] of (item.changes ?? []).entries()) {
+      if (changed(file, "path")) fields.push(`args.files.${i}.path`);
+      if (changed(file.kind, "move_path")) fields.push(`args.files.${i}.movePath`);
+    }
+    return fields.length ? { displayOnlyInputs: true, unavailableInputs: fields } : {};
   }
 
   private send(o: unknown): void {
@@ -282,6 +348,9 @@ export class CodexBackend implements Backend {
    * is run again on a server that has read the current sign-in. Other failures return as they are.
    */
   async runTurn(text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult> {
+    return withTaskContextCapability({ state: "unavailable", reason: this.configuration?.local ? "local-execution-unqualified" : "configuration-not-bound" }, sink, reported => this.runCodingTurn(text, opts, reported, signal));
+  }
+  private async runCodingTurn(text: string, opts: TurnOptions, sink: TurnSink, signal: AbortSignal): Promise<TurnResult> {
     const local = this.configuration?.local;
     if (local && opts.model !== local.model) return { status: "failed", error: "This local Codex runs only its selected model. Select the local target again to start a fresh conversation." };
     if (local && opts.resume && !this.loaded.has(opts.resume)) return { status: "failed", error: "This conversation's native session belongs to another Codex process. Select the local target again to start a fresh conversation." };
@@ -300,6 +369,7 @@ export class CodexBackend implements Backend {
       if (!shared) this.restart("Codex was restarted to pick up a new sign-in.");
       const opened = first.detail?.codexThreadId;
       const resume = typeof opened === "string" ? opened : opts.resume;
+      sink.taskContextCapability?.({ state: "unavailable", reason: "configuration-not-bound" });
       const second = await this.attempt(text, { ...opts, resume }, sink, signal);
       if (second.status !== "failed") return second;
       return { ...second, detail: { ...second.detail, firstAttempt: { error: first.error, ...first.detail } }, recovery: [`${step}: failed again`] };
@@ -322,7 +392,10 @@ export class CodexBackend implements Backend {
     // but avoid a second sandbox_apply inside the parent's macOS sandbox.
     if (this.configuration?.local?.externalSandbox) pol.sandboxPolicy = { type: "externalSandbox", networkAccess: "restricted" };
     // Only these scoped adapter tools are preapproved. Main enforces project/turn permissions.
-    const config = { ...(this.configuration?.local ? {} : THREAD_CONFIG), ...(opts.images ? { "mcp_servers.modex_images": { url: opts.images.url, enabled_tools: ["register"], tools: { register: { approval_mode: "approve" } } } } : {}), ...(opts.knowledge ? { "mcp_servers.modex_knowledge": {
+    const taskContext = this.configuration?.local ? undefined : opts.taskContext;
+    const config: Record<string, unknown> = { ...(this.configuration?.local ? {} : THREAD_CONFIG), ...(taskContext ? { "mcp_servers.modex_task_context": {
+      url: taskContext.url, enabled_tools: [...TASK_CONTEXT_TOOLS], tools: Object.fromEntries(TASK_CONTEXT_TOOLS.map(name => [name, { approval_mode: "approve" }])),
+    } } : {}), ...(opts.images ? { "mcp_servers.modex_images": { url: opts.images.url, enabled_tools: ["register"], tools: { register: { approval_mode: "approve" } } } } : {}), ...(opts.knowledge ? { "mcp_servers.modex_knowledge": {
       url: opts.knowledge.url, enabled_tools: [...KNOWLEDGE_TOOLS],
       tools: Object.fromEntries(KNOWLEDGE_TOOLS.map(name => [name, { approval_mode: "approve" }])),
     } } : {}), ...(opts.pages ? { "mcp_servers.modex_pages": {
@@ -330,6 +403,10 @@ export class CodexBackend implements Backend {
       tools: Object.fromEntries(PAGES_TOOLS.map(name => [name, { approval_mode: "approve" }])),
     } } : {}) };
     let threadId = opts.resume;
+    const metadata = { pages: opts.pages?.url, taskContext: taskContext?.url }, priorMetadata = threadId ? this.metadataConnections.get(threadId) : undefined;
+    const rebindMetadata = Boolean(threadId && this.loaded.has(threadId) && JSON.stringify(priorMetadata ?? {}) !== JSON.stringify(metadata));
+    if (priorMetadata?.pages && !opts.pages) config["mcp_servers.modex_pages"] = { enabled: false };
+    if (priorMetadata?.taskContext && !taskContext) config["mcp_servers.modex_task_context"] = { enabled: false };
     const local = this.configuration?.local;
     // The child's effective configuration, as Codex itself resolved it across every layer, is checked before any
     // thread is opened: confirming the provider's name on open does not say where its requests go (#380).
@@ -355,9 +432,10 @@ export class CodexBackend implements Backend {
       if (local && (r.model !== local.model || r.modelProvider !== local.provider)) throw new CodexError("Codex did not confirm the selected local model and provider.", { confirmedModel: r.model, confirmedProvider: r.modelProvider });
     };
     try {
-      if (threadId && !this.loaded.has(threadId)) {
+      if (threadId && (!this.loaded.has(threadId) || rebindMetadata)) {
         const r = await duringSetup(this.request<{ thread: { id: string }; model?: unknown; modelProvider?: unknown }>("thread/resume", { threadId, cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null, ...pinned, config }), signal);
         confirmed(r);
+        if (rebindMetadata && r.thread.id !== threadId) throw new CodexError("Codex changed conversation identity while rebinding metadata connections.", { stage: "bind metadata connections" });
         threadId = r.thread.id;
         if (typeof r.model === "string" && r.model) this.threadModels.set(threadId, r.model);
       } else if (!threadId) {
@@ -367,14 +445,17 @@ export class CodexBackend implements Backend {
         if (typeof r.model === "string" && r.model) this.threadModels.set(threadId, r.model);
       }
     } catch (err) {
-      return failed(err, { stage: "open thread", codexThreadId: opts.resume });
+      return { ...failed(err, { stage: rebindMetadata ? "bind metadata connections" : "open thread", codexThreadId: opts.resume }),
+        ...((taskContext || priorMetadata?.taskContext) ? { taskContextCapability: { state: "unavailable" as const, reason: "configuration-not-bound" as const } } : {}) };
     }
     if (signal.aborted) return { status: "interrupted" };
     this.loaded.add(threadId);
+    this.metadataConnections.set(threadId, metadata);
+    if (taskContext) sink.taskContextCapability?.({ state: "available" });
     sink.session(threadId);
 
     const tid = threadId;
-    const context = [opts.knowledge?.instructions, opts.pages?.instructions, opts.images?.instructions, text].filter(value => value !== undefined).join("\n\n");
+    const context = [opts.knowledge?.instructions, opts.pages?.instructions, taskContext?.instructions, opts.images?.instructions, text].filter(value => value !== undefined).join("\n\n");
     // Plan mode runs in Codex's native plan collaboration mode (codex-cli 0.163.0, experimental): Codex's own plan
     // instructions, its question tool offered by default, and the plan as a `plan` item. The mode overrides the
     // turn's model and effort, so it carries Modex's. Without a model to name, or when Codex refuses the mode,
@@ -432,6 +513,7 @@ export class CodexBackend implements Backend {
       const finish = (r: TurnResult) => {
         if (done) return;
         done = true;
+        for (const key of this.changePaths.keys()) if (key.startsWith(`${tid}:`)) this.changePaths.delete(key);
         agents.finish(signal.aborted || r.status === "interrupted");
         this.subscribers.delete(onMsg);
         this.disconnects.delete(onDisconnect);
@@ -550,13 +632,13 @@ export class CodexBackend implements Backend {
             } else if (item.type === "commandExecution") {
               tools.set(item.id, { started: Date.now(), output: "", bytes: 0 });
               commands.add(item.id);
-              sink.observe({ type: "tool.start", native: native(item.id), tool: { name: "shell", title: `$ ${stripShell(item.command ?? "")}`, args: { command: item.command, cwd: item.cwd },
+              sink.observe({ type: "tool.start", native: native(item.id), tool: { name: "shell", title: `$ ${stripShell(item.command ?? "")}`, args: { command: item.command, cwd: item.cwd }, ...this.inputAvailability(item),
                 ...(item.command ? { exec: { command: item.command, ...(item.cwd ? { cwd: item.cwd } : {}), ...(codexActions(item.commandActions) ? { actions: codexActions(item.commandActions)! } : {}) } } : {}) } });
             } else if (item.type === "fileChange") {
               tools.set(item.id, { started: Date.now(), output: "", bytes: 0 });
               const files = (item.changes ?? []).map((c) => c.path);
-              this.changePaths.set(`${tid}:${item.id}`, files);
-              sink.observe({ type: "tool.start", native: native(item.id), tool: { name: "apply_patch", title: `edit ${files.join(", ")}`, args: { patch: (item.changes ?? []).map((c) => c.diff).join("\n"), files: (item.changes ?? []).map(patchFile) } } });
+              this.changePaths.set(`${tid}:${item.id}`, { paths: files, protected: this.protectedValues.has(item) });
+              sink.observe({ type: "tool.start", native: native(item.id), tool: { name: "apply_patch", title: `edit ${files.join(", ")}`, args: { patch: (item.changes ?? []).map((c) => c.diff).join("\n"), files: (item.changes ?? []).map(patchFile) }, ...this.inputAvailability(item) } });
             } else if (item.type === "mcpToolCall" || item.type === "dynamicToolCall" || item.type === "webSearch") {
               tools.set(item.id, { started: Date.now(), output: "", bytes: 0 });
               // 0.163.0 starts a web search with an empty query; the completed item carries it.
@@ -598,7 +680,12 @@ export class CodexBackend implements Backend {
           case "item/completed": {
             const item = p.item as CodexItem;
             commands.delete(item.id);
-            if (item.type === "fileChange") this.changePaths.delete(`${tid}:${item.id}`);
+            if (item.type === "fileChange") {
+              const key = `${tid}:${item.id}`;
+              // Keep a body-free refusal fence until this turn ends, including late approval requests.
+              if (this.changePaths.get(key)?.protected || this.protectedValues.has(item)) this.changePaths.set(key, { paths: [], protected: true });
+              else this.changePaths.delete(key);
+            }
             if (item.type === "agentMessage") {
               // A message that completes without streaming is kept, commentary included: its phase says what it is.
               const evidence = memoryEvidence(item.memoryCitation);
@@ -615,6 +702,8 @@ export class CodexBackend implements Backend {
               const total = Math.max(t.bytes, byteLength(output));
               const shown = boundOutput(output).text;
               sink.observe({ type: "tool.done", native: native(item.id), outcome: codexOutcome(item), progress: {
+                ...this.inputAvailability(item),
+                ...(item.type === "fileChange" ? { args: { patch: (item.changes ?? []).map(c => c.diff).join("\n"), files: (item.changes ?? []).map(patchFile) } } : {}),
                 ...(search ? { search, ...(search.query ? { title: `search ${search.query}` } : {}) } : {}),
                 ...(shown ? { output: shown } : {}), ...(total > byteLength(shown) ? { outputBytes: total, outputTruncated: true } : {}),
                 ...(item.type === "commandExecution" && "exitCode" in item ? { exitCode: item.exitCode ?? null } : {}),
@@ -734,7 +823,7 @@ export class CodexBackend implements Backend {
   /** Paths of a file change the approval refers to (from its item/started), consumed once. */
   private takeChangePaths(p: Record<string, unknown>): string[] {
     const key = `${String(p.threadId ?? "")}:${String(p.itemId ?? "")}`;
-    const paths = this.changePaths.get(key) ?? [];
+    const paths = this.changePaths.get(key)?.paths ?? [];
     this.changePaths.delete(key);
     return paths;
   }
