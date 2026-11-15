@@ -17,7 +17,19 @@ for (const boundary of ["both", "missing-start", "late-start", "outside", "unkno
   if (boundary === "symlink-cwd" || boundary === "symlink-cd" || boundary === "symlink-parent") fs.symlinkSync(tmpdir("modex-check-outside-"), path.join(project.path, "external"), "dir");
   if (boundary === "cd-inside") fs.mkdirSync(path.join(project.path, "inside"));
   let captureCalls = 0, finishStart: (() => void) | undefined;
-  const capture = new TaskContextCapture();
+  let scopeReads = 0;
+  const selectionReads = new Set<string>();
+  const selectedPaths = new Set(Array.from({ length: boundary === "large-confirmation" ? 1001 : 0 }, (_, i) => `selected-${i}.ts`));
+  // This case exercises 1,001 synthetic receipts, not OS metadata latency. Real
+  // canonical scope and its unchanged deadline are covered in task-context-scope.
+  const capture = new TaskContextCapture(boundary === "large-confirmation" ? { reader: async (cwd, relative) => {
+    assert.equal(cwd, project.path); assert.ok(selectedPaths.has(relative));
+    assert.equal(selectionReads.has(relative), false); selectionReads.add(relative);
+    return { state: "unavailable", reason: "unreadable" };
+  }, scopeReader: async (cwd, directory) => {
+    assert.equal(cwd, project.path); assert.equal(directory, project.path);
+    scopeReads++; return "project";
+  } } : {});
   capture.capture = async (_cwd, targets, source, phase) => {
     captureCalls++;
     if (boundary === "late-start" && phase === "check-start-observed") await new Promise<void>(resolve => { finishStart = resolve; });
@@ -41,6 +53,7 @@ for (const boundary of ["both", "missing-start", "late-start", "outside", "unkno
   const thread = await runner.createThread(project.id, { backend: "codex", auto: false });
   const opened = runner.openContextDraft({ kind: "thread", threadId: thread.id });
   const selected = await runner.selectTaskContext(opened, boundary === "large-confirmation" ? Array.from({ length: 1001 }, (_, i) => ({ kind: "file" as const, path: `selected-${i}.ts` })) : [{ kind: "file", path: "README.md" }]);
+  if (boundary === "large-confirmation") assert.equal(selectionReads.size, 1001, "selection must retain every synthetic missing-file receipt without OS reads");
   await runner.send(thread.id, "Check", [], "desktop", selected.binding);
   const items = runner.items(thread.id), user = items.find(item => item.kind === "user")!;
   assert.ok(user.kind === "user" && user.contextEvidence);
@@ -56,6 +69,7 @@ for (const boundary of ["both", "missing-start", "late-start", "outside", "unkno
   assert.equal(check.eventIds.length, 2); assert.equal(new Set(check.eventIds).size, 2);
   assert.equal(check.exitCode, 0); assert.equal(check.relevance, "unestablished");
   assert.equal(check.scope, boundary === "outside" || boundary === "cd-outside" || boundary === "symlink-cwd" || boundary === "symlink-cd" || boundary === "symlink-parent" ? "outside" : boundary === "unknown-cwd" || boundary === "relative-cwd" || boundary === "cwd-flag" ? "unknown" : "project");
+  if (boundary === "large-confirmation") assert.equal(scopeReads, 2, "both native boundaries must establish scope for the intended project");
   assert.ok(handlers.has("task:context"), "existing task context needs a scoped read command");
   assert.ok(handlers.has("task:check-confirm"), "check relevance requires an explicit main-owned confirmation command");
   const confirm = (_thread: string, _turn: string, revision: number, item: string, refs: string[]) => handlers.get("task:check-confirm")!({ threadId: _thread, turnId: _turn, expectedRevision: revision, itemId: item, refIds: refs }) as TaskContextEvidence;
