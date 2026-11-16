@@ -261,33 +261,27 @@ function PlusMenu({ busy, pinned, backend, plan, auto, onBackend, onPlan, onAuto
   return (
     <span className="composer-menu">
       <IconButton ref={trigger} icon="plus" label="Plan, Auto and backend" size="md" className="composer-plus-btn" data-testid="composer-plus" aria-haspopup="menu" aria-expanded={open} tooltipSide="top" onClick={() => setOpen((v) => !v)} />
-      <Menu open={open} onClose={() => setOpen(false)} anchorRef={trigger} label="Composer options" placement="top-start" testId="composer-plus-menu" className="composer-options">
-        <MenuItem disabled={busy} onClick={pick(onAttach)}><Icon name="paperclip" size={16} /><span className="menu-body"><span className="menu-title">Attach files</span></span></MenuItem>
+      <Menu open={open} onClose={() => setOpen(false)} anchorRef={trigger} label="Composer options" placement="top-start" testId="composer-plus-menu" className="composer-options" hint={ATTACH_HINT}>
+        <MenuItem hint={ATTACH_HINT} disabled={busy} onClick={pick(onAttach)}><Icon name="paperclip" size={14} /><span className="menu-title">Attach files</span></MenuItem>
         <MenuSeparator />
         {pinned && <div className="menu-note" data-testid="local-pinned-note">This thread uses a local model, so Plan, Auto and the backend are fixed. Choose cloud models in the model menu to change them.</div>}
-        <MenuItem toggle selected={plan} disabled={busy || pinned} data-testid="plan-toggle" onClick={pick(() => onPlan(!plan))}>
-          <span className="menu-body">
-            <span className="menu-title">Plan mode <Kbd>⇧⌘P</Kbd></span>
-            <span className="menu-desc">{pinned ? "Plan mode is not qualified for local models." : "Investigate read-only and return a plan instead of editing."}</span>
-          </span>
+        <MenuItem toggle selected={plan} disabled={busy || pinned} data-testid="plan-toggle" hint={pinned ? "Plan mode is not qualified for local models." : "Investigate read-only and return a plan instead of editing."} onClick={pick(() => onPlan(!plan))}>
+          <span className="menu-title">Plan mode <Kbd>⇧⌘P</Kbd></span>
         </MenuItem>
-        <MenuItem toggle selected={auto} disabled={busy || pinned} data-testid="auto-toggle" onClick={pick(() => onAuto(!auto))}>
-          <span className="menu-body">
-            <span className="menu-title">Auto routing</span>
-            <span className="menu-desc">{pinned ? "Local threads keep the model you explicitly selected." : "A fast judge picks the model, effort and speed for each turn, within your limits."}</span>
-          </span>
+        <MenuItem toggle selected={auto} disabled={busy || pinned} data-testid="auto-toggle" hint={pinned ? "Local threads keep the model you explicitly selected." : "A fast judge picks the model, effort and speed for each turn, within your limits."} onClick={pick(() => onAuto(!auto))}>
+          <span className="menu-title">Auto routing</span>
         </MenuItem>
         <MenuSeparator />
         <MenuLabel>Backend</MenuLabel>
         <div role="group" aria-label="Backend" data-testid="backend-picker">
           {BACKENDS.map((b) => (
-            <MenuItem key={b.id} checkable selected={backend === b.id} disabled={busy || pinned} title={b.hint} onClick={pick(() => onBackend(b.id))}>
-              <span className="menu-body"><span className="menu-title">{b.label}</span></span>
+            <MenuItem key={b.id} checkable selected={backend === b.id} disabled={busy || pinned} hint={b.hint} onClick={pick(() => onBackend(b.id))}>
+              <span className="menu-title">{b.label}</span>
             </MenuItem>
           ))}
           {backend === "mock" && (
-            <MenuItem checkable selected disabled title="Offline scripted engine (demo)">
-              <span className="menu-body"><span className="menu-title">Mock</span></span>
+            <MenuItem checkable selected disabled hint="Offline scripted engine (demo)">
+              <span className="menu-title">Mock</span>
             </MenuItem>
           )}
         </div>
@@ -296,6 +290,7 @@ function PlusMenu({ busy, pinned, backend, plan, auto, onBackend, onPlan, onAuto
   );
 }
 
+const ATTACH_HINT = "Add files or images to your next message.";
 const ACCESS_LABEL: Record<Mode, string> = { chat: "Read only", agent: "Agent", "full-access": "Full access" };
 
 /** The access pill: how much the agent may do without asking (the thread's mode). Orange only for full access. */
@@ -316,27 +311,22 @@ function AccessMenu({ busy, mode, onMode, approvals, onApprovals }: { busy: bool
         <Icon name="info" size={14} />
         {ACCESS_LABEL[mode]}
       </button>
-      <Menu open={open} onClose={() => setOpen(false)} anchorRef={trigger} label="Access" placement="top-start" testId="access-menu" className="access-options">
+      <Menu open={open} onClose={() => setOpen(false)} anchorRef={trigger} label="Access" placement="top-start" testId="access-menu" className="access-options" focusSelected hint={info?.hint ?? ""}>
+        <MenuLabel>Access</MenuLabel>
         {MODES.map((m) => (
-          <MenuItem key={m.id} checkable selected={m.id === mode} data-testid="access-option" data-mode={m.id} onClick={() => { onMode(m.id); setOpen(false); }}>
-            <span className="menu-body">
-              <span className="menu-title">{ACCESS_LABEL[m.id]}</span>
-              <span className="menu-desc">{m.hint}</span>
-            </span>
+          <MenuItem key={m.id} checkable selected={m.id === mode} hint={m.hint} data-testid="access-option" data-mode={m.id} onClick={() => { onMode(m.id); setOpen(false); }}>
+            <span className="menu-title">{ACCESS_LABEL[m.id]}</span>
           </MenuItem>
         ))}
         {onApprovals && <MenuSeparator />}
         {onApprovals && <MenuLabel>Approvals</MenuLabel>}
         {onApprovals && APPROVAL_POLICIES.map((p) => (
-          <MenuItem key={p} checkable selected={p === approvals} data-testid="approvals-option" data-policy={p} onClick={() => {
+          <MenuItem key={p} checkable selected={p === approvals} hint={APPROVAL_HINT[p]} data-testid="approvals-option" data-policy={p} onClick={() => {
             setOpen(false);
             if (p !== "yolo") onApprovals(p);
             else void confirmDialog(YOLO_CONFIRM).then((ok) => { if (ok) onApprovals(p); });
           }}>
-            <span className="menu-body">
-              <span className="menu-title">{APPROVAL_LABEL[p]}</span>
-              <span className="menu-desc">{APPROVAL_HINT[p]}</span>
-            </span>
+            <span className="menu-title">{APPROVAL_LABEL[p]}</span>
           </MenuItem>
         ))}
       </Menu>
