@@ -253,14 +253,21 @@ test.describe("Phase 6 · transcript", () => {
   test("column, bubble, turn header and prose match the reference", async () => {
     await changesHidden();
     const c = await box(tid(page, "composer-box"));
-    const header = await box(tid(page, "turn-label").first());
+    // The column is the turn header's content box; its label is a small inline line, no longer the column's width.
+    const header = await tid(page, "turn-header").first().evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const s = getComputedStyle(el);
+      const left = parseFloat(s.paddingLeft);
+      return { x: r.x + left, width: r.width - left - parseFloat(s.paddingRight) };
+    });
     expect(Math.abs(header.x - (c.x + 11))).toBeLessThanOrEqual(1);
     expect(Math.abs(header.width - (c.width - 22))).toBeLessThanOrEqual(1);
     const label = tid(page, "turn-label").first();
-    expect(await css(label, "font-size")).toBe("14px");
+    expect(await css(label, "font-size")).toBe("13px");
     expect(await css(label, "font-weight")).toBe("500");
     expect(await css(label, "color")).toBe("rgb(170, 165, 184)");
-    expect(await css(label, "border-bottom-color")).toBe("rgb(43, 51, 71)");
+    expect(await css(label, "border-bottom-width")).toBe("0px");
+    expect((await box(label)).height).toBe(26);
     const bubble = items(page, "user").first().locator('[data-testid="item-text"]');
     expect(await css(bubble, "background-color")).toBe("rgb(27, 34, 50)");
     expect(await css(bubble, "border-top-left-radius")).toBe("8px");

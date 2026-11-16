@@ -1,4 +1,4 @@
-import type { ApprovalReceipt } from "./types.js";
+import type { ApprovalReceipt, ThreadItem } from "./types.js";
 
 /** How the deciding rule was found to apply: "exact match" or "Jev 0.94". */
 export function receiptVia(r: ApprovalReceipt): string {
@@ -21,4 +21,28 @@ export function askedBecause(r: ApprovalReceipt): string {
     : r.downgraded === "incomplete" ? `Jev could not see the whole command${overrode}`
     : rule;
   return `Asked because: ${why}${jevNotConsulted(r) ? " · Jev not consulted" : ""}`;
+}
+
+export type AnsweredTone = "allowed" | "refused" | "warn" | "neutral";
+export interface AnsweredApproval { text: string; tone: AnsweredTone; by: string | null }
+
+/** A request that closed without anyone answering it says why, rather than "Denied". */
+const WITHDRAWN = {
+  native: "Withdrawn — the agent no longer needs an answer",
+  stopped: "Not answered — the turn was stopped",
+  ended: "Not answered — the turn ended first",
+} as const;
+
+/**
+ * The receipt row for an approval a person answered, or that closed unanswered: its words, its tone, and
+ * "by you" only when the answer is recorded as given in this window. Null while the request still waits.
+ */
+export function answeredApproval(item: Extract<ThreadItem, { kind: "approval" }>): AnsweredApproval | null {
+  if (!item.answer) return null;
+  if (item.delivery === "uncertain") return { text: "Delivery uncertain — not resent", tone: "warn", by: null };
+  if (item.delivery === "sending") return { text: "Sending decision…", tone: "neutral", by: null };
+  if (item.withdrawn) return { text: WITHDRAWN[item.withdrawn], tone: "neutral", by: null };
+  const by = item.answeredBy === "desktop" ? "by you" : null;
+  if (item.answer === "no") return { text: "Denied", tone: "refused", by };
+  return { text: item.answer === "always" ? "Approved — always for this command" : "Approved", tone: "allowed", by };
 }

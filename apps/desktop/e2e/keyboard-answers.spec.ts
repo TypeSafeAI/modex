@@ -94,6 +94,8 @@ test("Jump to latest from the keyboard hands focus to the message box at the bot
     await items(page, "approval").last().getByRole("button", { name: "Approve", exact: true }).click();
     await expect(currentRow(page)).toHaveAttribute("data-status", "idle");
   }
+  // A finished turn is short; add more if three do not yet overflow the window.
+  await ensureScrollable();
   await tid(page, "turn-label").last().focus();
   await expect(async () => {
     await page.keyboard.press("PageUp");
@@ -107,7 +109,7 @@ test("Jump to latest from the keyboard hands focus to the message box at the bot
 
 /** Enough finished turns for the transcript to scroll, whatever ran before (a failed test restarts the app). */
 async function ensureScrollable() {
-  for (let turn = 0; turn < 4 && !(await tid(page, "transcript").evaluate((el) => el.scrollHeight > el.clientHeight + 300).catch(() => false)); turn++) {
+  for (let turn = 0; turn < 8 && !(await tid(page, "transcript").evaluate((el) => el.scrollHeight > el.clientHeight + 300).catch(() => false)); turn++) {
     if (!(await tid(page, "composer-input").count())) await page.keyboard.press("Meta+n");
     await tid(page, "composer-input").focus();
     await page.keyboard.type(`Turn ${turn} for scrolling`);
