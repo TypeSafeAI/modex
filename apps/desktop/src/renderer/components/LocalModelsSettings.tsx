@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { LocalConnectionView, LocalModelDescriptor, LocalRuntime } from "../../shared/local-connections";
 import { FAILURE_WORDS, RUNTIME_DEFAULTS, RUNTIME_NAMES, addConnection, cancelDiscovery, discover, discoverAll, entryModels, removeConnection, tokensLabel, updateConnection, useLocalModels, type LocalEntry } from "../local-models";
 import { Icon } from "./ui/Icon";
+import { confirmDialog } from "../confirm";
 
 /**
  * Settings → Local models (LM-4, #381): connect a model server running on this Mac, list its models,
@@ -115,8 +116,9 @@ function ConnectionCard({ entry, busy, run }: { entry: LocalEntry; busy: boolean
         <button type="button" className="btn small" data-testid="local-refresh" disabled={busy || entry.checking} onClick={() => void discover(c)}><Icon name="restart" />Refresh</button>
         <button type="button" className="btn small" data-testid="local-edit" disabled={busy} onClick={() => setEditing(value => !value)}>{editing ? "Cancel edit" : "Edit"}</button>
         <button type="button" className="btn small ghost" data-testid="local-remove" disabled={busy} onClick={() => {
-          if (!window.confirm(`Remove ${c.label}? Past conversations stay readable. Choose another model before sending on a thread that used this connection.`)) return;
-          void run(async () => { await removeConnection(c); return `${c.label} removed.`; });
+          void confirmDialog({ title: `Remove ${c.label}?`, body: "Choose another model before sending on a thread that used this connection.", facts: [{ kind: "kept", text: "Past conversations stay readable." }], confirmLabel: "Remove connection", tone: "danger", icon: "trash" }).then((ok) => {
+            if (ok) void run(async () => { await removeConnection(c); return `${c.label} removed.`; });
+          });
         }}>Remove</button>
         {c.credential.present && <button type="button" className="btn small ghost" disabled={busy} onClick={() => void run(async () => { await updateConnection(c, { token: null }); return "Token removed."; })}>Remove token</button>}
       </div>

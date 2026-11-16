@@ -31,6 +31,10 @@
   --border-composer: #42465e;
   --border-strong: #54586f;
   --rule: #2b3347;
+  /* Derived from the text colour, so every theme inherits them: hover fills and inner borders. */
+  --tint: color-mix(in srgb, var(--text-1) 5%, transparent);
+  --tint-strong: color-mix(in srgb, var(--text-1) 9%, transparent);
+  --hairline: color-mix(in srgb, var(--text-1) 11%, transparent);
 
   /* Text — brightest glyph-core pixel on each surface */
   --text-1: #f8f3fa;
@@ -81,12 +85,14 @@
   --weight-semibold: 600;
   --leading: 1.5;
 
-  /* Radii */
-  --radius-sm: 6px;              /* derived: icon buttons, inline code */
-  --radius-row: 10px;            /* measured: selected sidebar row */
-  --radius-md: 12px;             /* derived: menus, cards */
-  --radius-composer: 20px;       /* measured ±2: composer box */
-  --radius-pill: 999px;
+  /* Radii: one scale for every button and component (design/tokens.md, "Radius scale").
+     8 px surfaces, 6 px controls, 4 px parts inside a control. Only dots and spinners are round. */
+  --radius-xs: 4px;              /* part: tabs, icon tiles, inline code, key hints */
+  --radius-sm: 6px;              /* control: buttons, icon buttons, fields */
+  --radius-row: 6px;             /* control: rows and options */
+  --radius-md: 8px;              /* surface: menus, cards, dialogs */
+  --radius-composer: 8px;        /* surface: composer box */
+  --radius-pill: 6px;            /* control: chips and badges (no longer pill-shaped) */
 
   /* Spacing (4 px grid) */
   --space-1: 4px;
@@ -101,7 +107,7 @@
   --rail-w: 48px;                /* x 0–47; the sheet's 1 px left border sits at x 48 */
   --sidebar-w: 240px;            /* x 49–288; 1 px divider at x 289 */
   --row-h: 30px;                 /* sidebar rows, 31 px pitch */
-  --radius-sheet: 12px;          /* content sheet corners */
+  --radius-sheet: 8px;           /* surface: content sheet corners */
 
   /* Motion */
   --ease-out: cubic-bezier(0.2, 0, 0, 1);

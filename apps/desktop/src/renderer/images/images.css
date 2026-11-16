@@ -53,7 +53,7 @@
   padding: 7px 10px;
   background: transparent;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   color: var(--text-2);
   cursor: pointer;
 }
@@ -66,7 +66,7 @@
   color: var(--text-1);
   border: 1px solid var(--border-pane);
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   max-width: 100%;
 }
 .images-surface :is(button, input, select, textarea, summary):focus-visible {
@@ -78,7 +78,7 @@
   padding: 12px;
   margin: 12px 0;
   border: 1px solid var(--border-pane);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 .images-error button {
   margin-left: 12px;
@@ -106,7 +106,7 @@
   min-width: 0;
   border: 1px solid transparent;
   padding: 6px;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   color: var(--text-1);
   background: transparent;
   cursor: pointer;
@@ -119,7 +119,7 @@
 .image-card > div {
   width: 100%;
   aspect-ratio: 1;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
   background: var(--bg-elevated);
   display: grid;
@@ -171,7 +171,7 @@
   border: 0;
   padding: 0;
   background: var(--bg-elevated);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   cursor: zoom-in;
 }
 .image-preview img {
@@ -199,7 +199,7 @@
 }
 .image-studio {
   border: 1px solid var(--border-pane);
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   padding: 22px;
   margin: 20px 0;
   display: flex;
@@ -231,7 +231,7 @@
   gap: 8px;
   padding: 5px;
   border: 1px solid var(--border-pane);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 .image-references img {
   width: 40px;
@@ -270,7 +270,7 @@
   margin-top: 12px;
   background: var(--bg-elevated);
   padding: 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 .image-transcript pre {
   white-space: pre-wrap;

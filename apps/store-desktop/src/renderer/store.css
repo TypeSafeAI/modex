@@ -4,7 +4,7 @@
 .store-demo-banner { position: absolute; inset: 0 0 auto; min-height: 62px; display: flex; align-items: center; gap: 12px; padding: 8px 18px 8px 84px; background: var(--bg-elevated); color: var(--text-1); border-bottom: 1px solid var(--border-pane); z-index: 10; }
 .store-demo-banner > div { display: grid; gap: 4px; flex: 1; font-size: 12px; }
 .store-demo-banner span { font-size: 11px; color: var(--text-3); }
-.store-demo-banner button, .host-demo { background: transparent; color: #f386a1; border: 1px solid #f386a160; border-radius: 8px; padding: 9px 12px; cursor: pointer; }
+.store-demo-banner button, .host-demo { background: transparent; color: #f386a1; border: 1px solid #f386a160; border-radius: var(--radius-sm); padding: 9px 12px; cursor: pointer; }
 .store-demo-banner button:focus-visible { outline: 2px solid #f386a1; outline-offset: 3px; }
 .host-demo { width: 100%; display: flex; justify-content: space-between; margin-top: 24px; min-height: 48px; align-items: center; font-weight: 600; }
 .host-connection { position: fixed; inset: 0; display: grid; place-items: center; background: radial-gradient(ellipse at 55% 20%, #1c1c302e, transparent 65%), #080c17f7; overflow: auto; padding: 60px 24px; color: #f3f1f5; }
@@ -12,7 +12,7 @@
 .host-card { width: min(100%, 440px); }
 .host-brand { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 600; letter-spacing: -.6px; }
 .host-brand img { width: 27px; height: 34px; object-fit: contain; }
-.host-preview { margin-left: auto; color: #b2b6c6; font-size: 10px; font-weight: 400; letter-spacing: .1px; border: 1px solid #ffffff1f; border-radius: 5px; padding: 5px 8px; }
+.host-preview { margin-left: auto; color: #b2b6c6; font-size: 10px; font-weight: 400; letter-spacing: .1px; border: 1px solid #ffffff1f; border-radius: var(--radius-xs); padding: 5px 8px; }
 .host-eyebrow { color: #f386a1; font-size: 10px; letter-spacing: 1.8px; margin-top: 45px; }
 .host-card h1 { font-size: 34px; line-height: 1.2; letter-spacing: -1.3px; font-weight: 550; margin: 14px 0 20px; }
 .host-description { color: #b2b6c6; font-size: 15px; line-height: 1.65; }
@@ -20,9 +20,9 @@
 .host-instructions strong { font-weight: 500; color: #f3f1f5; }
 .host-card form { display: grid; gap: 10px; margin-top: 26px; }
 .host-card label { font-size: 12px; color: #b2b6c6; }
-.host-card input { width: 100%; height: 48px; border: 1px solid #ffffff24; border-radius: 10px; background: #101625; padding: 0 14px; font-size: 13px; color: #f3f1f5; }
+.host-card input { width: 100%; height: 48px; border: 1px solid #ffffff24; border-radius: var(--radius-sm); background: #101625; padding: 0 14px; font-size: 13px; color: #f3f1f5; }
 .host-card input:focus-visible, .host-card button:focus-visible { outline: 2px solid #f386a1; outline-offset: 3px; }
-.host-connect, .host-card form button { display: flex; justify-content: space-between; align-items: center; padding: 0 16px; min-height: 48px; border: none; border-radius: 10px; background: #f386a1; color: #12111a; font-size: 13px; font-weight: 600; margin-top: 6px; cursor: pointer; }
+.host-connect, .host-card form button { display: flex; justify-content: space-between; align-items: center; padding: 0 16px; min-height: 48px; border: none; border-radius: var(--radius-sm); background: #f386a1; color: #12111a; font-size: 13px; font-weight: 600; margin-top: 6px; cursor: pointer; }
 .host-card button:disabled { opacity: .45; cursor: default; }
 .host-footnote { color: #a3a9ba; font-size: 11px; line-height: 1.7; margin-top: 18px; }
 .host-error { border-left: 2px solid #f386a1; padding-left: 12px; color: #f3b3c4; line-height: 1.7; font-size: 12px; margin-top: 20px; }

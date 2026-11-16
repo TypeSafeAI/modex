@@ -3,7 +3,7 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
-import { launch, seedHome, tid } from "./support.js";
+import { answerConfirm, launch, seedHome, tid } from "./support.js";
 import { holdLocalDraftCreation, tryInputWhileLocalSelectionWaits, releaseLocalDraftCreation, restoreLocalDraftCreation } from "./fixtures/local-draft-selection.js";
 
 // LM-4 (#381), LM Studio first: Settings → Local models and the model menu's local section, through the
@@ -122,8 +122,8 @@ test("Settings adds an LM Studio server, lists its models without loading one, a
     // Refresh lists again; Remove asks first and then deletes the profile in main.
     await tid(card.first(), "local-refresh").click();
     await expect.poll(() => runtime.hits.length).toBe(2);
-    page.once("dialog", dialog => void dialog.accept());
     await tid(stopped, "local-remove").click();
+    await answerConfirm(page, "accept", "Past conversations stay readable.");
     await expect(tid(page, "local-connection")).toHaveCount(1);
     const listed = await page.evaluate(() => window.modex!.invoke("local-models:command", { op: "list" }));
     expect(listed.op === "list" && listed.connections.map(c => c.label)).toEqual(["LM Studio"]);

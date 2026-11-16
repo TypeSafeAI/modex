@@ -22,6 +22,8 @@ import { LIMITS } from "../shared/attachments";
 import { ComposerAttachments, type AttachmentActions } from "./composer-attachments";
 import { stageFiles, pickFiles } from "./attachments";
 import { bridge } from "./bridge";
+import { confirmDialog } from "./confirm";
+import { ConfirmHost } from "./components/ConfirmDialog";
 import { Sidebar } from "./components/Sidebar";
 import { ThreadView } from "./components/ThreadView";
 import { Workspace } from "./components/Workspace";
@@ -890,9 +892,9 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
       const cloud = requested ?? models.codex?.models.find(m => m.id === state?.settings.default_model.codex)
         ?? models.codex?.models.find(m => m.isDefault) ?? models.codex?.models[0];
       if (!cloud) { setError({ message: "Load the Codex cloud model list before returning to cloud models." }); return; }
-      if (window.confirm(`Use cloud model ${cloud.label} (${cloud.id})? Future messages will go to that model in a fresh conversation. Existing messages will stay in the transcript.`)) {
-        void updateThread({ localTarget: null, model: cloud.id, effort: cloud.defaultEffort });
-      }
+      void confirmDialog({ title: `Use cloud model ${cloud.label}?`, body: "Future messages will go to that model in a fresh conversation.", path: cloud.id, facts: [{ kind: "kept", text: "Existing messages will stay in the transcript." }], confirmLabel: "Use cloud model", icon: "stack" }).then((ok) => {
+        if (ok) void updateThread({ localTarget: null, model: cloud.id, effort: cloud.defaultEffort });
+      });
     },
     onManage: openLocalSettings,
   } : undefined;
@@ -919,7 +921,11 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
     else { setSurface("chat"); setLayout({ changes: true }); setTerminals((m) => ({ ...m, [threadId]: true })); }
   };
   const deleteThread = (t: Thread) => act(async () => {
-    const removeWorktree = t.worktree ? window.confirm(privateLabel(`Delete this thread and remove its worktree?\n\n${t.worktree.path}\n\nUncommitted changes there will be lost; the branch ${t.worktree.branch} is kept.`)) : true;
+    const removeWorktree = t.worktree ? await confirmDialog({
+      title: "Delete this thread and remove its worktree?", path: privateLabel(t.worktree.path),
+      facts: [{ kind: "lost", text: "Uncommitted changes there will be lost." }, { kind: "kept", text: privateLabel(`The branch ${t.worktree.branch} is kept.`) }],
+      confirmLabel: "Delete thread", tone: "danger", icon: "trash",
+    }) : true;
     if (t.worktree && !removeWorktree) return;
     const s = await bridge.invoke("thread:delete", { threadId: t.id, removeWorktree });
     if (nativeRef.current) return; // The main-owned handshake already adopted selection and drafts.
@@ -937,7 +943,11 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
     if (selected === t.id) setSelected(s.threads.find((x) => x.projectId === t.projectId)?.id ?? s.threads[0]?.id ?? null);
   });
   const removeProject = (projectId: string) => act(async () => {
-    if (!window.confirm(spaceEnabled ? "Remove this project from Modex? Files on disk are not touched, and its notes stay in Space." : "Remove this project from Modex? Files on disk are not touched.")) return;
+    if (!(await confirmDialog({
+      title: "Remove this project from Modex?",
+      facts: [{ kind: "kept", text: "Files on disk are not touched." }, ...(spaceEnabled ? [{ kind: "kept" as const, text: "Its notes stay in Space." }] : [])],
+      confirmLabel: "Remove project", tone: "warn", icon: "folder",
+    }))) return;
     const removedThreads = state?.threads.filter((t) => t.projectId === projectId) ?? [];
     const s = await bridge.invoke("project:remove", { projectId });
     if (nativeRef.current) return; // Do not overwrite canonical adoption with the pre-await draft closure.
@@ -968,7 +978,7 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
     }
   });
   const revert = (path: string) => thread && act(async () => {
-    if (!window.confirm(privateLabel(`Discard changes to ${path}? This cannot be undone.`))) return;
+    if (!(await confirmDialog({ title: privateLabel(`Discard changes to ${path}?`), body: "This cannot be undone.", confirmLabel: "Discard changes", tone: "danger", icon: "changes" }))) return;
     await bridge.invoke("changes:revert", { threadId: thread.id, path });
     await loadChanges(thread.id);
   });
@@ -1226,6 +1236,8 @@ export function App({ persistPreferences = true, spaceEnabled = true, analyticsE
           {!updateBlocked && (nativeLoading || nativeRecoveryError) && <div className="toast" role="alert" data-testid="draft-recovery-status">{nativeRecoveryError ?? "Restoring saved drafts…"}</div>}
         </>}
         {!state && streamerMode && <button className="btn" data-testid="streamer-mode-disable" onClick={() => setLayout({ streamerMode: false })}>Turn off Streamer Mode</button>}
+        {/* Every confirmation in the window is answered here (confirm.ts); it renders into a portal. */}
+        <ConfirmHost />
       </div>
     </StreamerMode.Provider>
   );

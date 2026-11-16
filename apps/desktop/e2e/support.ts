@@ -158,6 +158,18 @@ export async function resizeWindow(app: ElectronApplication, page: Page, width: 
 export const tid = (scope: Page | Locator, id: string): Locator => scope.locator(`[data-testid="${id}"]`);
 
 /**
+ * Answers the in-app confirmation that is open (components/ConfirmDialog.tsx). Call it after the click
+ * that asks. `text`, when given, must appear in the dialog before it is answered.
+ */
+export async function answerConfirm(page: Page, answer: "accept" | "cancel", text?: string | RegExp): Promise<void> {
+  const dialog = tid(page, "confirm-dialog");
+  await expect(dialog).toBeVisible();
+  if (text !== undefined) await expect(dialog).toContainText(text);
+  await tid(dialog, answer === "accept" ? "confirm-accept" : "confirm-cancel").click();
+  await expect(dialog).toHaveCount(0);
+}
+
+/**
  * Switches the theme the way a person does, in Settings → General, and waits for the window to show it.
  * `settings:update` alone saves the theme but leaves the window as it was until something refreshes it.
  */

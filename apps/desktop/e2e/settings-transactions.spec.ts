@@ -1,7 +1,7 @@
 import { test, expect, type ElectronApplication, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { launch, seedHome, tid } from "./support";
+import { answerConfirm, launch, seedHome, tid } from "./support";
 
 let app: ElectronApplication;
 let page: Page;
@@ -75,8 +75,8 @@ test("a failed learning reset stays in the dialog and explains how to check the 
 
   await tid(page, "open-settings").click();
   const dialog = tid(page, "settings");
-  page.once("dialog", async (confirmation) => { await confirmation.accept(); });
   await dialog.getByRole("button", { name: "Reset learning…" }).click();
+  await answerConfirm(page, "accept");
   await expect(tid(page, "routing-reset-error")).toContainText("fake reset persistence failure");
   await expect(tid(page, "routing-reset-error")).toContainText("Reopen Settings to check the current learning state");
   await expect(dialog).toBeVisible();
@@ -292,8 +292,8 @@ test("failed immediate key and reset actions show unavailable status and permit 
       await tid(dialog, "jev-key").locator('input[type="password"]').fill("fake-test-key");
       await dialog.getByRole("button", { name: "Save key now" }).click();
     } else {
-      page.once("dialog", async (confirmation) => confirmation.accept());
       await dialog.getByRole("button", { name: "Reset learning…" }).click();
+      await answerConfirm(page, "accept");
     }
     await expect(tid(dialog, "routing-status")).toContainText(`fake ${action} action failure`);
     await app.evaluate(() => (globalThis as any).__modexReleaseOpeningStatus());
