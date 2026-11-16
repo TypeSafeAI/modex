@@ -20,6 +20,7 @@ export function ReasoningItem({ item }: { item: Extract<ThreadItem, { kind: "thi
   return (
     <div className={`thinking ${item.status} ${isOpen ? "open" : ""}`} data-testid="item" data-item-kind="thinking" data-status={item.status} data-reasoning={item.reasoning} data-outcome={item.outcome}>
       <button className="thinking-head" data-testid="item-toggle" onClick={() => setOpen(!isOpen)} aria-expanded={isOpen}>
+        <span className="row-tile" aria-hidden="true"><Icon name="thought" size={13} /></span>
         <span className={`thinking-label ${running ? "shimmer" : ""}`} data-testid="thinking-label">{label}</span>
         {tag && <span className="thinking-tag" data-testid="reasoning-tag">{tag}</span>}
         {outcome && <span className="thinking-tag" data-testid="reasoning-outcome">{outcome}</span>}

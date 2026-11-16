@@ -36,7 +36,7 @@ test('every radius in the renderer is a token, a hairline value or a dot', () =>
 
 test('circles are limited to dots, spinners and markers', () => {
   // A new circle is a deliberate edit to this table.
-  const CIRCLES = { 'apps/desktop/src/renderer/styles.css': 6, 'apps/desktop/src/renderer/usage/usage.css': 3,
+  const CIRCLES = { 'apps/desktop/src/renderer/styles.css': 8, 'apps/desktop/src/renderer/usage/usage.css': 3,
     'apps/desktop/src/renderer/space/knowledge.css': 1, 'apps/desktop/src/renderer/workspace.css': 1, 'apps/store-desktop/src/renderer/store.css': 2 };
   const found = Object.fromEntries(files.map((f) => [f, radii(read(f)).filter((v) => v === '50%').length]).filter(([, n]) => n > 0));
   assert.deepEqual(found, CIRCLES);

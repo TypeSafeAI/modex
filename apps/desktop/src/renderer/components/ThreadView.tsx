@@ -1,8 +1,8 @@
-import { toolStatusLabel, toolSummary } from "../../shared/tool-summary";
+import { toolKind, toolStatusLabel, toolSummary, toolVerb, type ToolKind } from "../../shared/tool-summary";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AnswerResult, ApprovalPolicy, ApprovalReceipt, BackendId, FollowUp, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch, TurnFailure, TurnFix } from "../../shared/types";
 import { failureReport } from "../../shared/failures";
-import { askedBecause, jevNotConsulted, receiptVia } from "../../shared/approval-receipt";
+import { answeredApproval, askedBecause, jevNotConsulted, receiptVia } from "../../shared/approval-receipt";
 import { safeHref } from "../../shared/inline";
 import { answerNote } from "../../shared/human-requests";
 import { parseWebSearch, splitSources, type SourceLink, type WebSearch } from "../../shared/sources";
@@ -14,7 +14,7 @@ import { AttachmentChips } from "./Attachments";
 import { Composer } from "./Composer";
 import type { LocalMenu } from "./ModelMenu";
 import { DeferMarkdown, Markdown } from "./Markdown";
-import { Icon } from "./ui/Icon";
+import { Icon, type IconName } from "./ui/Icon";
 import { ErrorNotice } from "./ui/ErrorNotice";
 import { TurnContent, groupTurns } from "./transcript/TurnContent";
 import { readerStateFor, ReaderStateContext, useExpansionState } from "./transcript/reader-state";
@@ -244,7 +244,7 @@ export function ThreadView({ contextControls, contextBusy, thread, project, item
         const held = document.activeElement === e.currentTarget;
         jumpToLatest();
         if (held) inputRef.current?.focus({ preventScroll: true });
-      }}>Jump to latest<Icon name="chevron-down" size={12} /></button>}
+      }} title="Jump to latest"><Icon name="arrow-down" size={14} /><span className="sr-only">Jump to latest</span></button>}
       {!busy && !thread.retired && items.at(-1)?.kind === "user" && !attachmentActions.sending && <div className="notice" data-testid="saved-message-recovery">
         <p>This message is saved. Start its coding turn when you are ready.</p>
         <button type="button" className="btn small" data-testid="saved-message-retry" onClick={onRetry}>Retry saved message</button>
@@ -444,21 +444,16 @@ function FailureItem({ failure, onFix, onRetry }: { failure: TurnFailure; onFix:
 
 type ApprovalEntry = Extract<ThreadItem, { kind: "approval" }>;
 
-/** A card closed without anyone answering it says why, rather than "Denied". */
-const WITHDRAWN: Record<NonNullable<ApprovalEntry["withdrawn"]>, string> = {
-  native: "Withdrawn — the agent no longer needs an answer",
-  stopped: "Not answered — the turn was stopped",
-  ended: "Not answered — the turn ended first",
-};
-
 /**
- * An approval. A rule's allow or refusal is a compact receipt row (the turn never waited on it);
- * anything a human answers is today's card, plus one line saying why when a rule sent it here.
+ * An approval. While it waits it is a card with the answer buttons. Once a person has answered it, or it closed
+ * unanswered, it is one receipt row that expands to the request; a rule's allow or refusal is the same kind of
+ * row (the turn never waited on it).
  */
 function ApprovalItem({ item, onAnswer, onPolicy }: { item: ApprovalEntry; onAnswer: Props["onAnswer"]; onPolicy?: (p: ApprovalPolicy) => void }) {
   const card = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
   // The answer buttons go away once pressed. Someone answering from the keyboard or VoiceOver
-  // lands on the answer line ("Sending decision…", then "Approved") instead of the page body.
+  // lands on the answer ("Sending decision…", then "Approved") instead of the page body.
   const refocus = useRef(false);
   const answer = (value: "yes" | "no" | "always") => {
     refocus.current = !!card.current?.contains(document.activeElement);
@@ -471,28 +466,47 @@ function ApprovalItem({ item, onAnswer, onPolicy }: { item: ApprovalEntry; onAns
   }, [item.answer]);
   const r = item.decidedBy;
   if (r && item.answer && r.decision !== "ask") return <ApprovalReceiptRow item={item} receipt={r} />;
+  const done = answeredApproval(item);
+  const answered = item.answer && (!item.delivery || item.delivery === "sent") ? "true" : "false";
+  if (done) {
+    const note = item.withdrawn ? null : answerNote(item);
+    // The answer word takes focus after an answer, so it sits beside the toggle, not inside it.
+    return (
+      <div ref={card} className={`approval-receipt human ${done.tone}${open ? " open" : ""}`} data-testid="item" data-item-kind="approval" data-answered={answered} data-delivery={item.delivery} data-decided-by={r?.decision}>
+        <div className="receipt-head">
+          <span className="receipt-icon" aria-hidden="true"><Icon name={done.tone === "allowed" ? "check" : done.tone === "refused" ? "close" : done.tone === "warn" ? "alert" : "minus"} size={13} /></span>
+          <span className="receipt-label">
+            <span className="receipt-answer" data-testid="approval-answer" data-withdrawn={item.withdrawn} tabIndex={-1}>{done.text}</span> <code>{item.title ?? item.question}</code>
+          </span>
+          {done.by && <span className="receipt-meta" data-testid="receipt-meta">{done.by}</span>}
+          <button type="button" className="receipt-toggle" data-testid="item-toggle" aria-expanded={open} aria-label="Request details" onClick={() => setOpen((v) => !v)}><Icon name="chevron-right" size={12} className={`chev${open ? " open" : ""}`} /></button>
+        </div>
+        {note && <div className="answer-note" data-testid="answer-note" data-delivery={item.delivery}>{note}</div>}
+        {open && (
+          <div className="receipt-body" data-testid="item-body">
+            <div className="receipt-question">{item.question}</div>
+            {r?.decision === "ask" && <div className="approval-reason" data-testid="approval-reason">{askedBecause(r)}</div>}
+            {item.detail && <pre className="detail">{item.detail}</pre>}
+          </div>
+        )}
+      </div>
+    );
+  }
   return (
-    <div ref={card} className={`approval ${item.answer ? "answered" : ""}`} data-testid="item" data-item-kind="approval" data-answered={item.answer && (!item.delivery || item.delivery === "sent") ? "true" : "false"} data-delivery={item.delivery} data-decided-by={r?.decision}>
+    <div ref={card} className="approval" data-testid="item" data-item-kind="approval" data-answered={answered} data-delivery={item.delivery} data-decided-by={r?.decision}>
       <div className="approval-head" data-testid="approval-question">
         <span className="shield">⚠</span>
         <span>{item.question}</span>
       </div>
       {r?.decision === "ask" && <div className="approval-reason" data-testid="approval-reason">{askedBecause(r)}</div>}
       {item.detail && <pre className="detail">{item.detail}</pre>}
-      {item.answer ? (
-        <>
-          <div className="approval-answer" data-testid="approval-answer" data-withdrawn={item.withdrawn} tabIndex={-1}>{item.delivery === "uncertain" ? "Delivery uncertain — not resent" : item.delivery === "sending" ? "Sending decision…" : item.withdrawn ? WITHDRAWN[item.withdrawn] : item.answer === "yes" ? "Approved" : item.answer === "always" ? "Approved — always for this command" : "Denied"}</div>
-          {!item.withdrawn && answerNote(item) && <div className="answer-note" data-testid="answer-note" data-delivery={item.delivery}>{answerNote(item)}</div>}
-        </>
-      ) : (
-        <div className="row">
-          <button className="btn primary small" onClick={() => answer("yes")}>Approve</button>
-          {item.canAlways !== false && <button className="btn small" onClick={() => answer("always")}>Always</button>}
-          {onPolicy && <button className="btn small" data-testid="approval-always-thread" title="Approve this and everything else in this thread, except extra sandbox access" onClick={() => { onPolicy("always"); answer("yes"); }}>Always allow in thread</button>}
-          {onPolicy && <button className="btn small" data-testid="approval-yolo" title="Approve this and everything else in this thread, extra sandbox access included" onClick={() => void confirmDialog(YOLO_CONFIRM).then((ok) => { if (ok) onPolicy("yolo"); })}>YOLO</button>}
-          <button className="btn danger small" onClick={() => answer("no")}>Deny</button>
-        </div>
-      )}
+      <div className="row">
+        <button className="btn primary small" onClick={() => answer("yes")}>Approve</button>
+        {item.canAlways !== false && <button className="btn small" onClick={() => answer("always")}>Always</button>}
+        {onPolicy && <button className="btn small" data-testid="approval-always-thread" title="Approve this and everything else in this thread, except extra sandbox access" onClick={() => { onPolicy("always"); answer("yes"); }}>Always allow in thread</button>}
+        {onPolicy && <button className="btn small" data-testid="approval-yolo" title="Approve this and everything else in this thread, extra sandbox access included" onClick={() => void confirmDialog(YOLO_CONFIRM).then((ok) => { if (ok) onPolicy("yolo"); })}>YOLO</button>}
+        <button className="btn danger small" onClick={() => answer("no")}>Deny</button>
+      </div>
     </div>
   );
 }
@@ -506,7 +520,7 @@ function ApprovalReceiptRow({ item, receipt: r }: { item: ApprovalEntry; receipt
   return (
     <div className={`approval-receipt ${allowed ? "allowed" : "refused"} ${open ? "open" : ""}`} data-testid="item" data-item-kind="approval" data-answered={!item.delivery || item.delivery === "sent" ? "true" : "false"} data-delivery={item.delivery} data-decided-by={r.decision}>
       <button className="receipt-head" data-testid="item-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-        <span className="receipt-icon" aria-hidden="true">{allowed ? "✓" : "✕"}</span>
+        <span className="receipt-icon" aria-hidden="true"><Icon name={allowed ? "check" : "close"} size={13} /></span>
         <span className="receipt-label" data-testid="approval-receipt">
           {allowed ? <>Allowed: <code>{title}</code></> : r.source === "policy" ? <>Refused: <code>{title}</code></> : <>Refused by rule "{r.when}"</>}
         </span>
@@ -559,7 +573,8 @@ function RouteItem({ item }: { item: Extract<ThreadItem, { kind: "route" }> }) {
   );
 }
 
-/** Collapsible reasoning: open while the model is still thinking, folded to one line once done. */
+/** A tool row's icon, by what the tool is (shared/tool-summary.ts). */
+const TOOL_ICON: Record<ToolKind, IconName> = { command: "terminal", edit: "compose", search: "search", fetch: "globe", agent: "agents", file: "file", other: "shapes" };
 
 function ToolItem({ item }: { item: Extract<ThreadItem, { kind: "tool" }> }) {
   const [open, setOpen] = useExpansionState<boolean>(`tool:${item.id}`, false);
@@ -571,14 +586,15 @@ function ToolItem({ item }: { item: Extract<ThreadItem, { kind: "tool" }> }) {
   const output = web === "search" && item.output === '""' ? undefined : item.output;
   const count = native ? native.results.filter((r) => safeHref(r.url)).length : search?.links.length;
   const page = web === "fetch" && typeof item.args.url === "string" ? safeHref(item.args.url) : null;
-  const icon = web === "search" ? <Icon name="search" size={13} /> : web === "fetch" ? <Icon name="globe" size={13} /> : item.name === "shell" ? "›_" : item.name === "apply_patch" || item.name === "write_file" ? "✎" : "◫";
   const summary = toolSummary(item);
+  const verb = toolVerb(item);
   const status = toolStatusLabel(item);
   const outcome = count !== undefined ? `${count} ${count === 1 ? "result" : "results"}` : status.toLowerCase();
   return (
     <div className={`tool ${item.status} ${item.ok === false ? "failed" : ""}`} data-testid="item" data-item-kind="tool" data-item-id={item.id} tabIndex={-1} data-status={item.status} data-ok={item.ok === false ? "false" : "true"}>
       <button className="tool-head" data-testid="item-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={`${status}: ${summary}`} title={summary}>
-        <span className="tool-icon">{icon}</span>
+        <span className="tool-icon" aria-hidden="true"><Icon name={TOOL_ICON[toolKind(item)]} size={13} /></span>
+        {verb && <span className="tool-verb" data-testid="tool-verb">{verb}</span>}
         <code className="tool-title" data-testid="tool-title"><span data-testid="tool-summary">{summary}</span></code>
         {item.status === "running" ? <span className="spinner" aria-label="Working" /> : <span className="tool-meta" data-testid="tool-meta">{outcome}{item.durationMs != null ? ` · ${(item.durationMs / 1000).toFixed(1)}s` : ""}</span>}
         <Icon name="chevron-right" size={12} className={`chev${open ? " open" : ""}`} />

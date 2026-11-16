@@ -73,7 +73,8 @@ export function TurnContent({ turn, status, render, footer }: { turn: Turn; stat
     const active = document.activeElement;
     if (folded && active && content.current?.contains(active) && active.closest("[hidden]")) toggle.current?.focus({ preventScroll: true });
   }, [live, showWork]);
-  return <>
+  // One element per turn, so spacing, hover and focus can be scoped to it (reply actions show for the turn pointed at).
+  return <div className="turn" data-testid="turn" data-live={live ? "true" : "false"}>
     {turn.user && render(turn.user, false)}
     {turn.user && (live || turn.rest.length > 0) && <TurnHeader start={turn.user.at} end={live ? undefined : turnEnd(turn.rest)} status={status}
       asking={turn.rest.some((item) => item.kind === "question" && !item.answers && !item.withdrawn)}
@@ -86,7 +87,7 @@ export function TurnContent({ turn, status, render, footer }: { turn: Turn; stat
       ])}
     </div>
     {!live && turn.user && turn.rest.length > 0 && footer?.(turn, revealItem)}
-  </>;
+  </div>;
 }
 
 /** When a finished turn ended: its last item's time, plus that item's own duration when it has one. */
@@ -103,7 +104,10 @@ export function formatElapsed(ms: number): string {
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
-/** "Working for 7s" (live, ticking) or "Worked for 1m 36s" above a rule, between a message and the agent's work. */
+/**
+ * "Working for 7s" (live, ticking) or "Worked for 1m 36s", between a message and the agent's work. A live turn
+ * leads with a dot: pulsing while the agent works, steady while it waits on the person.
+ */
 function TurnHeader({ start, end, status, asking, expanded, controls, toggleRef, onToggle }: { start: string; end?: number; status?: Thread["status"]; asking?: boolean; expanded?: boolean; controls?: string; toggleRef?: RefObject<HTMLButtonElement | null>; onToggle?: () => void }) {
   const live = end === undefined;
   const [now, setNow] = useState(() => Date.now());
@@ -115,8 +119,10 @@ function TurnHeader({ start, end, status, asking, expanded, controls, toggleRef,
   const elapsed = formatElapsed((live ? now : end) - Date.parse(start));
   const label = !live ? `Worked for ${elapsed}` : status === "waiting" ? `${asking ? "Waiting for your answer" : "Waiting for approval"} · ${elapsed}` : `Working for ${elapsed}`;
   return (
-    <div className={`turn-header${live ? " live" : ""}`} data-testid="turn-header" data-live={live ? "true" : "false"}>
-      {expanded === undefined ? <span className="turn-label" data-testid="turn-label">{label}</span> : <button ref={toggleRef} className="turn-label" data-testid="turn-label" aria-expanded={expanded} aria-controls={controls} onClick={onToggle}><span>{label}</span><Icon name="chevron-right" size={12} className={expanded ? "chev open" : "chev"} /></button>}
+    <div className={`turn-header${live ? " live" : ""}${live && status === "waiting" ? " waiting" : ""}`} data-testid="turn-header" data-live={live ? "true" : "false"}>
+      {expanded === undefined
+        ? <span className="turn-label" data-testid="turn-label">{live && <span className="turn-dot" aria-hidden="true" />}<span className="turn-text">{label}</span></span>
+        : <button ref={toggleRef} className="turn-label" data-testid="turn-label" aria-expanded={expanded} aria-controls={controls} onClick={onToggle}><span className="turn-text">{label}</span><Icon name="chevron-right" size={12} className={expanded ? "chev open" : "chev"} /></button>}
     </div>
   );
 }
