@@ -558,6 +558,32 @@ a.thread-pr:hover { text-decoration: underline; }
 .menu-separator { height: 1px; margin: 4px 6px; background: var(--border-pane); }
 .menu-item:disabled { opacity: .5; cursor: default; background: transparent; }
 .menu-title .kbd { margin-left: auto; }
+/* Menus (components/ui/Menu.tsx). Every menu shares the shell. A menu with a `hint` keeps each row to
+   one line and describes the row under the pointer or focus once, at its foot. */
+.menu { border-color: var(--hairline); background: var(--bg-elevated); box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-1) 5%, transparent), 0 24px 60px -12px rgba(0, 0, 0, .6); animation: menu-in var(--duration-fast) var(--ease-out) both; }
+@keyframes menu-in { from { opacity: 0; } }
+/* On the elevated surface a hovered row takes the light tint and the selected row the stronger one. */
+.menu-item:hover:not(:disabled), .menu-item:focus-visible { background: var(--tint); }
+.menu-item.selected, .menu-item.selected:hover:not(:disabled) { background: var(--tint-strong); }
+.menu.has-hint { width: 264px; min-width: 0; max-width: calc(100vw - 24px); }
+.menu.has-hint .menu-label { padding: 8px 10px 5px; color: var(--text-3); font: var(--weight-medium) 11px/14px var(--font-sans); letter-spacing: .09em; text-transform: uppercase; }
+.menu.has-hint .menu-separator { margin: 6px 10px; background: var(--hairline); }
+.menu-item.compact { align-items: center; height: 32px; padding: 0 10px; color: var(--text-2); font-size: var(--text-sm); }
+.menu-item.compact.selected { background: transparent; color: var(--text-1); }
+.menu-item.compact:hover:not(:disabled), .menu-item.compact:focus-visible { background: var(--tint-strong); color: var(--text-1); }
+.menu-item.compact > .icon-svg { flex: none; color: var(--text-3); }
+.menu-item.compact .menu-title { flex: 1; min-width: 0; overflow: hidden; font-weight: var(--weight-regular); white-space: nowrap; }
+.menu-item.compact.selected .menu-title { font-weight: var(--weight-medium); }
+/* The check and the switch sit at the row's right edge, after its title. */
+.menu-item.compact .menu-check { order: 9; height: 14px; color: var(--text-1); }
+.menu-item.compact .kbd { margin: 0 0 0 auto; padding: 0; border: 0; background: none; color: var(--text-3); font: 11.5px/1 var(--font-sans); }
+.menu-switch { order: 9; position: relative; width: 26px; height: 16px; flex: none; border-radius: var(--radius-xs); background: var(--tint-strong); box-shadow: inset 0 0 0 1px var(--hairline); transition: background var(--duration-fast) var(--ease-out); }
+.menu-switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 10px; height: 10px; border-radius: 2px; background: var(--text-3); transition: transform var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out); }
+.menu-item[aria-checked="true"] .menu-switch { background: var(--text-1); box-shadow: none; }
+.menu-item[aria-checked="true"] .menu-switch::after { transform: translateX(10px); background: var(--bg-elevated); }
+.menu-hint { min-height: 58px; margin-top: 6px; padding: 10px 10px 4px; border-top: 1px solid var(--hairline); color: var(--text-info); font-size: var(--text-xs); line-height: 1.45; }
+@media (prefers-reduced-motion: reduce) { .menu { animation: none; } }
+@media (forced-colors: active) { .menu-switch { border: 1px solid ButtonText; } .menu-item[aria-checked="true"] .menu-switch { background: Highlight; } }
 .icon-btn.composer-plus-btn, .icon-btn.composer-attach-btn { color: var(--text-1); }
 .model-trigger:focus-visible, .access-pill:focus-visible, .composer-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 

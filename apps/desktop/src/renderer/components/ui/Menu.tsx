@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, type ButtonHTMLAttributes, type ReactNode, type RefObject } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode, type RefObject } from "react";
 import { Icon } from "./Icon";
 
 type MenuRole = "menu" | "listbox";
@@ -21,6 +21,11 @@ interface MenuProps {
   fitViewport?: boolean;
   className?: string;
   testId?: string;
+  /**
+   * Gives the menu a description area at its foot. It shows the `hint` of the row under the pointer
+   * or the keyboard focus, and this text until one is. Rows in such a menu stay on one line.
+   */
+  hint?: string;
   children: ReactNode;
 }
 
@@ -35,8 +40,15 @@ const MenuContext = createContext<MenuRole>("menu");
  * - a pointer press outside the menu and trigger closes it.
  * Position it by placing it inside a `position: relative` wrapper next to the trigger.
  */
-export function Menu({ open, onClose, anchorRef, label, role = "menu", focusSelected = role === "listbox", initialFocusRef, placement = "top-start", fitViewport = false, className, testId, children }: MenuProps) {
+export function Menu({ open, onClose, anchorRef, label, role = "menu", focusSelected = role === "listbox", initialFocusRef, placement = "top-start", fitViewport = false, className, testId, hint, children }: MenuProps) {
   const ref = useRef<HTMLDivElement>(null);
+  // The description at the foot follows the pointer and the focus; each opening starts from `hint`.
+  const [described, setDescribed] = useState(hint);
+  useEffect(() => { if (open) setDescribed(hint); }, [open, hint]);
+  const describe = (target: EventTarget) => {
+    const text = target instanceof Element ? target.closest<HTMLElement>("[data-hint]")?.dataset.hint : undefined;
+    if (text !== undefined) setDescribed(text);
+  };
   useLayoutEffect(() => {
     if (!open || !fitViewport) return;
     const fit = () => {
@@ -114,8 +126,11 @@ export function Menu({ open, onClose, anchorRef, label, role = "menu", focusSele
   if (!open) return null;
   return (
     <MenuContext.Provider value={role}>
-      <div ref={ref} role={role} aria-label={label} data-testid={testId} className={`menu ${placement}${className ? ` ${className}` : ""}`}>
+      <div ref={ref} role={role} aria-label={label} data-testid={testId} className={`menu ${placement}${hint !== undefined ? " has-hint" : ""}${className ? ` ${className}` : ""}`}
+        onMouseOver={hint !== undefined ? (e) => describe(e.target) : undefined} onFocus={hint !== undefined ? (e) => describe(e.target) : undefined}>
         {children}
+        {/* Each row carries its own description for assistive technology; this is the visible copy. */}
+        {hint !== undefined && <div className="menu-hint" data-testid="menu-hint" aria-hidden="true">{described}</div>}
       </div>
     </MenuContext.Provider>
   );
@@ -128,20 +143,28 @@ interface MenuItemProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "r
   checkable?: boolean;
   /** An on/off setting (menuitemcheckbox); `selected` is its state. */
   toggle?: boolean;
+  /**
+   * What choosing this row does, in a sentence. The row then stays on one line: the sentence is its
+   * accessible description and shows at the foot of a `Menu` that has a `hint`.
+   */
+  hint?: string;
   children: ReactNode;
 }
 
 /** One row of a Menu. Its ARIA role follows the parent (option in a listbox, menuitem/menuitemradio in a menu). */
-export function MenuItem({ selected, checkable, toggle, className, children, type = "button", ...rest }: MenuItemProps) {
+export function MenuItem({ selected, checkable, toggle, hint, className, children, type = "button", ...rest }: MenuItemProps) {
   const parent = useContext(MenuContext);
   const aria =
     parent === "listbox" ? { role: "option", "aria-selected": Boolean(selected) }
     : toggle ? { role: "menuitemcheckbox", "aria-checked": Boolean(selected) }
     : checkable ? { role: "menuitemradio", "aria-checked": Boolean(selected) }
     : { role: "menuitem" };
+  const compact = hint !== undefined;
+  const described = compact ? { "data-hint": hint, "aria-description": hint } : {};
   return (
-    <button type={type} tabIndex={-1} className={`menu-item${selected ? " selected" : ""}${className ? ` ${className}` : ""}`} {...aria} {...rest}>
-      {(checkable || toggle) && <span className="menu-check">{selected ? <Icon name="check" size={14} /> : null}</span>}
+    <button type={type} tabIndex={-1} className={`menu-item${compact ? " compact" : ""}${selected ? " selected" : ""}${className ? ` ${className}` : ""}`} {...aria} {...described} {...rest}>
+      {/* A one-line row shows an on/off setting as a switch; its state is the row's aria-checked. */}
+      {toggle && compact ? <span className="menu-switch" aria-hidden="true" /> : (checkable || toggle) && <span className="menu-check">{selected ? <Icon name="check" size={14} /> : null}</span>}
       {children}
     </button>
   );
