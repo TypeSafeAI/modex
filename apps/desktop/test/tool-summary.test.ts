@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { toolFoldsAsWork, toolStatusLabel, toolSummary } from "../src/shared/tool-summary.js";
+import { toolFoldsAsWork, toolKind, toolStatusLabel, toolSummary, toolVerb } from "../src/shared/tool-summary.js";
 import type { ThreadItem } from "../src/shared/types.js";
 const tool = (patch: Partial<Extract<ThreadItem, { kind: "tool" }>>) => ({ id: "1", kind: "tool" as const, name: "tool", title: "", args: {}, status: "running" as const, at: "", ...patch });
 
@@ -34,4 +34,19 @@ test("only finished work that succeeded folds under the turn header; failed, den
   assert.equal(toolFoldsAsWork(tool({})), false, "running work stays in view");
   assert.deepEqual([toolFoldsAsWork(done({ ok: true })), toolFoldsAsWork(done({})), toolFoldsAsWork(done({ ok: false }))], [true, true, false]);
   assert.equal(toolFoldsAsWork(done({ outcome: "succeeded", agent: { id: "a", label: "x", state: "running" } })), false);
+});
+
+test("a row's kind follows the tool, and only a command line gets a verb", () => {
+  assert.deepEqual([
+    toolKind(tool({ name: "shell", args: { command: "git status" } })), toolKind(tool({ name: "Bash", title: "Bash", args: { command: "npm test" } })),
+    toolKind(tool({ name: "apply_patch" })), toolKind(tool({ name: "Write", args: { file_path: "a.ts" } })), toolKind(tool({ name: "write_file", args: { path: "a.ts" } })),
+    toolKind(tool({ name: "WebSearch" })), toolKind(tool({ name: "webSearch" })), toolKind(tool({ name: "WebFetch" })),
+    toolKind(tool({ name: "Agent", args: { description: "x" } })), toolKind(tool({ name: "read_file", args: { file_path: "a.ts" } })), toolKind(tool({ name: "mystery" })),
+  ], ["command", "command", "edit", "edit", "edit", "search", "search", "fetch", "agent", "file", "other"]);
+  assert.equal(toolKind(tool({ name: "mystery", args: { command: "  " } })), "other", "a blank command is not a command");
+  assert.equal(toolVerb(tool({ name: "shell", args: { command: "git status" } })), "Running");
+  assert.equal(toolVerb(tool({ name: "shell", status: "done", args: { command: "git status" } })), "Ran");
+  assert.equal(toolVerb(tool({ title: "$ git status", status: "done" })), "Ran");
+  assert.equal(toolVerb(tool({ name: "Bash", title: "Run the tests", status: "done", args: { command: "npm test" } })), null, "a CLI title is already a phrase");
+  assert.equal(toolVerb(tool({ name: "read_file", status: "done", args: { file_path: "a.ts" } })), null);
 });

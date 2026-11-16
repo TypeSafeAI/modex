@@ -32,3 +32,25 @@ export function toolFoldsAsWork(item: Extract<ThreadItem, { kind: "tool" }>): bo
   if (item.status !== "done" || item.agent?.state === "running" || item.agent?.state === "waiting") return false;
   return item.outcome ? item.outcome === "succeeded" : item.ok !== false;
 }
+
+/** What a tool row is, for its icon. `other` is any tool Modex has no picture for. */
+export type ToolKind = "command" | "edit" | "search" | "fetch" | "agent" | "file" | "other";
+
+/** Tools that change a file (the patch tools of shared/evidence.ts, plus the scripted engine's `write_file`). */
+const EDIT_TOOLS: ReadonlySet<string> = new Set(["apply_patch", "Edit", "MultiEdit", "Write", "NotebookEdit", "write_file"]);
+
+export function toolKind(item: Extract<ThreadItem, { kind: "tool" }>): ToolKind {
+  if (item.name === "WebSearch" || item.name === "webSearch") return "search";
+  if (item.name === "WebFetch") return "fetch";
+  if (item.name === "Agent" || item.name === "Task") return "agent";
+  if (EDIT_TOOLS.has(item.name)) return "edit";
+  const text = (key: string) => typeof item.args[key] === "string" && !!(item.args[key] as string).trim();
+  if (text("command") || item.name === "shell" || item.name === "Bash") return "command";
+  return text("file_path") || text("path") || text("notebook_path") ? "file" : "other";
+}
+
+/** "Ran" or "Running" for a row whose summary is a command line ("$ …"). Any other summary is already a phrase and gets no verb. */
+export function toolVerb(item: Extract<ThreadItem, { kind: "tool" }>): "Ran" | "Running" | null {
+  if (!toolSummary(item).startsWith("$ ")) return null;
+  return item.status === "running" ? "Running" : "Ran";
+}
