@@ -29,6 +29,16 @@ export interface ConfirmOptions {
 
 export interface ConfirmRequest extends ConfirmOptions { id: number }
 
+/** Turning on YOLO for a thread is asked from the composer and from an approval card; both use these words. */
+export const YOLO_CONFIRM: ConfirmOptions = {
+  title: "Turn on YOLO for this thread?",
+  body: "Every action in this thread is approved without asking, including access outside the sandbox.",
+  facts: [{ kind: "kept", text: "Your Never rules still refuse." }],
+  confirmLabel: "Turn on YOLO",
+  tone: "warn",
+  icon: "alert",
+};
+
 interface Pending { request: ConfirmRequest; resolve: (accepted: boolean) => void }
 
 const queue: Pending[] = [];

@@ -161,6 +161,7 @@ export function currentConfirm(): ConfirmRequest | null;       // the oldest una
 export function settleConfirm(id: number, accepted: boolean): void; // ignores an id that is not current
 export function subscribeConfirm(listener: () => void): () => void;
 export function resetConfirms(): void;                          // settles every pending request as false
+export const YOLO_CONFIRM: ConfirmOptions;                      // the YOLO question, shared by the composer and the approval card
 ```
 
 - [ ] **Step 1: Write the failing test** in `apps/desktop/test/confirm.test.ts`

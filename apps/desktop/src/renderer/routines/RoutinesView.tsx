@@ -4,6 +4,7 @@ import type { Routine, RoutineDraft, RoutineRun, RoutinesState, RoutineUnit } fr
 import type { BackendId, Project } from "../../shared/types";
 import { taskFromText } from "../../shared/routine-text";
 import { bridge } from "../bridge";
+import { confirmDialog, type ConfirmOptions } from "../confirm";
 import { useRedact } from "../streamer";
 import { ErrorNotice } from "../components/ui/ErrorNotice";
 import { Icon } from "../components/ui/Icon";
@@ -20,6 +21,12 @@ function toLocalInput(iso: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 const fromLocalInput = (value: string) => new Date(value).toISOString();
+/** Deleting a task is offered from its row menu and from its page; both ask with these words. */
+const deleteTaskConfirm = (name: string): ConfirmOptions => ({
+  title: `Delete the task “${name}”?`,
+  facts: [{ kind: "kept", text: "Its runs stay in All activity." }, { kind: "kept", text: "Its page stays in Space." }],
+  confirmLabel: "Delete task", tone: "danger", icon: "trash",
+});
 const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—";
 
 function schedule(routine: Pick<Routine, "trigger">): string {
@@ -173,7 +180,7 @@ export function RoutinesView({ active, projects, onOpenThread, onOpenPage, onSho
           <MenuItem disabled={busy || runningIds.has(routine.id)} onClick={() => { setRowMenu(null); setComposing(null); setEditing(null); setDetails(false); setSelected(routine.id); void act(() => bridge.invoke("routines:run", { id: routine.id })); }}><Icon name="restart" />Run now</MenuItem>
           <MenuItem onClick={() => { setRowMenu(null); setComposing(null); setView("tasks"); setSelected(routine.id); setEditing(draftOf(routine)); }}><Icon name="compose" />Edit</MenuItem>
           <MenuSeparator />
-          <MenuItem className="danger" disabled={busy} onClick={() => { setRowMenu(null); if (window.confirm(`Delete the task “${routine.name}”? Its runs stay in All activity, and its page stays in Space.`)) void act(async () => { await bridge.invoke("routines:delete", { id: routine.id }); if (selected === routine.id) setSelected(null); }); }}><Icon name="trash" />Delete</MenuItem>
+          <MenuItem className="danger" disabled={busy} onClick={() => { setRowMenu(null); void confirmDialog(deleteTaskConfirm(routine.name)).then((ok) => { if (ok) void act(async () => { await bridge.invoke("routines:delete", { id: routine.id }); if (selected === routine.id) setSelected(null); }); }); }}><Icon name="trash" />Delete</MenuItem>
         </Menu>}
       </span>
     </li>
@@ -318,7 +325,7 @@ export function RoutinesView({ active, projects, onOpenThread, onOpenPage, onSho
               <button type="button" data-testid="routine-run-now" disabled={busy || runningIds.has(current.id)} onClick={() => { setDetails(true); void act(() => bridge.invoke("routines:run", { id: current.id })); }}>Run now</button>
               <button type="button" disabled={busy} onClick={() => setEditing(draftOf(current))}>Edit</button>
               <button type="button" disabled={busy} onClick={() => act(() => bridge.invoke("routines:save", { ...draftOf(current), enabled: !current.enabled }))}>{current.enabled ? "Pause" : "Resume"}</button>
-              <button type="button" disabled={busy} onClick={() => { if (window.confirm(`Delete the task “${current.name}”? Its runs stay in All activity, and its page stays in Space.`)) void act(async () => { await bridge.invoke("routines:delete", { id: current.id }); setSelected(null); }); }}>Delete</button>
+              <button type="button" disabled={busy} onClick={() => void confirmDialog(deleteTaskConfirm(current.name)).then((ok) => { if (ok) void act(async () => { await bridge.invoke("routines:delete", { id: current.id }); setSelected(null); }); })}>Delete</button>
             </div>
             <p className="sched-instructions">{redact(current.instructions)}</p>
             <h3 className="routines-section">Runs</h3>

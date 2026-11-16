@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import { appDir, seedHome, tid } from "./support.js";
+import { answerConfirm, appDir, seedHome, tid } from "./support.js";
 import { holdLocalDraftCreation, tryInputWhileLocalSelectionWaits, releaseLocalDraftCreation, restoreLocalDraftCreation } from "./fixtures/local-draft-selection.js";
 
 // Full app composition with a scripted native transport injected by a temporary-home-only
@@ -129,14 +129,12 @@ test("editing a connection invalidates its selected revision and cloud return co
     await expect(run.page.getByText(/changed or was deleted|destination changed/).first()).toBeVisible();
     await choose(run.page);
     await tid(run.page, "model-picker").click();
-    const dismissed = run.page.waitForEvent("dialog").then(async dialog => {
-      expect(dialog.message()).toContain("fixture-cloud"); await dialog.dismiss();
-    });
-    await tid(run.page, "model-local-clear").click(); await dismissed;
+    await tid(run.page, "model-local-clear").click();
+    await answerConfirm(run.page, "cancel", "fixture-cloud");
     expect((await run.page.evaluate(() => window.modex!.invoke("state:get", undefined))).threads.some(t => t.localTarget)).toBe(true);
     await tid(run.page, "model-picker").click();
-    run.page.once("dialog", dialog => void dialog.accept());
     await tid(run.page, "model-local-clear").click();
+    await answerConfirm(run.page, "accept");
     await expect.poll(async () => (await run.page.evaluate(() => window.modex!.invoke("state:get", undefined))).threads.some(t => t.localTarget)).toBe(false);
     expect((await run.page.evaluate(() => window.modex!.invoke("state:get", undefined))).threads[0]?.model).toBe("fixture-cloud");
   } finally { await run.app.close(); }

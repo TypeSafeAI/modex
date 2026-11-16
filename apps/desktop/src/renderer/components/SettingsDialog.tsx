@@ -7,6 +7,7 @@ import type { BackendHealth, BackendId, ChatGPTStatus, EffortLevel, Mode, ModelI
 import { BACKENDS, EFFORT_LEVELS, MODES } from "../../shared/types";
 import { sameJudgeSettings, testMatchesJudge } from "../../shared/judge-settings";
 import { bridge } from "../bridge";
+import { confirmDialog } from "../confirm";
 import { ApprovalRules } from "./ApprovalRules";
 import { ConnectionStatus, TerminalLogin } from "./CliConnection";
 import { Icon } from "./ui/Icon";
@@ -214,7 +215,10 @@ export function SettingsDialog({ settings, projects, currentProjectId, onSave, o
     }
   };
   const resetLearning = async () => {
-    if (operationRef.current || !window.confirm("Reset Auto routing's learned preferences? This applies immediately and cannot be undone.")) return;
+    if (operationRef.current) return;
+    if (!(await confirmDialog({ title: "Reset Auto routing's learned preferences?", body: "This applies immediately and cannot be undone.", confirmLabel: "Reset learning", tone: "danger", icon: "restart" }))) return;
+    // Another Settings operation may have started while the question was open.
+    if (operationRef.current) return;
     operationRef.current = true;
     ++routingStatusRequestRef.current;
     setRoutingError(null);

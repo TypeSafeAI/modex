@@ -5,6 +5,7 @@ import { APPROVAL_POLICIES, BACKENDS, MODES } from "../../shared/types";
 import type { AttachmentActions } from "../composer-attachments";
 import type { Attachment } from "../../shared/attachments";
 import { hasFiles } from "../attachments";
+import { confirmDialog, YOLO_CONFIRM } from "../confirm";
 import { AttachmentChips } from "./Attachments";
 import { ModelMenu, type LocalMenu } from "./ModelMenu";
 import { Icon } from "./ui/Icon";
@@ -327,7 +328,11 @@ function AccessMenu({ busy, mode, onMode, approvals, onApprovals }: { busy: bool
         {onApprovals && <MenuSeparator />}
         {onApprovals && <MenuLabel>Approvals</MenuLabel>}
         {onApprovals && APPROVAL_POLICIES.map((p) => (
-          <MenuItem key={p} checkable selected={p === approvals} data-testid="approvals-option" data-policy={p} onClick={() => { if (p !== "yolo" || window.confirm("YOLO approves every action in this thread without asking, including access outside the sandbox. Your Never rules still refuse.\n\nTurn on YOLO for this thread?")) onApprovals(p); setOpen(false); }}>
+          <MenuItem key={p} checkable selected={p === approvals} data-testid="approvals-option" data-policy={p} onClick={() => {
+            setOpen(false);
+            if (p !== "yolo") onApprovals(p);
+            else void confirmDialog(YOLO_CONFIRM).then((ok) => { if (ok) onApprovals(p); });
+          }}>
             <span className="menu-body">
               <span className="menu-title">{APPROVAL_LABEL[p]}</span>
               <span className="menu-desc">{APPROVAL_HINT[p]}</span>

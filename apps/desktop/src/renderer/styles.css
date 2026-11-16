@@ -129,6 +129,38 @@ a { color: var(--accent); }
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: grid; place-items: center; z-index: 10; }
 .modal { background: var(--bg-1); border: 1px solid var(--line-2); border-radius: var(--radius-md); padding: 20px 22px; width: 520px; max-width: calc(100vw - 40px); box-shadow: 0 30px 80px rgba(0,0,0,.5); }
 .modal h2 { margin: 0 0 14px; font-size: 16px; }
+/* Confirm dialog (components/ConfirmDialog.tsx): every confirmation in the app. It sits above menus,
+   tooltips and other modals, including Settings, which can open one. */
+.modal-backdrop.confirm-backdrop { z-index: 80; background: color-mix(in srgb, var(--bg-sunken) 62%, transparent); backdrop-filter: blur(6px); animation: confirm-fade var(--duration-fast) var(--ease-out) both; }
+@keyframes confirm-fade { from { opacity: 0; } }
+.modal.confirm { width: 440px; padding: 22px 22px 18px; border-color: var(--border-strong); border-radius: var(--radius-md); background: var(--bg-elevated); box-shadow: 0 30px 90px rgba(0, 0, 0, .55); animation: confirm-in var(--duration-base) var(--ease-out) both; }
+@keyframes confirm-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+.confirm-top { display: flex; align-items: flex-start; gap: 14px; }
+.confirm-text { min-width: 0; }
+.confirm-icon { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: var(--radius-sm); background: var(--tint-strong); color: var(--text-1); }
+.confirm.tone-warn .confirm-icon { background: color-mix(in srgb, var(--accent-warn) 18%, transparent); color: var(--accent-warn); }
+.confirm.tone-danger .confirm-icon { background: var(--danger-bg); color: var(--danger-text); }
+.modal.confirm h2 { margin: 1px 0 6px; color: var(--text-1); font: var(--weight-semibold) 16px/22px var(--font-sans); overflow-wrap: anywhere; }
+.confirm-body { margin: 0; color: var(--text-2); font-size: var(--text-sm); line-height: 1.55; }
+/* A path or identifier is shown whole: it wraps and is never cut short. */
+.confirm .confirm-path { display: block; margin: 12px 0 0; padding: 8px 10px; overflow-wrap: anywhere; border: 1px solid var(--hairline); border-radius: var(--radius-sm); background: var(--bg-sunken); color: var(--text-1); font: 12px/1.5 var(--font-mono); user-select: text; }
+.confirm-facts { display: grid; gap: 6px; margin: 14px 0 0; padding: 0; list-style: none; color: var(--text-2); font-size: var(--text-sm); }
+.confirm-facts li { display: flex; align-items: flex-start; gap: 8px; }
+.confirm-facts .icon-svg { flex: none; margin-top: 2px; }
+.confirm-facts .lost .icon-svg { color: var(--danger-text); }
+.confirm-facts .kept .icon-svg { color: var(--ok); }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+/* One height and the control radius; one button is filled, in the tone of the action. */
+.confirm .btn { display: inline-flex; align-items: center; justify-content: center; height: 32px; padding: 0 16px; border: 0; border-radius: var(--radius-sm); background: transparent; box-shadow: inset 0 0 0 1px var(--hairline); color: var(--text-2); font-size: var(--text-sm); font-weight: var(--weight-medium); transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out); }
+.confirm .btn:hover { background: var(--tint-strong); color: var(--text-1); }
+.confirm .btn.primary { background: var(--accent-strong); box-shadow: none; color: var(--accent-ink); }
+.confirm .btn.primary:hover { background: var(--accent-strong-hover); color: var(--accent-ink); }
+.confirm .btn.solid-warn { background: var(--accent-warn); box-shadow: none; color: #1d1206; }
+.confirm .btn.solid-danger { background: var(--danger); box-shadow: none; color: #260808; }
+.confirm .btn.solid-warn:hover, .confirm .btn.solid-danger:hover { filter: brightness(1.08); }
+.confirm .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .modal-backdrop.confirm-backdrop, .modal.confirm { animation: none; } }
+@media (forced-colors: active) { .modal.confirm { border-color: CanvasText; } .confirm .btn { box-shadow: none; border: 1px solid ButtonText; } }
 .field { display: grid; gap: 4px; margin-bottom: 12px; }
 .field > span { color: var(--fg-1); font-size: 12.5px; }
 .field input, .field select { background: var(--bg-2); border: 1px solid var(--line-2); border-radius: var(--radius-sm); padding: 7px 10px; }

@@ -9,6 +9,7 @@ import { parseWebSearch, splitSources, type SourceLink, type WebSearch } from ".
 import type { AttachmentActions } from "../composer-attachments";
 import type { Attachment } from "../../shared/attachments";
 import { bridge } from "../bridge";
+import { confirmDialog, YOLO_CONFIRM } from "../confirm";
 import { AttachmentChips } from "./Attachments";
 import { Composer } from "./Composer";
 import type { LocalMenu } from "./ModelMenu";
@@ -488,7 +489,7 @@ function ApprovalItem({ item, onAnswer, onPolicy }: { item: ApprovalEntry; onAns
           <button className="btn primary small" onClick={() => answer("yes")}>Approve</button>
           {item.canAlways !== false && <button className="btn small" onClick={() => answer("always")}>Always</button>}
           {onPolicy && <button className="btn small" data-testid="approval-always-thread" title="Approve this and everything else in this thread, except extra sandbox access" onClick={() => { onPolicy("always"); answer("yes"); }}>Always allow in thread</button>}
-          {onPolicy && <button className="btn small" data-testid="approval-yolo" title="Approve this and everything else in this thread, extra sandbox access included" onClick={() => { if (window.confirm("YOLO approves every action in this thread without asking, including access outside the sandbox. Your Never rules still refuse.\n\nTurn on YOLO for this thread?")) onPolicy("yolo"); }}>YOLO</button>}
+          {onPolicy && <button className="btn small" data-testid="approval-yolo" title="Approve this and everything else in this thread, extra sandbox access included" onClick={() => void confirmDialog(YOLO_CONFIRM).then((ok) => { if (ok) onPolicy("yolo"); })}>YOLO</button>}
           <button className="btn danger small" onClick={() => answer("no")}>Deny</button>
         </div>
       )}

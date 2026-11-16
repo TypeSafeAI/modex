@@ -2,7 +2,7 @@ import { test, expect, type ElectronApplication, type Page } from "@playwright/t
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { resizeWindow, createThread, launch, seedHome, tid } from "./support";
+import { answerConfirm, resizeWindow, createThread, launch, seedHome, tid } from "./support";
 
 /**
  * The embedded terminal: a real PTY per thread (main process, engine/terminal.ts) shown in the right
@@ -166,9 +166,9 @@ test("deleting a worktree thread with its terminal open ends the shell and remov
   await expect(tid(page, "terminal-screen")).toContainText(`WT=${fs.realpathSync(worktree)}`);
   const pid = await shellPid("worktree");
 
-  page.once("dialog", (d) => void d.accept());
   await tid(page, "thread-menu-toggle").click();
   await tid(page, "action-delete").click();
+  await answerConfirm(page, "accept", "Delete this thread and remove its worktree?");
   // (Selection moves back to an earlier thread, whose own terminal may still be showing.)
   await expect(page.locator(`[data-testid="thread-row"][data-thread-id="${id}"]`)).toHaveCount(0);
   await expect.poll(() => alive(pid)).toBe(false);

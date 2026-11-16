@@ -1,7 +1,7 @@
 import { test, expect, type ElectronApplication, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { launch, seedHome, tid, items } from "./support";
+import { answerConfirm, launch, seedHome, tid, items } from "./support";
 
 let app: ElectronApplication;
 let page: Page;
@@ -212,13 +212,11 @@ test("Jev test health identifies the tested setup, stays explicit, and HTTP-only
   await tid(page, "open-settings").click();
   const dialog = tid(page, "settings");
   await expect(dialog.locator(".field").filter({ hasText: "jev executable" }).locator("small")).toContainText("not used or checked in HTTP-only mode");
-  let resetMessage = "";
-  page.once("dialog", async (dialog) => { resetMessage = dialog.message(); await dialog.dismiss(); });
   await dialog.getByRole("button", { name: "Reset learning…" }).click();
-  expect(resetMessage).toMatch(/Reset Auto routing's learned preferences/);
+  await answerConfirm(page, "cancel", /Reset Auto routing's learned preferences/);
   await expect(dialog.getByRole("button", { name: "Reset learning…" })).toBeVisible();
-  page.once("dialog", async (confirmation) => { await confirmation.accept(); });
   await dialog.getByRole("button", { name: "Reset learning…" }).click();
+  await answerConfirm(page, "accept");
   await expect(dialog.getByRole("button", { name: "Reset learning…" })).toHaveCount(0);
   await dialog.getByRole("button", { name: "Test judge" }).click();
   await expect(tid(page, "routing-test")).toContainText("tested HTTPS");
@@ -373,10 +371,10 @@ test("local Discard still confirms and targets only the selected working-tree fi
     ipcMain.removeHandler("changes:revert");
     ipcMain.handle("changes:revert", (_event, payload) => { g.__localDiscards.push(payload); });
   });
-  page.once("dialog", dialog => { expect(dialog.message()).toContain("Discard changes to b.txt?"); void dialog.accept(); });
   await page.getByRole("button", { name: "Discard changes to b.txt", exact: true }).click();
+  await answerConfirm(page, "accept", "Discard changes to b.txt?");
   await expect.poll(() => app.evaluate(() => (globalThis as unknown as { __localDiscards: unknown[] }).__localDiscards)).toEqual([{ threadId: "one", path: "b.txt" }]);
-  page.once("dialog", dialog => { void dialog.dismiss(); });
   await page.getByRole("button", { name: "Discard changes to a.txt", exact: true }).click();
+  await answerConfirm(page, "cancel", "Discard changes to a.txt?");
   expect(await app.evaluate(() => (globalThis as unknown as { __localDiscards: unknown[] }).__localDiscards)).toHaveLength(1);
 });

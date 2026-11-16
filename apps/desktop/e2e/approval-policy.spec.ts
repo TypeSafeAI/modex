@@ -2,7 +2,7 @@ import { test, expect, type ElectronApplication, type Page } from "@playwright/t
 import fs from "node:fs";
 import path from "node:path";
 import { UpdateRecovery } from "../dist/src/main/engine/update-recovery.js";
-import { currentRow, items, launch, seedHome, tid } from "./support";
+import { answerConfirm, currentRow, items, launch, seedHome, tid } from "./support";
 
 let app: ElectronApplication;
 let page: Page;
@@ -38,12 +38,12 @@ test("Always allow in thread answers the waiting card, shows a chip that turns i
   await tid(page, "access-picker").click();
   await expect(tid(page, "approvals-option").first()).toHaveAttribute("data-policy", "ask");
   await expect(tid(page, "approvals-option").first()).toHaveAttribute("aria-checked", "true");
-  await page.evaluate(() => { window.confirm = () => false; });
   await page.locator('[data-testid="approvals-option"][data-policy="yolo"]').click();
+  await answerConfirm(page, "cancel", "Turn on YOLO for this thread?");
   await expect(chip).toHaveCount(0);
   await tid(page, "access-picker").click();
-  await page.evaluate(() => { window.confirm = () => true; });
   await page.locator('[data-testid="approvals-option"][data-policy="yolo"]').click();
+  await answerConfirm(page, "accept", "Your Never rules still refuse.");
   await expect(chip).toHaveAttribute("data-policy", "yolo");
   const stored = await page.evaluate(() => window.modex!.invoke("state:get", undefined));
   expect(stored.threads[0]!.approvals).toBe("yolo");

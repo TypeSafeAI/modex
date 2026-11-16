@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { launch, seedHome, tid } from "./support";
+import { answerConfirm, launch, seedHome, tid } from "./support";
 
 let app: ElectronApplication;
 let page: Page;
@@ -55,10 +55,10 @@ test("removing a project protects its unsent draft, then replaces a cleared draf
   await tid(page, "composer-input").fill("Unsent draft message in p2");
 
   // Remove project 2
-  page.once("dialog", (d) => void d.accept());
   await p2.hover();
   await tid(p2, "project-menu").click();
   await tid(p2, "project-remove").click();
+  await answerConfirm(page, "accept");
 
   if (await page.evaluate(() => Boolean(window.modex!.nativeDrafts))) {
     await expect(tid(page, "toast")).toContainText(/unsent draft/i);
@@ -67,8 +67,8 @@ test("removing a project protects its unsent draft, then replaces a cleared draf
     expect(JSON.parse(fs.readFileSync(path.join(home, "app/update-recovery.json"), "utf8")).drafts.projects.find((row: any) => row.projectId === "p2").text).toBe("Unsent draft message in p2");
     await tid(page, "toast").getByRole("button", { name: "Dismiss", exact: true }).click();
     await tid(page, "composer-input").fill("");
-    page.once("dialog", d => void d.accept());
     await p2.hover(); await tid(p2, "project-menu").click(); await tid(p2, "project-remove").click();
+    await answerConfirm(page, "accept");
   }
 
   // Project 2 is removed from sidebar
@@ -84,10 +84,10 @@ test("removing a project protects its unsent draft, then replaces a cleared draf
 
   // Remove the last project (project 1)
   const p1 = projects.filter({ hasText: path.basename(repo1) });
-  page.once("dialog", (d) => void d.accept());
   await p1.hover();
   await tid(p1, "project-menu").click();
   await tid(p1, "project-remove").click();
+  await answerConfirm(page, "accept");
 
   // All projects removed -> EmptyState is rendered immediately
   await expect(tid(page, "project")).toHaveCount(0);
