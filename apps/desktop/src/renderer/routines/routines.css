@@ -8,13 +8,13 @@
 .sched-list-head h1 { flex: 1; min-width: 0; margin: 0; font-size: 15px; font-weight: 600; letter-spacing: 0; }
 .routines-view .sched-list-head .icon-btn, .routines-view .sched-reopen { border: 0; background: transparent; padding: 0; color: var(--text-2); }
 .routines-view .sched-search { margin: 0 12px 6px; }
-.routines-view .sched-new { flex: none; display: flex; align-items: center; gap: 8px; height: 36px; margin: 1px 8px 0; padding: 0 10px; border: 0; border-radius: 9px; background: transparent; color: var(--text-1); font-size: 14px; text-align: left; }
+.routines-view .sched-new { flex: none; display: flex; align-items: center; gap: 8px; height: 36px; margin: 1px 8px 0; padding: 0 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-1); font-size: 14px; text-align: left; }
 .sched-scroll { flex: 1; min-height: 0; overflow: auto; padding-bottom: 16px; }
 .sched-scroll ul { list-style: none; margin: 0; padding: 0; }
 .routines-view .sched-section { display: flex; align-items: center; gap: 6px; margin: 24px 16px 12px; padding: 0; border: 0; background: transparent; color: var(--text-2); font-size: 13px; font-weight: 400; line-height: 20px; }
 .routines-view .sched-fold:hover:not(:disabled) { background: transparent; color: var(--text-1); }
 .sched-none { margin: 0 16px; color: var(--text-3); font-size: 12px; }
-.routines-view .sched-row { display: block; width: calc(100% - 16px); margin: 0 8px; padding: 7px 8px 6px; border: 0; border-radius: 9px; background: transparent; text-align: left; white-space: normal; }
+.routines-view .sched-row { display: block; width: calc(100% - 16px); margin: 0 8px; padding: 7px 8px 6px; border: 0; border-radius: var(--radius-sm); background: transparent; text-align: left; white-space: normal; }
 .routines-view .sched-row.selected { background: var(--bg-row-selected); }
 .sched-row-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-1); font-size: 14px; line-height: 20px; }
 .sched-row-sub { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-size: 12px; line-height: 18px; }
@@ -31,7 +31,7 @@
 .sched-hero h2 { margin: 12px 0 0; font-size: 17px; font-weight: 500; line-height: 24px; }
 .sched-hero > p { margin: 4px 0 0; color: var(--text-2); font-size: 13.5px; line-height: 20px; }
 .sched-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 357px)); gap: 22px 21px; width: 100%; max-width: 735px; margin-top: 44px; }
-.routines-view .sched-card { display: flex; align-items: center; gap: 18px; height: 108px; padding: 0 22px; border: 1px dashed var(--border-pane); border-radius: 22px; background: transparent; text-align: left; white-space: normal; }
+.routines-view .sched-card { display: flex; align-items: center; gap: 18px; height: 108px; padding: 0 22px; border: 1px dashed var(--border-pane); border-radius: var(--radius-md); background: transparent; text-align: left; white-space: normal; }
 .routines-view .sched-card:hover:not(:disabled) { border-style: solid; background: var(--bg-row-hover); }
 .sched-card-icon { flex: none; width: 20px; font-size: 18px; line-height: 20px; text-align: center; }
 .sched-card-text { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
@@ -42,23 +42,23 @@
 .routines-header h1 { margin: 3px 0 8px; font-size: 30px; font-weight: 600; }
 .routines-header p { margin: 0; color: var(--text-3); max-width: 640px; line-height: 1.6; }
 .routines-eyebrow { font-size: 10px; letter-spacing: .16em; font-weight: 600; }
-.routines-view button, .routines-view select, .routines-view input:not([type=radio]):not([type=checkbox]), .routines-view textarea { color: var(--text-1); background: var(--bg-elevated); border: 1px solid var(--border-pane); border-radius: 7px; padding: 8px 11px; font: inherit; }
+.routines-view button, .routines-view select, .routines-view input:not([type=radio]):not([type=checkbox]), .routines-view textarea { color: var(--text-1); background: var(--bg-elevated); border: 1px solid var(--border-pane); border-radius: var(--radius-sm); padding: 8px 11px; font: inherit; }
 .routines-view button { cursor: pointer; white-space: nowrap; }
 .routines-view button:hover:not(:disabled) { background: var(--bg-row-hover); border-color: var(--border-strong); }
 .routines-view button:disabled { opacity: .45; cursor: default; }
 .routines-view :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.routines-error { padding: 12px 15px; border-radius: 8px; margin: 14px 0; overflow-wrap: anywhere; background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); }
+.routines-error { padding: 12px 15px; border-radius: var(--radius-sm); margin: 14px 0; overflow-wrap: anywhere; background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); }
 .routines-error button { margin-left: 8px; font-size: 12px; padding: 4px 8px; }
 .routines-empty { color: var(--text-3); }
 .routines-section { font-size: 15px; font-weight: 600; margin: 28px 0 12px; }
 .routines-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
-.routine-card { display: flex; gap: 16px; justify-content: space-between; align-items: center; background: var(--bg-sidebar); border: 1px solid var(--border-pane); border-radius: 12px; padding: 14px 16px; }
+.routine-card { display: flex; gap: 16px; justify-content: space-between; align-items: center; background: var(--bg-sidebar); border: 1px solid var(--border-pane); border-radius: var(--radius-md); padding: 14px 16px; }
 .routine-card-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .routine-card-main strong { overflow-wrap: anywhere; }
 .routine-card-main span { color: var(--text-3); font-size: 12px; overflow-wrap: anywhere; }
 .routine-actions { display: flex; gap: 7px; flex-wrap: wrap; }
 .routine-actions button { font-size: 12px; padding: 6px 9px; }
-.routine-editor { display: flex; flex-direction: column; gap: 14px; max-width: 720px; padding: 20px; margin: 8px 0 18px; border: 1px solid var(--border-pane); border-radius: 12px; background: var(--bg-sidebar); }
+.routine-editor { display: flex; flex-direction: column; gap: 14px; max-width: 720px; padding: 20px; margin: 8px 0 18px; border: 1px solid var(--border-pane); border-radius: var(--radius-md); background: var(--bg-sidebar); }
 .routine-editor label { display: flex; flex-direction: column; gap: 7px; color: var(--text-3); font-size: 12px; }
 .routine-editor textarea { resize: vertical; min-height: 96px; }
 .routine-editor fieldset { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; }
@@ -85,7 +85,7 @@
 .sheet[data-surface="routines"]:has(> .main.scheduled-chat) > .routines-view { grid-area: 1 / 1; grid-template-columns: 338px; }
 .sheet[data-surface="routines"]:has(> .main.scheduled-chat) > .routines-view.list-closed { display: none; }
 .scheduled-chat-header { flex: none; display: flex; align-items: center; gap: 10px; height: 58px; padding: 0 16px 0 22px; }
-.scheduled-chat-header .sched-chat-title { display: inline-flex; align-items: center; gap: 8px; max-width: 46vw; padding: 5px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--text-1); font: inherit; font-size: 15px; font-weight: 500; cursor: pointer; }
+.scheduled-chat-header .sched-chat-title { display: inline-flex; align-items: center; gap: 8px; max-width: 46vw; padding: 5px 8px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-1); font: inherit; font-size: 15px; font-weight: 500; cursor: pointer; }
 .scheduled-chat-header .sched-chat-title:hover { background: var(--bg-row-hover); }
 .scheduled-chat-header .sched-chat-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scheduled-chat-header .sched-chat-title .icon-svg { color: var(--text-3); }
@@ -95,19 +95,19 @@
 .sched-compose-hero { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .sched-compose-hero h2 { margin: 12px 0 0; font-size: 17px; font-weight: 500; }
 .sched-compose-hero p { margin: 4px 0 0; color: var(--text-2); font-size: 13.5px; }
-.sched-composer { width: 100%; max-width: 768px; padding: 14px 14px 10px 18px; border: 1px solid var(--border-pane); border-radius: 24px; background: var(--bg-composer); }
+.sched-composer { width: 100%; max-width: 768px; padding: 14px 14px 10px 18px; border: 1px solid var(--border-pane); border-radius: var(--radius-md); background: var(--bg-composer); }
 .routines-view .sched-composer textarea { display: block; width: 100%; min-height: 48px; padding: 0; border: 0; outline: 0; resize: none; background: transparent; color: var(--text-1); font: inherit; font-size: 15px; line-height: 22px; box-shadow: none; }
 .sched-composer-row { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
-.routines-view .sched-composer select { max-width: 180px; padding: 4px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); font-size: 13px; }
+.routines-view .sched-composer select { max-width: 180px; padding: 4px 8px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-2); font-size: 13px; }
 .sched-reading { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-size: 12.5px; }
-.routines-view .sched-send { flex: none; width: 34px; height: 34px; border: 0; border-radius: 50%; background: var(--text-1); color: var(--bg-main); }
+.routines-view .sched-send { flex: none; width: 34px; height: 34px; border: 0; border-radius: var(--radius-sm); background: var(--text-1); color: var(--bg-main); }
 .routines-view .sched-send:disabled { opacity: .35; }
 
 /* A task row's actions, shown on hover; and what the task wrote, beside its conversation. */
 .sched-scroll li { position: relative; }
 .sched-row-menu { position: absolute; top: 50%; right: 14px; transform: translateY(-50%); opacity: 0; }
 .sched-scroll li:hover .sched-row-menu, .sched-row-menu:focus-within, .sched-row-menu:has([aria-expanded="true"]) { opacity: 1; }
-.routines-view .sched-row-menu .icon-btn { width: 26px; height: 22px; border: 0; border-radius: 7px; background: var(--bg-row-selected); color: var(--text-1); }
+.routines-view .sched-row-menu .icon-btn { width: 26px; height: 22px; border: 0; border-radius: var(--radius-sm); background: var(--bg-row-selected); color: var(--text-1); }
 .sched-scroll li:hover .sched-row { background: var(--bg-row-hover); padding-right: 40px; }
 .sched-info-menu { min-width: 300px; }
 .sched-info-menu .sched-info-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -115,11 +115,11 @@
 .sheet[data-surface="routines"]:has(> .sched-output) > .main.scheduled-chat { grid-area: 1 / 2 / 2 / 3; }
 .sheet > .sched-output { grid-area: 1 / 3; width: clamp(340px, 42vw, 720px); min-width: 0; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid var(--border-pane); background: var(--bg-window); }
 .sched-output-bar { flex: none; display: flex; align-items: center; gap: 6px; height: 58px; padding: 0 10px; }
-.sched-output .file-pill { display: inline-flex; align-items: center; gap: 9px; max-width: 260px; height: 32px; padding: 0 13px; border: 0; border-radius: 16px; background: var(--bg-composer); color: var(--text-1); font: inherit; font-size: 13.5px; cursor: pointer; white-space: nowrap; }
+.sched-output .file-pill { display: inline-flex; align-items: center; gap: 9px; max-width: 260px; height: 32px; padding: 0 13px; border: 0; border-radius: var(--radius-md); background: var(--bg-composer); color: var(--text-1); font: inherit; font-size: 13.5px; cursor: pointer; white-space: nowrap; }
 .sched-output-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.sched-output .file-round { flex: none; width: 32px; height: 32px; border: 0; border-radius: 50%; background: var(--bg-composer); color: var(--text-2); }
+.sched-output .file-round { flex: none; width: 32px; height: 32px; border: 0; border-radius: var(--radius-sm); background: var(--bg-composer); color: var(--text-2); }
 .sched-output-scroll { flex: 1; min-height: 0; overflow: auto; padding: 14px 22px 28px; }
-.sched-paper { max-width: 760px; min-height: 100%; margin: 0 auto; padding: 44px 52px 60px; border-radius: 3px; background: #fff; color: #1b2230; font-size: 14px; line-height: 1.6; box-shadow: 0 10px 34px rgba(0, 0, 0, .35); --text-1: #1b2230; --text-2: #364154; --text-3: #5b6577; --text-4: #7a8394; --border-pane: #d9dee7; --bg-composer: #f2f4f7; --bg-elevated: #f2f4f7; }
+.sched-paper { max-width: 760px; min-height: 100%; margin: 0 auto; padding: 44px 52px 60px; border-radius: var(--radius-xs); background: #fff; color: #1b2230; font-size: 14px; line-height: 1.6; box-shadow: 0 10px 34px rgba(0, 0, 0, .35); --text-1: #1b2230; --text-2: #364154; --text-3: #5b6577; --text-4: #7a8394; --border-pane: #d9dee7; --bg-composer: #f2f4f7; --bg-elevated: #f2f4f7; }
 .sched-paper h1:first-child { margin: 0 0 18px; font-size: 26px; line-height: 1.2; }
 .sched-paper table { font-size: 12.5px; }
 @media (max-width: 1100px) { .sheet > .sched-output { position: absolute; z-index: 30; inset: 0 0 0 auto; width: min(560px, 100%); } }
@@ -132,13 +132,13 @@
 
 /* Schedule a task: the task's settings as a dialog of grouped rows, each with its control at the right. */
 .st-backdrop { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; background: rgba(0, 0, 0, .5); }
-.st-dialog { --st-line: color-mix(in srgb, var(--text-1) 14%, transparent); display: flex; flex-direction: column; width: 680px; max-width: calc(100vw - 32px); max-height: calc(100vh - 48px); border-radius: 26px; background: var(--bg-elevated); color: var(--text-1); box-shadow: 0 30px 80px rgba(0, 0, 0, .55), inset 0 0 0 1px var(--st-line); }
+.st-dialog { --st-line: color-mix(in srgb, var(--text-1) 14%, transparent); display: flex; flex-direction: column; width: 680px; max-width: calc(100vw - 32px); max-height: calc(100vh - 48px); border-radius: var(--radius-md); background: var(--bg-elevated); color: var(--text-1); box-shadow: 0 30px 80px rgba(0, 0, 0, .55), inset 0 0 0 1px var(--st-line); }
 .st-dialog > header { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 22px 22px 14px; }
 .st-dialog h2 { margin: 0; font-size: 16px; font-weight: 600; }
 .routines-view .st-dialog button { font: inherit; cursor: pointer; }
-.routines-view .st-close { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); }
+.routines-view .st-close { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-2); }
 .st-scroll { flex: 1; min-height: 0; overflow: auto; padding: 0 20px 4px; }
-.st-text, .st-group { border: 1px solid var(--st-line); border-radius: 18px; }
+.st-text, .st-group { border: 1px solid var(--st-line); border-radius: var(--radius-md); }
 .st-text { padding: 4px 18px 10px; }
 .routines-view .st-text input, .routines-view .st-text textarea { display: block; width: 100%; padding: 12px 0; border: 0; border-radius: 0; outline: 0; background: transparent; color: var(--text-1); font: inherit; font-size: 14px; line-height: 21px; resize: none; box-shadow: none; }
 .routines-view .st-text input { border-bottom: 1px solid var(--st-line); font-weight: 500; }
@@ -146,20 +146,20 @@
 .st-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 48px; margin: 0; font-size: 14px; color: var(--text-1); }
 .st-group > .st-row + .st-row { border-top: 1px solid var(--st-line); }
 label.st-group.st-row { margin-top: 12px; background: transparent; }
-.routines-view .st-row select, .routines-view .st-row input:not(.st-switch) { width: auto; max-width: 60%; height: 30px; padding: 0 6px; border: 0; border-radius: 8px; outline: 0; background: transparent; color: var(--text-2); font: inherit; font-size: 14px; text-align: right; box-shadow: none; color-scheme: dark; }
+.routines-view .st-row select, .routines-view .st-row input:not(.st-switch) { width: auto; max-width: 60%; height: 30px; padding: 0 6px; border: 0; border-radius: var(--radius-sm); outline: 0; background: transparent; color: var(--text-2); font: inherit; font-size: 14px; text-align: right; box-shadow: none; color-scheme: dark; }
 .routines-view .st-row select:hover, .routines-view .st-row input:not(.st-switch):hover, .routines-view .st-row :is(select, input):focus-visible { background: color-mix(in srgb, var(--text-1) 7%, transparent); color: var(--text-1); }
 .routines-view .st-row :is(select, input):focus-visible { box-shadow: inset 0 0 0 1px var(--accent); }
 .st-pair { display: inline-flex; align-items: center; gap: 4px; }
 .routines-view .st-pair input { width: 72px; }
-.routines-view input.st-switch { appearance: none; flex: none; position: relative; width: 34px; height: 20px; margin: 0; border: 0; border-radius: 10px; background: color-mix(in srgb, var(--text-1) 18%, transparent); cursor: pointer; transition: background 140ms; }
-.routines-view input.st-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 140ms; }
+.routines-view input.st-switch { appearance: none; flex: none; position: relative; width: 34px; height: 20px; margin: 0; border: 0; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--text-1) 18%, transparent); cursor: pointer; transition: background 140ms; }
+.routines-view input.st-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: var(--radius-xs); background: #fff; transition: transform 140ms; }
 .routines-view input.st-switch:checked { background: var(--accent); }
 .routines-view input.st-switch:checked::after { transform: translateX(14px); }
 .routines-view .st-advanced { display: inline-flex; align-items: center; gap: 7px; margin: 14px 0 2px 8px; padding: 4px 0; border: 0; background: transparent; color: var(--text-2); font-size: 13.5px; }
 .st-note { margin: 12px 8px 4px; color: var(--text-3); font-size: 12px; line-height: 1.5; }
 .st-dialog > footer { flex: none; display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px 20px; }
-.routines-view .st-cancel { height: 34px; padding: 0 16px; border: 0; border-radius: 17px; background: transparent; color: var(--text-2); font-size: 14px; }
-.routines-view .st-save { height: 34px; padding: 0 20px; border: 0; border-radius: 17px; background: var(--text-1); color: var(--bg-main); font-size: 14px; font-weight: 500; }
+.routines-view .st-cancel { height: 34px; padding: 0 16px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-2); font-size: 14px; }
+.routines-view .st-save { height: 34px; padding: 0 20px; border: 0; border-radius: var(--radius-sm); background: var(--text-1); color: var(--bg-main); font-size: 14px; font-weight: 500; }
 .routines-view .st-save:disabled { opacity: .45; }
 @media (prefers-reduced-motion: reduce) { .routines-view input.st-switch, .routines-view input.st-switch::after { transition: none; } }
 .routines-view .st-dialog .st-text input, .routines-view .st-dialog .st-text textarea { padding: 12px 0; }

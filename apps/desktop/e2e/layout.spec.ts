@@ -111,7 +111,7 @@ test.describe("Design tokens", () => {
     "--border-pane": "#2b3144", "--border-rail": "#32384d", "--border-composer": "#42465e", "--rule": "#2b3347",
     "--text-1": "#f8f3fa", "--text-2": "#d0cad9", "--text-3": "#aaa5b8", "--text-4": "#918da2", "--text-placeholder": "#a49eb2",
     "--accent": "#ef7bcd", "--accent-strong": "#f386a1", "--accent-ink": "#1b1020", "--accent-warn": "#dc9258", "--text-sm": "13px", "--text-md": "14px", "--text-lg": "18px", "--text-xl": "28px",
-    "--radius-row": "10px", "--radius-composer": "20px",
+    "--radius-row": "6px", "--radius-composer": "8px",
   };
 
   test("tokens resolve to the chosen values", async () => {
@@ -165,7 +165,7 @@ test.describe("Phase 3 · shell", () => {
     expect([rail.x, rail.y, rail.width]).toEqual([0, 42, 48]);
     const sheet = await box(tid(page, "sheet"));
     expect([sheet.x, sheet.y]).toEqual([48, 42]);
-    expect(await css(tid(page, "sheet"), "border-top-left-radius")).toBe("12px");
+    expect(await css(tid(page, "sheet"), "border-top-left-radius")).toBe("8px");
     expect(await css(tid(page, "sheet"), "border-left-color")).toBe("rgb(50, 56, 77)");
   });
 
@@ -200,7 +200,7 @@ test.describe("Phase 3 · shell", () => {
     expect(project.y).toBe(166);
     const row = await box(tid(page, "thread-row").first());
     expect([row.x, row.y, row.width, row.height]).toEqual([57, 197, 213, 72]); // title, provider/model, and checkout/PR metadata
-    expect(await css(tid(page, "thread-row").first(), "border-top-left-radius")).toBe("10px");
+    expect(await css(tid(page, "thread-row").first(), "border-top-left-radius")).toBe("6px");
     const label = await box(tid(page, "thread-row-title").first());
     near(label.x, 89);
     expect(await css(tid(page, "thread-row-title").first(), "font-size")).toBe("14px");
@@ -208,7 +208,7 @@ test.describe("Phase 3 · shell", () => {
 });
 
 test.describe("Phase 4 · composer", () => {
-  // Reference #1: box 960×109; controls retain their insets; strip 38 px, inset 13 px; send a 34 px circle in the corner.
+  // Reference #1: box 960×109; controls retain their insets; strip 38 px, inset 13 px; send a 34 px square (control radius) in the corner.
   const near = (got: number, want: number, tol = 1) => expect(Math.abs(got - want), `${got} vs ${want}`).toBeLessThanOrEqual(tol);
 
   test("box is 960×109, centred in the main pane, 16 px off the bottom", async () => {
@@ -220,7 +220,7 @@ test.describe("Phase 4 · composer", () => {
     near(c.x + c.width / 2, m.x + 1 + (m.width - 1) / 2);
     expect(await css(tid(page, "composer-box"), "background-color")).toBe("rgb(29, 36, 53)");
     expect(await css(tid(page, "composer-box"), "border-top-color")).toBe("rgb(66, 70, 94)");
-    expect(await css(tid(page, "composer-box"), "border-top-left-radius")).toBe("20px");
+    expect(await css(tid(page, "composer-box"), "border-top-left-radius")).toBe("8px");
   });
 
   test("context strip sits on the box: 38 px, inset 13 px, 13 px text", async () => {
@@ -231,7 +231,7 @@ test.describe("Phase 4 · composer", () => {
     expect(await css(tid(page, "composer-context"), "font-size")).toBe("13px");
   });
 
-  test("control row: + and access keep their insets, round send in the corner", async () => {
+  test("control row: + and access keep their insets, square send in the corner", async () => {
     const c = await box(tid(page, "composer-box"));
     const plus = await box(tid(page, "composer-plus"));
     near(plus.x + plus.width / 2, c.x + 22); near(plus.y + plus.height / 2, c.y + c.height - 22);
@@ -242,7 +242,7 @@ test.describe("Phase 4 · composer", () => {
     expect([send.width, send.height]).toEqual([34, 34]);
     near(send.x + send.width, c.x + c.width - 2);
     near(send.y + send.height, c.y + c.height - 2);
-    expect(await css(tid(page, "send"), "border-top-left-radius")).toBe("50%");
+    expect(await css(tid(page, "send"), "border-top-left-radius")).toBe("6px");
     expect(await css(tid(page, "composer-input"), "font-size")).toBe("14px");
     await expect(tid(page, "composer-input")).toHaveAttribute("placeholder", "Do anything");
   });
@@ -263,7 +263,7 @@ test.describe("Phase 6 · transcript", () => {
     expect(await css(label, "border-bottom-color")).toBe("rgb(43, 51, 71)");
     const bubble = items(page, "user").first().locator('[data-testid="item-text"]');
     expect(await css(bubble, "background-color")).toBe("rgb(27, 34, 50)");
-    expect(await css(bubble, "border-top-left-radius")).toBe("12px");
+    expect(await css(bubble, "border-top-left-radius")).toBe("8px");
     const b = await box(bubble);
     expect(Math.abs(b.x + b.width - (header.x + header.width))).toBeLessThanOrEqual(1);
     const prose = items(page, "assistant").first();

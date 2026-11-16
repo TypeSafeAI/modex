@@ -99,10 +99,27 @@ isn't a substitute: it lacks the small-size optical tracking and reads 1–2 px 
 | "Codex" (sidebar title, cap 13 px) | ≈52 | 18/600 | `--text-lg` |
 | "What should we build in coven-threads?" | 481 | 28/400 = 480 | `--text-xl` |
 
-## Radii
+## Radius scale
+
+Since 2026-11-15 the renderer has one radius scale, chosen for a tighter, uniform look rather than
+measured from the reference. It applies to every button and component in the desktop renderer, the
+Store edition and the web demo.
+
+| Step | Value | Tokens | Used for |
+|---|---|---|---|
+| Surface | 8 px | `--radius-md`, `--radius-composer`, `--radius-sheet` | composer, menus, cards, dialogs, message bubbles, code blocks, the content sheet |
+| Control | 6 px | `--radius-sm`, `--radius-row`, `--radius-pill` | buttons, icon buttons, rows, options, fields, chips and badges |
+| Part | 4 px | `--radius-xs` | pieces inside a control: tabs, icon tiles, inline code, key hints |
+
+Only status dots, progress dots and spinners are round (`50%`). No stylesheet writes a radius as a
+number: `scripts/test/radius-scale.test.mjs` fails on a hard-coded radius above 2 px and pins how
+many circles each stylesheet has, so a new one is a deliberate edit. `--radius-pill` keeps its name
+for the chips that use it, though nothing is pill-shaped any more.
+
+### Original measurements (superseded)
 
 Measured along the top edge of a filled box: the number of pixels, row by row, before the fill starts.
-The inset profile is then compared with a circle.
+The inset profile is then compared with a circle. These were the values until 2026-11-15.
 
 | Token | Value | Profile (inset px, rows from the top edge) |
 |---|---|---|
