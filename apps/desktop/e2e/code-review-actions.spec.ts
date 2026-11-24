@@ -420,3 +420,48 @@ test("a state change GitHub may have made stays in doubt, blocks the PR and is c
   expect(mutations()).toEqual([`PATCH ${PULL}`]);
 });
 
+
+async function focusPane(page: Page, name: "overview" | "changes") {
+  const split = tid(page, "code-review-split-toggle");
+  if (await split.getAttribute("aria-pressed") !== "true") await split.click();
+  await tid(page, `code-review-tab-${name}`).click();
+  await expect(tid(page, "code-review-workspace")).toHaveAttribute("data-panes", "overview changes");
+  await expect(tid(page, "code-review-pane-overview")).toBeVisible();
+  await expect(tid(page, "code-review-pane-changes")).toBeVisible();
+}
+
+for (const paneName of ["overview", "changes"] as const) {
+  test(`header panel focus controls remain local in ${paneName}`, async () => {
+    h = await launchWithGh(baseWorld()); const page = await openLending();
+    await focusPane(page, paneName);
+    const pane = tid(page, `code-review-pane-${paneName}`);
+    await expect(pane).toBeVisible();
+    for (const [openerId, panelId] of [["code-review-review", "cr-agent-panel"], ["code-review-merge", "cr-merge"]] as const) {
+      const opener = tid(pane, openerId);
+      for (const dismissal of ["Close", "Escape"] as const) {
+        await opener.click(); const panel = tid(pane, panelId); await expect(panel).toBeVisible();
+        const close = panel.getByRole("button", { name: "Close", exact: true });
+        if (dismissal === "Close") await close.click(); else { await close.focus(); await page.keyboard.press("Escape"); }
+        await expect(panel).toHaveCount(0); await expect(opener).toBeFocused();
+        expect(mutations()).toEqual([]); expect(h.providerStarts()).toEqual([]);
+      }
+    }
+  });
+  for (const dismissal of ["Close", "Back", "Escape"] as const) test(`state panel dismissal with ${dismissal} returns focus to ${paneName}`, async () => {
+    h = await launchWithGh(baseWorld()); const page = await openLending();
+    await focusPane(page, paneName);
+    const pane = tid(page, `code-review-pane-${paneName}`), opener = tid(pane, "code-review-state");
+    await expect(opener).toHaveAttribute("aria-haspopup", "menu"); await opener.click();
+    await pane.getByRole("menu", { name: "Change state" }).getByRole("menuitem", { name: "Close pull request", exact: true }).click();
+    const panel = tid(pane, "cr-state-panel");
+    await expect(panel.getByTestId("cr-preview-destination")).toHaveText("As ada-fixture on example-org/lending #73");
+    expect(mutations()).toEqual([]); expect(h.providerStarts()).toEqual([]);
+    if (dismissal === "Escape") { await panel.getByRole("button", { name: "Close", exact: true }).focus(); await page.keyboard.press("Escape"); }
+    else await panel.getByRole("button", { name: dismissal, exact: true }).click();
+    expect(mutations()).toEqual([]); expect(h.providerStarts()).toEqual([]);
+    await expect(panel).toHaveCount(0); await expect(opener).toBeFocused();
+    await expect(opener).toHaveText("Open");
+    const other = tid(page, `code-review-pane-${paneName === "overview" ? "changes" : "overview"}`);
+    await expect(other).toBeVisible(); await expect(tid(other, "code-review-state")).not.toBeFocused();
+  });
+}
