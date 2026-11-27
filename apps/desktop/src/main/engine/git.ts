@@ -57,7 +57,8 @@ export async function status(cwd: string): Promise<ChangesSnapshot> {
     if (f.code === "??") {
       const abs = path.join(cwd, f.path);
       try {
-        f.additions = countLines(fs.readFileSync(abs, "utf8"));
+        // A link's content is its target, one line, whatever it points at.
+        f.additions = fs.lstatSync(abs).isSymbolicLink() ? 1 : countLines(fs.readFileSync(abs, "utf8"));
       } catch {
         /* binary or unreadable */
       }
@@ -151,6 +152,26 @@ function diffOutput(result: { stdout: string; stderr: string; code: number }, no
   return result.stdout;
 }
 
+/**
+ * An untracked path as a pure addition. git cannot compare /dev/null with a directory, and it sees
+ * one through a symlink to a directory or at a nested repository, which status lists as `dir/`.
+ * A nested repository has no text to show. The link gets the diff git prints for any other link.
+ */
+async function untrackedDiff(root: string, repoRel: string, context: string[]): Promise<string> {
+  const abs = path.join(root, repoRel);
+  let directory = false;
+  try {
+    directory = fs.statSync(abs).isDirectory();
+  } catch { /* A dangling or looping link is one git can show. */ }
+  if (!directory) return diffOutput(await git(root, ["--literal-pathspecs", "diff", ...context, "--no-index", "--", "/dev/null", repoRel]), true);
+  if (!fs.lstatSync(abs).isSymbolicLink()) return "";
+  const lines = fs.readlinkSync(abs).split("\n");
+  return [
+    `diff --git a/${repoRel} b/${repoRel}`, "new file mode 120000", "--- /dev/null", `+++ b/${repoRel}${repoRel.includes(" ") ? "\t" : ""}`,
+    `@@ -0,0 +1${lines.length > 1 ? `,${lines.length}` : ""} @@`, ...lines.map((line) => `+${line}`), "\\ No newline at end of file", "",
+  ].join("\n");
+}
+
 /** Unified diff for one path; untracked files are rendered as pure additions. */
 export async function diff(cwd: string, rel: string, original?: string, fullContext = false): Promise<string> {
   const context = fullContext ? ["--unified=100000"] : [];
@@ -171,9 +192,7 @@ export async function diff(cwd: string, rel: string, original?: string, fullCont
     }
   }
 
-  if (code === "??") {
-    return diffOutput(await git(root, ["--literal-pathspecs", "diff", ...context, "--no-index", "--", "/dev/null", repoRel]), true);
-  }
+  if (code === "??") return untrackedDiff(root, repoRel, context);
 
   const committed = await hasCommits(root);
   const target = committed ? "HEAD" : "--cached";

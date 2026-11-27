@@ -12,6 +12,9 @@ import { ErrorNotice } from "./ui/ErrorNotice";
 interface Props { visible: boolean; thread: Thread; changes: ChangesSnapshot | null; onRefresh: () => void; onRevert: (path: string) => void }
 const compactCount = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
 
+/** Git lists a nested repository as `dir/`; its row goes by that directory's name, in its parent's group. */
+const rowPath = (file: string) => file.replace(/\/$/, "");
+
 /** Review occupies a workspace tab; the diff and its file tree scroll independently. */
 export function ChangesPanel({ visible, thread, changes, onRefresh, onRevert }: Props) {
   const [selection, setSelection] = useState<string | null>(null);
@@ -46,7 +49,8 @@ export function ChangesPanel({ visible, thread, changes, onRefresh, onRevert }: 
   const paths = (changes?.files ?? []).filter((f) => f.path.toLowerCase().includes(filter.toLowerCase())).sort((a, b) => Number(a.code === "??") - Number(b.code === "??") || a.path.localeCompare(b.path));
   const groups = new Map<string, typeof paths>();
   for (const f of paths) {
-    const folder = f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/")) : "";
+    const name = rowPath(f.path);
+    const folder = name.includes("/") ? name.slice(0, name.lastIndexOf("/")) : "";
     groups.set(folder, [...(groups.get(folder) ?? []), f]);
   }
   return <section className="review-panel" data-testid="changes-panel" aria-label="Review changes">
@@ -85,7 +89,7 @@ export function ChangesPanel({ visible, thread, changes, onRefresh, onRevert }: 
           {[...groups].map(([folder, files]) => <FileGroup key={folder} folder={folder}>
             {files.map((f) => <div key={f.path} className={`review-file${file === f.path ? " selected" : ""}`} data-testid="changes-file" data-path={f.path} aria-current={file === f.path ? "true" : undefined}>
               <button className="review-file-select" aria-label={`View diff for ${f.path}`} aria-pressed={file === f.path} onClick={() => setSelection(f.path)}>
-                <FileIcon path={f.path} /><span data-testid="changes-file-path" title={f.path}>{f.path.split("/").at(-1)}</span><span className={`review-status ${f.code === "??" ? "add" : "modified"}`}>{f.code === "??" ? "U" : f.code.includes("D") ? "D" : "▪"}</span>
+                <FileIcon path={f.path} /><span data-testid="changes-file-path" title={f.path}>{rowPath(f.path).split("/").at(-1)}</span><span className={`review-status ${f.code === "??" ? "add" : "modified"}`}>{f.code === "??" ? "U" : f.code.includes("D") ? "D" : "▪"}</span>
               </button>
               <button className="review-revert" data-testid="changes-revert" aria-label={`Discard changes to ${f.path}`} title="Discard changes to this file" onClick={() => onRevert(f.path)}>↶</button>
             </div>)}

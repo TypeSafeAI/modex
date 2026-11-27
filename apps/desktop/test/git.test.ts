@@ -36,6 +36,76 @@ test("status/diff/revert over tracked, untracked and deleted files", async () =>
   await assert.rejects(gitx.revert(repo, "../outside"), /outside the workspace/);
 });
 
+test("an untracked symlink to a directory diffs as a new link, the way git shows any other link", async () => {
+  const repo = gitRepo();
+  fs.mkdirSync(path.join(repo, "target"));
+  fs.writeFileSync(path.join(repo, "target", "inside.txt"), "one\ntwo\nthree\n");
+  fs.symlinkSync("target", path.join(repo, "to dir"));
+  const shown = await gitx.diff(repo, "to dir");
+  assert.equal(shown, "diff --git a/to dir b/to dir\nnew file mode 120000\n--- /dev/null\n+++ b/to dir\t\n@@ -0,0 +1 @@\n+target\n\\ No newline at end of file\n");
+  assert.equal(await gitx.diff(repo, "to dir", undefined, true), shown, "the expanded view has no other lines to add");
+  assert.doesNotMatch(shown, /inside\.txt|one/, "the link is shown, not what it points at");
+
+  // With the target gone git can diff the same link itself, which keeps the two from drifting apart.
+  fs.rmSync(path.join(repo, "target"), { recursive: true });
+  assert.equal(shown, (await gitx.diff(repo, "to dir")).replace(/^index .*\n/m, ""));
+});
+
+test("the other untracked links keep git's own diff, and the list counts every link as one line", async () => {
+  const repo = gitRepo();
+  fs.writeFileSync(path.join(repo, "real.txt"), "one\ntwo\nthree\n");
+  execFileSync("git", ["add", "real.txt"], { cwd: repo });
+  fs.mkdirSync(path.join(repo, "target"));
+  fs.writeFileSync(path.join(repo, "target", ".keep"), "");
+  execFileSync("git", ["add", "target"], { cwd: repo });
+  execFileSync("git", ["-c", "commit.gpgsign=false", "-c", "user.name=test", "-c", "user.email=test@example.test", "commit", "-qm", "files"], { cwd: repo });
+  fs.symlinkSync("real.txt", path.join(repo, "to-file"));
+  fs.symlinkSync("target", path.join(repo, "to-dir"));
+  fs.symlinkSync("nowhere", path.join(repo, "dangling"));
+  fs.symlinkSync("loop", path.join(repo, "loop"));
+  for (const [name, target] of [["to-file", "real.txt"], ["dangling", "nowhere"], ["loop", "loop"], ["to-dir", "target"]] as const) {
+    const shown = await gitx.diff(repo, name);
+    assert.match(shown, /^new file mode 120000$/m, name);
+    assert.ok(shown.endsWith(`@@ -0,0 +1 @@\n+${target}\n\\ No newline at end of file\n`), `${name}: ${shown}`);
+  }
+  assert.deepEqual((await gitx.status(repo)).files.map((f) => [f.path, f.additions]), [["dangling", 1], ["loop", 1], ["to-dir", 1], ["to-file", 1]]);
+});
+
+test("an untracked symlink to a directory diffs from a project inside the repository", async () => {
+  const repo = gitRepo();
+  fs.mkdirSync(path.join(repo, "app", "target"), { recursive: true });
+  fs.symlinkSync("target", path.join(repo, "app", "link"));
+  const project = path.join(repo, "app");
+  assert.deepEqual((await gitx.status(project)).files.map((f) => f.path), ["link"]);
+  const shown = await gitx.diff(project, "link");
+  assert.match(shown, /^\+\+\+ b\/app\/link$/m);
+  assert.match(shown, /^\+target$/m);
+});
+
+test("an untracked nested repository has no diff to show and does not fail", async () => {
+  const repo = gitRepo();
+  const nested = path.join(repo, "vendor", "lib");
+  fs.mkdirSync(nested, { recursive: true });
+  await gitx.git(nested, ["init", "-q", "-b", "main"]);
+  fs.writeFileSync(path.join(nested, "f.txt"), "x\n");
+  await gitx.git(nested, ["add", "f.txt"]);
+  await gitx.git(nested, ["-c", "commit.gpgsign=false", "-c", "user.name=test", "-c", "user.email=test@example.test", "commit", "-qm", "x"]);
+  assert.deepEqual((await gitx.status(repo)).files.map((f) => [f.path, f.code]), [["vendor/lib/", "??"]]);
+  assert.equal(await gitx.diff(repo, "vendor/lib/"), "");
+  await gitx.revert(repo, "vendor/lib/");
+  assert.equal(fs.readFileSync(path.join(nested, "f.txt"), "utf8"), "x\n", "discarding must never delete another repository");
+});
+
+test("discarding an untracked symlink to a directory removes the link and keeps what it points at", async () => {
+  const repo = gitRepo();
+  const outside = tmpdir("modex-link-target-");
+  fs.writeFileSync(path.join(outside, "precious.txt"), "keep\n");
+  fs.symlinkSync(outside, path.join(repo, "link"));
+  await gitx.revert(repo, "link");
+  assert.equal(fs.lstatSync(path.join(repo, "link"), { throwIfNoEntry: false }), undefined);
+  assert.equal(fs.readFileSync(path.join(outside, "precious.txt"), "utf8"), "keep\n");
+});
+
 test("discarding files before the first commit clears intent-to-add and staged edits", async () => {
   const repo = tmpdir("modex-unborn-repo-");
   await gitx.git(repo, ["init", "-q", "-b", "main"]);
