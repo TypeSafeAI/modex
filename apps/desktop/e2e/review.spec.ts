@@ -1,4 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from "@playwright/test";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { launch, seedHome, tid, items } from "./support";
@@ -65,6 +66,30 @@ test("changed files can be selected with the keyboard", async () => {
   await page.keyboard.press("Enter");
   await expect(tid(page, "changes-diff")).toContainText("second diff");
   await expect(file).toHaveAttribute("aria-pressed", "true");
+});
+
+test("an untracked link to a directory and a nested repository open without a diff error", async () => {
+  fs.mkdirSync(path.join(repo, "target"));
+  fs.writeFileSync(path.join(repo, "target", "inside.txt"), "inside\n");
+  fs.symlinkSync("target", path.join(repo, "dir-link"));
+  const nested = path.join(repo, "vendor", "lib");
+  fs.mkdirSync(nested, { recursive: true });
+  execFileSync("git", ["init", "-q"], { cwd: nested });
+  fs.writeFileSync(path.join(nested, "f.txt"), "x\n");
+  execFileSync("git", ["add", "."], { cwd: nested });
+  execFileSync("git", ["-c", "commit.gpgsign=false", "-c", "user.name=test", "-c", "user.email=test@example.test", "commit", "-qm", "x"], { cwd: nested });
+  await tid(page, "changes-refresh").click();
+
+  await page.getByRole("button", { name: "View diff for dir-link", exact: true }).click();
+  await expect(tid(page, "diff").locator('[data-line="add"]')).toHaveText(["1target"]);
+  await expect(tid(page, "changes-diff")).toContainText("+1");
+  await expect(tid(page, "changes-diff-error")).toHaveCount(0);
+
+  const row = page.locator('[data-testid="changes-file"][data-path="vendor/lib/"]');
+  await expect(tid(row, "changes-file-path")).toHaveText("lib");
+  await page.getByRole("button", { name: "View diff for vendor/lib/", exact: true }).click();
+  await expect(tid(page, "changes-diff")).toContainText("No textual diff.");
+  await expect(tid(page, "changes-diff-error")).toHaveCount(0);
 });
 
 test("Enter during IME composition keeps the unsent message", async () => {
